@@ -249,7 +249,7 @@ def writefeats(outfile, feats, **kwargs):
     """
     fp = open(outfile,'wt')
     fp.write("%d\n" % feats.shape[1])
-    nx.savetxt(fp, feats, "%i", "\n")
+    nx.savetxt(fp, feats, "%i")
     fp.close()
     if kwargs.get('cfile',None):
         fp = open(kwargs.get('cfile'),'wt')
