@@ -8,7 +8,6 @@ class in dlab.explog
 import os
 from extractor import *
 import numpy as nx
-from scipy import io
 import _readklu
 import tables as t
 import toelis, _pcmseqio, _readklu
@@ -237,7 +236,7 @@ def writespikes(outfile, spikes):
     Writes spikes to kluster's .spk.n files
     """
     fp = open(outfile,'wb')
-    io.fwrite(fp, spikes.size, spikes.astype('int16').squeeze())
+    spikes.astype('int16').squeeze().tofile(fp, sep="")
     fp.close()
 
 def writefeats(outfile, feats, **kwargs):
@@ -251,7 +250,7 @@ def writefeats(outfile, feats, **kwargs):
     """
     fp = open(outfile,'wt')
     fp.write("%d\n" % feats.shape[1])
-    io.write_array(fp, feats.astype('i'))
+    nx.savetxt(fp, feats, "%i", "\n")
     fp.close()
     if kwargs.get('cfile',None):
         fp = open(kwargs.get('cfile'),'wt')
