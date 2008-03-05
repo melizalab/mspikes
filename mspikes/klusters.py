@@ -196,7 +196,7 @@ def extractspikes(elog, channels, **kwargs):
                 S = fp.read()
                 #mu,rms = signalstats(S)
                 if invert:
-                    S *= -S
+                    S *= -1
                 sig.append(S)
                 stats.append(signalstats(S))
             # advance the file iterator
