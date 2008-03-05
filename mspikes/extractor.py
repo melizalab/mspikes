@@ -205,6 +205,47 @@ def thresh_spikes(S, thresh, **kwargs):
     return nx.asarray(events)
 
 
+def fftresample(S, npoints, reflect=False, axis=0):
+    """
+    Resample a signal using discrete fourier transform. The signal
+    is transformed in the fourier domain and then padded or truncated
+    to the correct sampling frequency.  This should be equivalent to
+    a sinc resampling.
+    """
+    from scipy.fftpack import rfft, irfft
+
+    # this may be considerably faster if we do the memory operations in C
+    # reflect at the boundaries
+    if reflect:
+        S = nx.concatenate([flipaxis(S,axis), S, flipaxis(S,axis)],
+                           axis=axis)
+        npoints *= 3
+
+    newshape = list(S.shape)
+    newshape[axis] = int(npoints)
+
+    Sf = rfft(S, axis=axis)
+    Sr = (1. * npoints / S.shape[axis]) * irfft(Sf, npoints, axis=axis, overwrite_x=1)
+    if reflect:
+        return nx.split(Sr,3)[1]
+    else:
+        return Sr
+
+def flipaxis(data, axis):
+    """
+    Like fliplr and flipud but applies to any axis
+    """
+
+    assert axis < data.ndim
+    slices = []
+    for i in range(data.ndim):
+        if i == axis:
+            slices.append(slice(None,None,-1))
+        else:
+            slices.append(slice(None))
+    return data[slices]
+
+
 def realign(spikes, **kwargs):
     """
     Realigns spike waveforms based on peak time. The peak of a linearly
@@ -222,7 +263,6 @@ def realign(spikes, **kwargs):
     downsamp    = if true, the data are downsampled back to the original
                   sampling rate after peak realignment
     """
-    from dlab.signalproc import fftresample
     
     ax = kwargs.get('axis',1)
     resamp_rate = kwargs.get('resamp_rate',3)

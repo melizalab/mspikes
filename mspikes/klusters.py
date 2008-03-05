@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
-Processes pcm_seq2 data for use by klusters. Makes uses of the explog
-class in dlab.explog
+Processes pcm_seq2 data for use by klusters.
 """
 
 import os
@@ -358,12 +357,3 @@ def readevents(elog, units=None):
     else:
         return [allunits[i] for i in units]
     
-        
-if __name__=="__main__":
-
-    from dlab import explog
-    basedir = '/z1/users/dmeliza/acute_data/st319/20070807/'
-    os.chdir(basedir)
-    elog = explog.explog('st319.explog.h5')
-    elog.site = (4,2)
-    tls = groupstimuli(elog, units=[1,4])
