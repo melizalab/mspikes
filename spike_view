@@ -6,7 +6,7 @@ spike_view - inspect waveforms and statistics of pcm spike data
 
 Usage:
 
-mspikes -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
+spike_view -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
 
      Plots raw waveform data for episodes in a pen/site
 
@@ -16,7 +16,7 @@ mspikes -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
      --units: specify a Klusters .clu file to annotate the data with spike times
      (only works when a single channel is specified)
 
-mspikes --stats -p <pen> -s <site>  <explog.h5>
+spike_view --stats -p <pen> -s <site>  <explog.h5>
 
      Plots the RMS of each episode as a time series.  Useful for determining when
      episodes are corrupted by movement artefacts, etc.
