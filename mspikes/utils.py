@@ -7,12 +7,9 @@ Module with some utility functions and classes for mspikes
 import numpy as nx
 from scipy import weave
 from scipy.linalg import get_blas_funcs, svd
-import functools
 
 def signalstats(S):
     """  Compute dc offset and rms from a signal  """
-    # we want to compute these stats simultaneously
-    # it's 200x faster than .mean() and .var()!
 
     assert S.ndim == 1, "signalstats() can only handle 1D arrays"
     out = nx.zeros((2,))
@@ -33,6 +30,48 @@ def signalstats(S):
          """
     weave.inline(code, ['S','out'])
     return out
+
+
+def fftresample(S, npoints, reflect=False, axis=0):
+    """
+    Resample a signal using discrete fourier transform. The signal
+    is transformed in the fourier domain and then padded or truncated
+    to the correct sampling frequency.  This should be equivalent to
+    a sinc resampling.
+    """
+    from scipy.fftpack import rfft, irfft
+
+    # this may be considerably faster if we do the memory operations in C
+    # reflect at the boundaries
+    if reflect:
+        S = nx.concatenate([flipaxis(S,axis), S, flipaxis(S,axis)],
+                           axis=axis)
+        npoints *= 3
+
+    newshape = list(S.shape)
+    newshape[axis] = int(npoints)
+
+    Sf = rfft(S, axis=axis)
+    Sr = (1. * npoints / S.shape[axis]) * irfft(Sf, npoints, axis=axis, overwrite_x=1)
+    if reflect:
+        return nx.split(Sr,3)[1]
+    else:
+        return Sr
+
+def flipaxis(data, axis):
+    """
+    Like fliplr and flipud but applies to any axis
+    """
+
+    assert axis < data.ndim
+    slices = []
+    for i in range(data.ndim):
+        if i == axis:
+            slices.append(slice(None,None,-1))
+        else:
+            slices.append(slice(None))
+    return data[slices]
+
 
 class filecache(dict):
     """
@@ -62,36 +101,6 @@ class filecache(dict):
         raise NotImplementedError, "Use getter methods to add items to the cache"    
 
 
-
-_manycolors = ['b','g','r','#00eeee','m','y',
-               'teal',  'maroon', 'olive', 'orange', 'steelblue', 'darkviolet',
-               'burlywood','darkgreen','sienna','crimson',
-               ]
-    
-def colorcycle(ind=None, colors=_manycolors):
-    """
-    Returns the color cycle, or a color cycle, for manually advancing
-    line colors.
-    """
-    if ind != None:
-        return colors[ind % len(colors)]
-    else:
-        return colors
-
-
-def drawoffscreen(f):
-    from pylab import isinteractive, ion, ioff, draw
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        retio = isinteractive()
-        ioff()
-        try:
-            y = f(*args, **kwargs)
-        finally:
-            if retio: ion()
-            draw()
-        return y
-    return wrapper
 
 def gemm(a,b,alpha=1.,**kwargs):
     """
@@ -127,38 +136,3 @@ def pcasvd(data, output_dim=None):
     v = v[:output_dim,:]
     return gemm(data, v, trans_b=1), v
 
-
-def cov(m, y=None, rowvar=1, bias=0):
-    """
-    Like scipy.cov, but uses lapack for the matrix product
-    """
-    X = nx.array(m, ndmin=2, dtype=float)
-    if X.shape[0] == 1:
-        rowvar = 1
-    if rowvar:
-        axis = 0
-        tup = (slice(None),nx.newaxis)
-    else:
-        axis = 1
-        tup = (nx.newaxis, slice(None))
-
-
-    if y is not None:
-        y = nx.array(y, copy=False, ndmin=2, dtype=float)
-        X = nx.concatenate((X,y),axis)
-
-    X -= X.mean(axis=1-axis)[tup]
-    if rowvar:
-        N = X.shape[1]
-    else:
-        N = X.shape[0]
-
-    if bias:
-        fact = N*1.0
-    else:
-        fact = N-1.0
-
-    if rowvar:
-        return gemm(X, X.conj(), alpha=1/fact, trans_b=1).squeeze()
-    else:
-        return gemm(X, X.conj(), alpha=1/fact, trans_a=1).squeeze()

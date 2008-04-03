@@ -46,15 +46,31 @@ if __name__=="__main__":
 
 import numpy as nx
 from mspikes import explog, _pcmseqio, klusters
-from mspikes.utils import signalstats, filecache, colorcycle, drawoffscreen
-from pylab import figure, setp, connect, show
+from mspikes.utils import signalstats, filecache
+from pylab import figure, setp, connect, show, ioff, draw
 
 # cache handles to files
 _fcache = filecache()
 _fcache.handler = _pcmseqio.pcmfile
 
 
-@drawoffscreen
+# colors used in labelling spikes    
+_manycolors = ['b','g','r','#00eeee','m','y',
+               'teal',  'maroon', 'olive', 'orange', 'steelblue', 'darkviolet',
+               'burlywood','darkgreen','sienna','crimson',
+               ]
+
+def colorcycle(ind=None, colors=_manycolors):
+    """
+    Returns the color cycle, or a color cycle, for manually advancing
+    line colors.
+    """
+    if ind != None:
+        return colors[ind % len(colors)]
+    else:
+        return colors
+
+
 def plotentry(k, entry, channels=None, eventlist=None, fig=None):
     atime = k.getentrytimes(entry)
     stim = k.getstimulus(atime)['name']
@@ -101,18 +117,18 @@ def plotentry(k, entry, channels=None, eventlist=None, fig=None):
 
     ax[0].set_title('site_%d_%d (%d) %s' % (k.site + (entry,stim)))
     ax[-1].set_xlabel('Time (ms)')
+    draw()
     return fig
 
-def plotevents(ax, t, y, entry, eventlist):
-    #from scipy.interpolate import interp1d
 
-    #lookup = interp1d(t,y)
+def plotevents(ax, t, y, entry, eventlist):
     for j in range(len(eventlist)):
         idx = nx.asarray(eventlist[j][entry],dtype='i')
         times = t[idx]
         values = y[idx]
         p = ax.plot(times, values,'o')
         p[0].set_markerfacecolor(colorcycle(j))
+
 
 def extractevents(unitfile, elog, Fs=1.0):
     # this might fail if the clu file has a funny name
@@ -134,6 +150,9 @@ if __name__=="__main__":
     assert len(args) == 1, "Error: specify a parsed explog file."
     infile = args[0]
     assert os.path.splitext(infile)[-1], "Error: input file must be an hdf5 file (parsed explog)"
+
+    ### all drawing is offscreen
+    ioff()
 
     ### all other modes require pen and site
     if opts.has_key('-p'):
@@ -172,7 +191,7 @@ if __name__=="__main__":
         else:
             chans = None
 
-        if chans != None and len(chans)==1 and opts.has_key('--units'):
+        if opts.has_key('--units') and k.nchannels==1 or (chans != None and len(chans)==1):
             events = extractevents(opts['--units'], k)
         else:
             events = None

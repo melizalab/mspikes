@@ -1,49 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
-Processes pcm_seq2 data for use by klusters.
+Functions for extracting spike data from pcm_seq2 files into klusters/klustakwik format
 """
 
 import os
 from extractor import *
 import numpy as nx
-import _readklu
-import tables as t
 import toelis, _pcmseqio, _readklu
 from utils import signalstats, filecache
 
-def sitestats(elog, pen=None, site=None):
-    """
-    Calculates the first and second moments for each entry.
-    Returns 2 NxP arrays, where N is the number of episodes
-    and P is the number of channels; and a 1xN vector with
-    the episode abstimes
-    """
-    oldsite = elog.site
-    if pen!=None and site!=None:
-        elog.site = (pen,site)
-    files = elog.getfiles()
-    files.sort(order=('abstime','channel'))
-    nchan = nx.unique(files['channel']).size
-    neps = len(files) / nchan
-
-    mu = nx.zeros((neps,nchan))
-    rms = nx.zeros((neps,nchan))
-    fcache = filecache()
-    fcache.handler = _pcmseqio.pcmfile
-    i = 0
-    for file in files:
-        pfp = fcache[file['filebase']]
-        pfp.seek(file['entry'])
-        stats = signalstats(pfp.read())
-        col = int(file['channel'])
-        row = i / nchan
-        mu[row,col] = stats[0]
-        rms[row,col] = stats[1]
-        i += 1
-    elog.site = oldsite
-    return mu, rms, nx.unique(files['abstime'])
-    
 
 def extractgroups(elog, base, channelgroups, **kwargs):
     """
@@ -287,35 +253,53 @@ def groupstimuli(elog, **kwargs):
     range - a slice or index array indicating which episodes to keep
     units - a slice or index array indicating which units to analyze
     byepisode - if true, index toelis object by episode number instead of stimulus
+    nostim_name - if None, drop entries with no stimulus. If a string, assign
+                  entries with no stimulus to this key. Default 'nostim'
     """
 
     # load stimulus times
     stimtable = elog._gettable('stimuli')
+    eptable = elog._gettable('entries')
+    
     msr = float(elog.samplerate)
+    
     # load event times
     events = readevents(elog, kwargs.get('units',None))
     nunits = len(events)
+
+    # create an index into the episodes
     eprange = kwargs.get('range',slice(None))
-    episodes = stimtable[eprange]
+    epnums = nx.arange(eptable.shape[0])[eprange]
 
     byepisode = kwargs.get('byepisode',False)
+    nostim_name = kwargs.get('nostim_name','nostim')
 
-    if byepisode:
-        idx = nx.arange(stimtable.shape[0])[eprange]
-    else:
-        idx = nx.unique(episodes['name'])
-        
-    tls = dict([(x, toelis.toelis(nunits=nunits, nrepeats=0)) for x in idx])
+    tls = {}
 
-    for i in range(len(episodes)):
+    for epnum in epnums:
+        stim = elog.getstimulus(eptable[epnum]['abstime'])
+        # figure out the key
         if byepisode:
-            ind = idx[i]
+            ind = epnum
+        elif stim.size > 0:
+            ind = stim[0]['name']
+        elif nostim_name != None:
+            ind = nostim_name
         else:
-            ind = episodes[i]['name']
-        offset = (episodes[i]['abstime'] - episodes[i]['entrytime']) / msr
-        tl = toelis.toelis([unit[i] for unit in events], nunits=nunits)
-        tl.offset(-offset)
-        tls[ind].extend(tl)
+            continue
+
+        tl = toelis.toelis([unit[epnum] for unit in events], nunits=nunits)
+        
+        # figure out the offset
+        if stim.size > 0:
+            offset = (stim[0]['abstime'] - stim[0]['entrytime']) / msr
+            tl.offset(-offset)
+
+        # create the toelis if it doesn't exist
+        if tls.has_key(ind):
+            tls[ind].extend(tl)
+        else:
+            tls[ind] = tl
                 
     return tls
 
@@ -336,7 +320,7 @@ def readevents(elog, units=None):
 
     basename = "site_%d_%d" % elog.site
     cnames = glob("%s.clu.*" % basename)
-    assert len(cnames) > 0, "No event data for %s."
+    assert len(cnames) > 0, "No event data for %s." % basename
 
     # _readklu.readclusters expects a list of sorted ints
     atimes = elog.getentrytimes().tolist()
@@ -347,7 +331,8 @@ def readevents(elog, units=None):
         fname = "%s.fet.%d" % (basename, group+1)
         cname = "%s.clu.%d" % (basename, group+1)
         episodes = _readklu.readclusters(fname, cname, atimes)
-        print "Electrode group %d/%d... %s" % (group+1, len(cnames), range(len(allunits),len(allunits)+len(episodes)))
+        print "Electrode group %d/%d... %s" % (group+1, len(cnames),
+                                               range(len(allunits),len(allunits)+len(episodes)))
         allunits.extend(episodes)
 
     if units==None:

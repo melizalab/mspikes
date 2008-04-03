@@ -1,85 +1,46 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
-extracts spikes from a series of associated pcm_seq2 files
+Extracts spikes from pcm_seq2 files
 """
 
 import numpy as nx
 import _pcmseqio
-from utils import cov, pcasvd
+from utils import pcasvd, signalstats, filecache, fftresample
 from scipy import weave
 
 
-_dtype = nx.int16
-
-def get_nentries(fps):
+def sitestats(elog, pen=None, site=None):
     """
-    Returns the number of entries in the pcmfiles.
-    Raises a ValueError if all the pcmfile objects don't have the same # of entries
+    Calculates the first and second moments for each entry.
+    Returns 2 NxP arrays, where N is the number of episodes
+    and P is the number of channels; and a 1xN vector with
+    the episode abstimes
     """
-    nentries = 0
-    for f in fps:
-        if not nentries:
-            nentries = f.nentries
-        else:
-            if nentries != f.nentries:
-                raise ValueError, "All files must have the same number of entries"                
+    oldsite = elog.site
+    if pen!=None and site!=None:
+        elog.site = (pen,site)
+    files = elog.getfiles()
+    files.sort(order=('abstime','channel'))
+    nchan = nx.unique(files['channel']).size
+    neps = len(files) / nchan
 
-    return nentries
-
-def find_spikes(fp, **kwargs):
-    """
-    Extracts spike data from raw pcm data.  A spike occurs when
-    the signal crosses a threshold.  This threshold can be defined
-    in absolute terms, or relative to the RMS of the signal.
-
-    fp - list of pcmfile objects. Needs to support nentries property,
-         seek(int), and read()
-
-    Optional arguments:
-    rms_thres  = 4.5  - factor by which the signal must exceed the
-                        rms of the whole file
-    abs_thresh        - absolute threshold spikes must cross. if this is
-                        defined, the rms_thresh value is ignored
-
-    refrac            - the closest two events can be (in samples)
-    window            - the number of points on each side of the spike peak to be
-                        extract
-
-    Returns a tuple of three arrays: (spikes, entries, events)
-
-    If N events are detected, spikes has dimension (window*2 x N),
-    entries has dimension (N) and events has dimension (N)
-    """
-    if kwargs.has_key('abs_thresh'):
-        fac = False;
-        abs_thresh = kwargs['abs_thresh']
-    else:
-        fac = True;
-        rms_fac = kwargs.get('rms_thresh',4.5)
-
-    nchan = len(fp)
-
-    # some sanity checks
-    nentries = get_nentries(fp)
-    
-    spikes = []
-    events = []
-    for i in range(1,nentries+1):
-        signal = combine_channels(fp, i)
-        dcoff = signal.mean(0)
-        if not fac:
-            thresh = dcoff + abs_thresh
-        else:
-            rms = nx.sqrt(signal.var(0))
-            thresh = dcoff + rms_fac * rms
-
-        ev = thresh_spikes(signal, thresh, **kwargs)
-        spikes.append(extract_spikes(signal, ev, **kwargs))
-        events.append(ev)
-
-    spikes = nx.concatenate(spikes, axis=0)
-    return (spikes, events)
+    mu = nx.zeros((neps,nchan))
+    rms = nx.zeros((neps,nchan))
+    fcache = filecache()
+    fcache.handler = _pcmseqio.pcmfile
+    i = 0
+    for file in files:
+        pfp = fcache[file['filebase']]
+        pfp.seek(file['entry'])
+        stats = signalstats(pfp.read())
+        col = int(file['channel'])
+        row = i / nchan
+        mu[row,col] = stats[0]
+        rms[row,col] = stats[1]
+        i += 1
+    elog.site = oldsite
+    return mu, rms, nx.unique(files['abstime'])
 
 
 def extract_spikes(S, events, **kwargs):
@@ -95,7 +56,7 @@ def extract_spikes(S, events, **kwargs):
     window = kwargs.get('window',30)
     nsamples, nchans = S.shape
     nevents = len(events)
-    spikes = nx.zeros((nevents, 2*window, nchans), _dtype)
+    spikes = nx.zeros((nevents, 2*window, nchans), S.dtype)
 
     for i in range(nevents):
         toe = events[i]
@@ -205,54 +166,13 @@ def thresh_spikes(S, thresh, **kwargs):
     return nx.asarray(events)
 
 
-def fftresample(S, npoints, reflect=False, axis=0):
-    """
-    Resample a signal using discrete fourier transform. The signal
-    is transformed in the fourier domain and then padded or truncated
-    to the correct sampling frequency.  This should be equivalent to
-    a sinc resampling.
-    """
-    from scipy.fftpack import rfft, irfft
-
-    # this may be considerably faster if we do the memory operations in C
-    # reflect at the boundaries
-    if reflect:
-        S = nx.concatenate([flipaxis(S,axis), S, flipaxis(S,axis)],
-                           axis=axis)
-        npoints *= 3
-
-    newshape = list(S.shape)
-    newshape[axis] = int(npoints)
-
-    Sf = rfft(S, axis=axis)
-    Sr = (1. * npoints / S.shape[axis]) * irfft(Sf, npoints, axis=axis, overwrite_x=1)
-    if reflect:
-        return nx.split(Sr,3)[1]
-    else:
-        return Sr
-
-def flipaxis(data, axis):
-    """
-    Like fliplr and flipud but applies to any axis
-    """
-
-    assert axis < data.ndim
-    slices = []
-    for i in range(data.ndim):
-        if i == axis:
-            slices.append(slice(None,None,-1))
-        else:
-            slices.append(slice(None))
-    return data[slices]
-
 
 def realign(spikes, **kwargs):
     """
     Realigns spike waveforms based on peak time. The peak of a linearly
     interpolated sample can be off by at least one sample, which
-    has severe negative effects on later compression with PCA. This
-    function uses a sinc interpolator to upsample spike waveforms, which
-    are then realigned to peak time.
+    has severe negative effects on later compression with PCA. Spike
+    waveforms are upsampled before alignment.
 
     If the spikes are from more than one electrode, the mean across electrode
     is used to determine spike peak
@@ -307,82 +227,3 @@ def realign(spikes, **kwargs):
     else:
         return shifted,goodpeaks
     
-
-def signalstats(pcmfiles):
-    """
-    Computes the dc offset and covariance of the signal in each entry. Accepts
-    multiple pcmfiles, but they have to have the same number of entries.
-
-    Returns a dictionary of statistics (in case we want to add some more)
-    """
-    if isinstance(pcmfiles, _pcmseqio.pcmfile):
-        pcmfiles = [pcmfiles]
-        
-    nentries = get_nentries(pcmfiles)
-    nchans = len(pcmfiles)
-
-    dcoff = nx.zeros((nentries, nchans))
-    A = nx.zeros((nentries,nchans,nchans))
-    for i in range(nentries):
-        nsamp = pcmfiles[0].nframes
-        S = nx.empty((nsamp,nchans),_dtype)
-        for j in range(nchans):
-            pcmfiles[j].seek(i+1)
-            s = pcmfiles[j].read()            
-            S[:,j] = pcmfiles[j].read()
-            dcoff[i,j] = s.mean()
-
-        A[i,:,:] = cov(S,rowvar=0)
-
-    return {'dcoff': dcoff.squeeze(),
-            'cov' : A.squeeze()}
-
-
-def combine_channels(fp, entry):
-    """
-    Combines data from a collection of channels into a single
-    array.
-
-    fp - list of pcmfile objects
-    entry - the entry to extract from the pcm files. Must be
-            a scalar or a list equal in length to fp
-    """
-    if isinstance(entry,int):
-        entry = [entry] * len(fp)
-
-    [fp[chan].seek(entry[chan]) for chan in range(len(fp))]
-    nsamples = fp[0].nframes
-    signal = nx.zeros((nsamples, len(fp)), _dtype)
-    for chan in range(len(fp)):
-        signal[:,chan] = fp[chan].read()
-        
-    return signal
-
-
-if __name__=="__main__":
-
-    import os
-    basedir = '/z1/users/dmeliza/acute_data/st323/20071212/site_5_6'
-    pattern = "st323_%d_20071212o.pcm_seq2"
-    
-    #pcmfiles = [basedir + pattern % d for d in range(1,17)]
-    pcmfiles = [os.path.join(basedir, pattern % d) for d in range(9,10)]
-
-    # open files
-    print "---> Open test files"
-    pfp = [_pcmseqio.pcmfile(fname) for fname in pcmfiles]
-
-    print "---> Get signal statistics"
-    stats = signalstats(pfp)
-
-    print "---> Extract raw data from files"
-    signal = combine_channels(pfp, 2)
-
-    print "---> Finding spikes..."
-    spikes,events = find_spikes(pfp)
-    
-    print "---> Aligning spikes..."
-    rspikes,kept_events = realign(spikes, downsamp=False)
-    
-    print "---> Calculating feature projections..."
-    proj = get_projections(rspikes, ndims=3)
