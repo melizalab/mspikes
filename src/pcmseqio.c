@@ -158,14 +158,6 @@ static PyGetSetDef pcmfile_getseters[]={
 };
 
 static PyMethodDef pcmfile_methods[]= {
-/* 	{"nentries", (PyCFunction)pcmfile_nentries, METH_NOARGS, */
-/* 	 "Returns the number of entries in the file"}, */
-/* 	{"framerate", (PyCFunction)pcmfile_samplerate, METH_NOARGS, */
-/* 	 "Returns the sample rate of the current entry"}, */
-/* 	{"nframes", (PyCFunction)pcmfile_nsamples, METH_NOARGS, */
-/* 	 "Returns the number of samples in the current entry"}, */
-/* 	{"entry", (PyCFunction)pcmfile_entry, METH_NOARGS, */
-/* 	 "Returns the current entry"}, */
 	{"seek", (PyCFunction)pcmfile_seek, METH_VARARGS,
 	 "Seek to a specific entry in the file"},
 	{"read", (PyCFunction)pcmfile_read, METH_NOARGS,
@@ -229,6 +221,9 @@ init_pcmseqio(void)
 {
 	import_array();
 	PyObject* m;
+
+	PcmfileType.tp_dict = Py_BuildValue("{s:O}", "_dtype", 
+					    (PyObject *)PyArray_DescrFromType(NPY_SHORT));
 	
 	PcmfileType.tp_new = PyType_GenericNew;
 	if (PyType_Ready(&PcmfileType) < 0)
