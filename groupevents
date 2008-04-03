@@ -4,7 +4,7 @@
 groupevents.py - Groups event times into toe_lis files by stimulus and unit
 
 Usage: groupevents.py [--units=\"...\"] [--stimulus=\"...\"]
-                      [--start=<start>] [--stop=<stop>] -c
+                      [--start=<start>] [--stop=<stop>] [-l] [-e]
                        <basename> <explog.h5>
         
          --stimulus specifies which stimuli to include in the grouping
@@ -21,6 +21,8 @@ Usage: groupevents.py [--units=\"...\"] [--stimulus=\"...\"]
          -l causes the new toelis files to be left in the current directory
          (by default they are placed in new directories)
 
+         -e causes the event data to be grouped by entry rather than stimulus
+
          <basename> specifies the basename of the fet and clu files that
          contain the event time and cluster information
 
@@ -34,6 +36,11 @@ from numpy import arange
 def groupevents(elog, **kwargs):
     print "Loading events from %s..." % sitename
     tls = klusters.groupstimuli(elog, **kwargs)
+
+    if isinstance(tls.keys()[0], int):
+        templ = "%s_%03d.toe_lis"
+    else:
+        templ = "%s_%s.toe_lis"
 
     if kwargs.has_key('units'):
         unit_list = kwargs['units']
@@ -51,7 +58,7 @@ def groupevents(elog, **kwargs):
         for stim,tl in tls.items():
             if kwargs.has_key('stimuli') and (stim not in kwargs['stimuli']):
                 continue
-            tlname = "%s_%s.toe_lis" % (filebase, stim)
+            tlname = templ % (filebase, stim)
             if tl.unit(i).nrepeats > 0:
                 tl.unit(i).writefile(tlname)
 
@@ -65,7 +72,7 @@ if __name__=="__main__":
         sys.exit(-1)
 
     
-    opts, args = getopt.getopt(sys.argv[1:], "hl", \
+    opts, args = getopt.getopt(sys.argv[1:], "hle", \
                                ["units=", "stimulus=", "start=", "stop=", "help"])
     if len(args) < 2:
         print "Error: need a basename and an explog"
@@ -89,6 +96,8 @@ if __name__=="__main__":
             stopep = int(a)
         elif o == '-l':
             make_dirs = False
+        elif o == '-e':
+            kwargs['byepisode'] = True
 
     # try to guess pen and site from the basename
     sitename = args[0]
