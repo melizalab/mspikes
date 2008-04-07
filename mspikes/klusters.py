@@ -66,20 +66,23 @@ def extractgroups(elog, base, channelgroups, **kwargs):
             channels = [channels]
         print "Channel group %d: %s" % (group, channels)
 
+        group_threshs = thresh[cnum:cnum+len(channels)]
+        cnum += len(channels)
+        kwargs[thresh_mode] = group_threshs
+        spikes, events = extractspikes(elog, channels, **kwargs)
+        if events.size == 0:
+            print "WARNING: No events for channel group %d, skipping." % group
+            continue
+
+        print "%d events" % events.size            
+        nsamp = spikes.shape[1]
+        writespikes("%s.spk.%d" % (base, group), spikes)
+
         xmlfp.write("<group><channels>\n")
         for i in range(len(channels)):
             xmlfp.write("<channel>%d</channel>\n" % channels[i])
             xmlfp.write("<thresh>%3.2f</thresh>\n" % thresh[cnum+i])
         xmlfp.write("</channels>\n")
-
-        group_threshs = thresh[cnum:cnum+len(channels)]
-        cnum += len(channels)
-        kwargs[thresh_mode] = group_threshs
-        spikes, events = extractspikes(elog, channels, **kwargs)
-        print "%d events" % events.size
-        nsamp = spikes.shape[1]
-        writespikes("%s.spk.%d" % (base, group), spikes)
-
         xmlfp.write("<nSamples>%d</nSamples>\n" % nsamp)
         xmlfp.write("<peakSampleIndex>%d</peakSampleIndex>\n" % (nsamp/2))
         print "Wrote spikes to %s.spk.%d" % (base, group)
@@ -189,7 +192,11 @@ def extractspikes(elog, channels, **kwargs):
 
     allspikes = nx.concatenate(spikes, axis=0)
     events = nx.concatenate(events)
-    if kwargs.get('align_spikes',True):
+
+    # make sure there are actually some events before calling realign
+    # this passes the problem of too high a threshold on to the calling function
+    # which ought to check that it got some spikes
+    if events.size > 0 and kwargs.get('align_spikes',True):
         allspikes,kept_events = realign(allspikes, downsamp=False)
         if kept_events != None:
             events = events[kept_events]
