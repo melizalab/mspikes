@@ -183,9 +183,9 @@ class explog(object):
 # end class explog
 
 # regular expressions used in parsing the explogfile   
-_reg_create = re.compile(r"'(?P<file>(?P<base>\w+)_\w+.pcm_seq2)' (?P<action>created|closed)")
-_reg_triggeron = re.compile(r"_ON, (?P<chan>\w+):entry (?P<entry>\d*) \((?P<onset>\d*)\)")
-_reg_triggeroff = re.compile(r"_OFF, (?P<chan>\w+):entry (?P<entry>\d*), wrote (?P<samples>\d*)")
+_reg_create = re.compile(r"'(?P<file>(?P<base>\S+)_\w+.pcm_seq2)' (?P<action>created|closed)")
+_reg_triggeron = re.compile(r"_ON, (?P<chan>\S+):entry (?P<entry>\d+) \((?P<onset>\d+)\)")
+_reg_triggeroff = re.compile(r"_OFF, (?P<chan>\S+):entry (?P<entry>\d+), wrote (?P<samples>\d+)")
 _reg_stimulus = re.compile(r"stimulus: REL:(?P<rel>[\d\.]*) ABS:(?P<abs>\d*) NAME:'(?P<stim>\S*)'")
 _reg_site = re.compile(r"site (?P<site>\d*)")
 _reg_pen  = re.compile(r"pen (?P<pen>\d*)")
