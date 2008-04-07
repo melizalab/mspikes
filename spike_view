@@ -191,7 +191,7 @@ if __name__=="__main__":
         else:
             chans = None
 
-        if opts.has_key('--units') and k.nchannels==1 or (chans != None and len(chans)==1):
+        if opts.has_key('--units') and (k.nchannels==1 or (chans != None and len(chans)==1)):
             events = extractevents(opts['--units'], k)
         else:
             events = None
