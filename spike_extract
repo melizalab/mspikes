@@ -70,11 +70,21 @@ if __name__=="__main__":
                                ["chan=","unit=","help","kkwik"])
     opts = dict(opts)
     if opts.has_key('-h') or opts.has_key('--help'):
-            print __doc__
-            sys.exit(-1)
+        print __doc__
+        sys.exit(-1)
+    if opts.has_key('-u'):
+        # undocumented feature; moves pcm files back into current directory
+        ans = raw_input('Move all pcm_seq2 files back into the current directory? [y/N] ')
+        if ans.lower()=='y':
+            for fname in os.listdir('.'):
+                if fname.startswith('site_') and os.path.isdir(fname):
+                    os.system('mv %s/* .' % fname)
+                    os.rmdir(fname)
+            print "Done!"
+        sys.exit(0)
 ###
 
-from mspikes import klusters, extractor, explog
+from mspikes import klusters, explog
 
 ###
 
