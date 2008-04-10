@@ -77,7 +77,7 @@ for an example dataset and more detailed usage information.
 
 5. Sort spikes. The files generated in step (4) are usable by KlustaKwik
    (for automated spike-sorting) and Klusters (for manual cluster cutting).
-   Reccomend using KlustaKwik followed by Klusters to check clusters and
+   Recommend using KlustaKwik followed by Klusters to check clusters and
    adjust as needed.  To automatically call KlustaKwik on the output of
    spike_extract, add the --kkwik flag.
 

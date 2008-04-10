@@ -67,11 +67,11 @@ def extractgroups(elog, base, channelgroups, **kwargs):
         print "Channel group %d: %s" % (group, channels)
 
         group_threshs = thresh[cnum:cnum+len(channels)]
-        cnum += len(channels)
         kwargs[thresh_mode] = group_threshs
         spikes, events = extractspikes(elog, channels, **kwargs)
         if events.size == 0:
             print "WARNING: No events for channel group %d, skipping." % group
+            cnum += len(channels)
             continue
 
         print "%d events" % events.size            
@@ -100,6 +100,7 @@ def extractgroups(elog, base, channelgroups, **kwargs):
             cmd = "KlustaKwik %s %d -UseFeatures %s &" % \
                   (base, group, "".join(['1']*nfeats+['0']*(totfeats-nfeats))+'0')
             os.system(cmd)
+        cnum += len(channels)
         group += 1
 
     xmlfp.write("</channelGroups></spikeDetection></parameters>\n")
