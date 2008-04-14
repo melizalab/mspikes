@@ -121,6 +121,8 @@ def extractspikes(elog, channels, **kwargs):
                    If set, overrides rms_thresh
     <max_rms>    - if the mean signal rms for any episode is above this
                    value, the episode is rejected
+    <rms_all_chans> - If true, calculate RMS across all channels. Ignored
+                      if max_rms is not set. Default false.
     <start>      - ignore episodes prior to <start>
     <stop>       - ignore episode after <stop>
     """
@@ -133,6 +135,7 @@ def extractspikes(elog, channels, **kwargs):
         rms_fac = nx.asarray(kwargs.get('rms_thresh',4.5))
     invert = kwargs.get('invert',False)
     max_rms = kwargs.get('max_rms',None)
+    rms_all_chans = kwargs.get('rms_all_chans', False)
 
     # set up the cache
     fcache = filecache()
@@ -154,21 +157,30 @@ def extractspikes(elog, channels, **kwargs):
         eptime = abstimes[iep]
         sig = []
         stats = []
+        allstats = []
         while 1:
             enttime = entry['abstime']
             if enttime > eptime: break
-            if enttime < eptime or entry['channel'] not in channels:
+            if enttime < eptime: 
+                pass
+            if (max_rms==None or not rms_all_chans) and entry['channel'] not in channels:
+                # pass if we don't need this channel's data for anything
                 pass
             else:
                 # okay, keep the data
                 fp = fcache[entry['filebase']]
                 fp.seek(entry['entry'])
                 S = fp.read()
-                #mu,rms = signalstats(S)
+                Sstats = signalstats(S)
+                
                 if invert:
                     S *= -1
-                sig.append(S)
-                stats.append(signalstats(S))
+                if entry['channel'] in channels:
+                    # only append channels used in analysis
+                    sig.append(S)
+                    stats.append(Sstats)
+                # but keep statistics for all channels for RMS calcs (if rms_all_chans)
+                allstats.append(Sstats)
             # advance the file iterator
             try:
                 entry = entit.next()
@@ -179,7 +191,10 @@ def extractspikes(elog, channels, **kwargs):
         if len(sig)==0: continue
         sig = nx.column_stack(sig)
         stats = nx.asarray(stats)
-        if max_rms and stats[:,1].mean() > max_rms:
+        allstats = nx.asarray(allstats)
+        eprms = allstats[:,1].mean()
+        if max_rms and eprms > max_rms:
+            print "Dropped episode %d: RMS of %3.2f exceeds threshold." % (iep, eprms)
             continue
         if not fac:
             thresh = stats[:,0] + abs_thresh
@@ -191,6 +206,9 @@ def extractspikes(elog, channels, **kwargs):
         spikes.append(sp)
         events.append(ev + eptime)  # adjust event times by episode start
 
+    if len(spikes)==0:
+        return nx.asarray(spikes), nx.asarray(events)
+    
     allspikes = nx.concatenate(spikes, axis=0)
     events = nx.concatenate(events)
 

@@ -10,18 +10,25 @@ from utils import pcasvd, signalstats, filecache, fftresample
 from scipy import weave
 
 
-def sitestats(elog, pen=None, site=None):
+def sitestats(elog, channels=None, pen=None, site=None):
     """
     Calculates the first and second moments for each entry.
     Returns 2 NxP arrays, where N is the number of episodes
     and P is the number of channels; and a 1xN vector with
     the episode abstimes
+
+    channels - restrict analysis to particular channels
     """
     oldsite = elog.site
     if pen!=None and site!=None:
         elog.site = (pen,site)
     files = elog.getfiles()
     files.sort(order=('abstime','channel'))
+    if channels!=None:
+        ind = nx.asarray([(x in channels) for x in files['channel']])
+        if ind.sum()==0:
+            raise ValueError, "Channels argument does not specify any valid channels"
+        files = files[ind]
     nchan = nx.unique(files['channel']).size
     neps = len(files) / nchan
 

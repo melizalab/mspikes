@@ -16,10 +16,12 @@ spike_view -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
      --units: specify a Klusters .clu file to annotate the data with spike times
      (only works when a single channel is specified)
 
-spike_view --stats -p <pen> -s <site>  <explog.h5>
+spike_view --stats -p <pen> -s <site> [--chan=""] <explog.h5>
 
      Plots the RMS of each episode as a time series.  Useful for determining when
-     episodes are corrupted by movement artefacts, etc.
+     episodes are corrupted by movement artefacts, etc.  If you plan to use
+     the -t flag in spike_extract, make sure you specify the channels you plan to
+     extract from, since RMS can vary considerably across channels.
 
 Note that the explog must be preprocessed prior to using this command;
 see spike_extract
@@ -170,10 +172,16 @@ if __name__=="__main__":
     k = explog.explog(infile)
     k.site = (pen,site)
 
+    # process channel argument
+    if opts.has_key('--chan'):
+        exec "chans = [%s]" % opts['--chan']
+    else:
+        chans = None
+
     ### STATS:
     if opts.has_key('--stats'):
         # stats mode computes statistics for the site
-        m,rms,t = klusters.sitestats(k)
+        m,rms,t = klusters.sitestats(k, channels=chans)
         if rms.ndim > 1:
             rms = rms.mean(1)
         # plot them
@@ -186,10 +194,6 @@ if __name__=="__main__":
 
     ### INSPECT:
     else:
-        if opts.has_key('--chan'):
-            exec "chans = [%s]" % opts['--chan']
-        else:
-            chans = None
 
         if opts.has_key('--units') and (k.nchannels==1 or (chans != None and len(chans)==1)):
             events = extractevents(opts['--units'], k)
