@@ -24,28 +24,34 @@ def sitestats(elog, channels=None, pen=None, site=None):
         elog.site = (pen,site)
     files = elog.getfiles()
     files.sort(order=('abstime','channel'))
+
+    # restrict to specified channels
     if channels!=None:
         ind = nx.asarray([(x in channels) for x in files['channel']])
         if ind.sum()==0:
             raise ValueError, "Channels argument does not specify any valid channels"
         files = files[ind]
-    nchan = nx.unique(files['channel']).size
+
+    chanid = nx.unique(files['channel'])
+    nchan = chanid.size
+    chanidx = nx.zeros(chanid.max()+1,dtype='i')    # we know these are integers
+    for ind,id in enumerate(chanid): chanidx[id] = ind
+    
     neps = len(files) / nchan
 
     mu = nx.zeros((neps,nchan))
     rms = nx.zeros((neps,nchan))
     fcache = filecache()
     fcache.handler = _pcmseqio.pcmfile
-    i = 0
-    for file in files:
+    for i,file in enumerate(files):
         pfp = fcache[file['filebase']]
         pfp.seek(file['entry'])
         stats = signalstats(pfp.read())
-        col = int(file['channel'])
+        col = chanidx[file['channel']]
         row = i / nchan
         mu[row,col] = stats[0]
         rms[row,col] = stats[1]
-        i += 1
+
     elog.site = oldsite
     return mu, rms, nx.unique(files['abstime'])
 
