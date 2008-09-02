@@ -5,6 +5,8 @@ spike_extract - extracts spike times and features from pcm_seq2 data
 
 Usage:
 
+spike_extract [-v]: prints version information
+
 spike_extract [-l] [-o <outfile>] <explog>
 
          Preprocess <explog> and move pcm_seq2 files to directories for
@@ -47,10 +49,10 @@ spike_extract -p <pen> -s <site> [--chan=""] [-i] [-r <rms_thresh> | -a <abs_thr
         where <base> is site_<pen>_<site>
         and <g> is the spike group
 
-        C. Daniel Meliza, 2008
 """
 
 import os, sys, getopt
+from mspikes import __version__
 
 options = {
     'rms_thresh' : [4.5],
@@ -68,12 +70,15 @@ if __name__=="__main__":
     if len(sys.argv)<2:
         print __doc__
         sys.exit(-1)
-    opts, args = getopt.getopt(sys.argv[1:], "p:s:r:a:f:o:t:e:w:T:ihlu",
-                               ["chan=","unit=","help","kkwik"])
+    opts, args = getopt.getopt(sys.argv[1:], "p:s:r:a:f:o:t:e:w:T:ihluv",
+                               ["chan=","unit=","help","kkwik","version"])
     opts = dict(opts)
     if opts.has_key('-h') or opts.has_key('--help'):
         print __doc__
         sys.exit(-1)
+    if opts.has_key('-v') or opts.has_key('--version'):
+        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+        sys.exit(0)
     if opts.has_key('-u'):
         # undocumented feature; moves pcm files back into current directory
         ans = raw_input('Move all pcm_seq2 files back into the current directory? [y/N] ')

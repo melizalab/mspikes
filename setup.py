@@ -16,7 +16,7 @@ _readklu = Extension('_readklu',
 
 	
 setup(name = "mspikes",
-      version = "1.1",
+      version = "1.1.1",
       packages = find_packages(),
       scripts = ['spike_view','spike_extract','groupevents'],
       

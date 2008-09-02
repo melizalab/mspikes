@@ -3,10 +3,12 @@
 """
 groupevents.py - Groups event times into toe_lis files by stimulus and unit
 
-Usage: groupevents.py [--units=\"...\"] [--stimulus=\"...\"]
+Usage: groupevents.py [-h|-v] [--units=\"...\"] [--stimulus=\"...\"]
                       [--start=<start>] [--stop=<stop>] [-l] [-e]
                        <basename> <explog.h5>
-        
+
+         -v displays version information
+         
          --stimulus specifies which stimuli to include in the grouping
          (otherwise all stimuli are processed)
          Supply a comma-delimited list of the stimuli, without extensions, e.g.
@@ -30,7 +32,7 @@ Usage: groupevents.py [--units=\"...\"] [--stimulus=\"...\"]
          which is used to assign event times to particular episodes.
 
 """
-from mspikes import explog, klusters
+from mspikes import explog, klusters, __version__
 from numpy import arange
 
 def groupevents(elog, **kwargs):
@@ -72,8 +74,16 @@ if __name__=="__main__":
         sys.exit(-1)
 
     
-    opts, args = getopt.getopt(sys.argv[1:], "hle", \
-                               ["units=", "stimulus=", "start=", "stop=", "help"])
+    opts, args = getopt.getopt(sys.argv[1:], "hvle", \
+                               ["units=", "stimulus=", "start=", "stop=", "help","version",])
+
+    opts = dict(opts)
+    if opts.has_key('-h') or opts.has_key('--help'):
+        print __doc__
+        sys.exit(-1)
+    if opts.has_key('-v') or opts.has_key('--version'):
+        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+        sys.exit(0)
     if len(args) < 2:
         print "Error: need a basename and an explog"
         sys.exit(-1)
@@ -84,7 +94,7 @@ if __name__=="__main__":
     make_dirs = True
     startep = None
     stopep = None
-    for o,a in opts:
+    for o,a in opts.items():
         if o == '--units':
             kwargs['units'] = [int(x)-1 for x in a.split(',')]
             print "Units: %s" % kwargs['units']

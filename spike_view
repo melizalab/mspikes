@@ -6,6 +6,8 @@ spike_view - inspect waveforms and statistics of pcm spike data
 
 Usage:
 
+spike_view [-h|-v]: Display help or version information
+
 spike_view -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
 
      Plots raw waveform data for episodes in a pen/site
@@ -30,6 +32,7 @@ C. Daniel Meliza, 2008
 """
 
 import os, sys, getopt
+from mspikes import __version__
 
 
 ### Check options before loading modules, which are pretty heavy
@@ -38,12 +41,15 @@ if __name__=="__main__":
     if len(sys.argv)<2:
         print __doc__
         sys.exit(-1)
-    opts, args = getopt.getopt(sys.argv[1:], "p:s:h",
-                               ["stats", "chan=","units=","help",])
+    opts, args = getopt.getopt(sys.argv[1:], "p:s:hv",
+                               ["stats", "chan=","units=","help","version",])
     opts = dict(opts)
     if opts.has_key('-h') or opts.has_key('--help'):
             print __doc__
             sys.exit(-1)
+    if opts.has_key('-v') or opts.has_key('--version'):
+        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+        sys.exit(0)
 ###
 
 import numpy as nx
