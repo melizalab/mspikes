@@ -87,7 +87,7 @@ def plotentry(k, entry, channels=None, eventlist=None, fig=None):
     pfp = []
     for f in files:
         fp = _fcache[f['filebase'].tostring()]
-        fp.seek(f['entry'])        
+        fp.entry = f['entry']
         pfp.append(fp)
     if channels==None:
         channels = files['channel'].tolist()

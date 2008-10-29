@@ -169,7 +169,7 @@ def extractspikes(elog, channels, **kwargs):
             else:
                 # okay, keep the data
                 fp = fcache[entry['filebase']]
-                fp.seek(entry['entry'])
+                fp.entry = entry['entry']
                 S = fp.read()
                 Sstats = signalstats(S)
                 

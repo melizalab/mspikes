@@ -45,7 +45,7 @@ def sitestats(elog, channels=None, pen=None, site=None):
     fcache.handler = _pcmseqio.pcmfile
     for i,file in enumerate(files):
         pfp = fcache[file['filebase']]
-        pfp.seek(file['entry'])
+        pfp.entry = file['entry']
         stats = signalstats(pfp.read())
         col = chanidx[file['channel']]
         row = i / nchan

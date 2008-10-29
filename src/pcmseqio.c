@@ -92,7 +92,7 @@ pcmfile_setsamplerate(PcmfileObject* self, PyObject *value, void *closure)
 {
 	int srate;
 	if (value == NULL) {
-		PyErr_SetString(PyExc_TypeError, "Cannot delete the first attribute");
+		PyErr_SetString(PyExc_TypeError, "Cannot delete the samplerate attribute");
 		return -1;
 	}
 
@@ -119,19 +119,22 @@ pcmfile_entry(PcmfileObject* self, void *closure)
 	return Py_BuildValue("i", self->pfp->entry);
 }
 
-static PyObject*
-pcmfile_seek(PcmfileObject* self, PyObject* args)
+static int
+pcmfile_seek(PcmfileObject* self, PyObject* value, void *closure)
 {
 	int entry;
-	if (!PyArg_ParseTuple(args, "i", &entry))
-		return NULL;
-
-	if (pcm_seek(self->pfp, entry) != 0) {
-		PyErr_SetString(PyExc_IOError, "Invalid entry");
-		return NULL;
+	if (value == NULL) {
+	        PyErr_SetString(PyExc_TypeError, "Cannot delete the entry attribute");
+		return -1;
 	}
 
-	return Py_BuildValue("");
+	entry = (int)PyInt_AsLong(value);
+	if (pcm_seek(self->pfp, entry) != 0) {
+		PyErr_SetString(PyExc_IOError, "Invalid entry");
+		return -1;
+	}
+
+	return 0;
 }
 
 static PyObject*
@@ -180,13 +183,11 @@ static PyGetSetDef pcmfile_getseters[]={
 	{"nframes", (getter)pcmfile_nsamples, 0, "The number of samples in the current entry",0},
 	{"timestamp", (getter)pcmfile_timestamp, (setter)pcmfile_settimestamp, 
 	 "The timestamp of the current entry",0},
-	{"entry", (getter)pcmfile_entry, 0, "The current entry",0},
+	{"entry", (getter)pcmfile_entry, (setter)pcmfile_seek, "The current entry (set to seek to new entry)",0},
 	{NULL}
 };
 
 static PyMethodDef pcmfile_methods[]= {
-	{"seek", (PyCFunction)pcmfile_seek, METH_VARARGS,
-	 "Seek to a specific entry in the file"},
 	{"read", (PyCFunction)pcmfile_read, METH_NOARGS,
 	 "Read data from the current entry"},
 	{"write", (PyCFunction)pcmfile_write, METH_VARARGS,
