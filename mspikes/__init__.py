@@ -20,5 +20,5 @@ toelis - functions and class for manipulating time-of-event list data
 
 """
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 __all__ = ['extractor','klusters','utils','explog','toelis']

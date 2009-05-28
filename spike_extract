@@ -70,8 +70,14 @@ if __name__=="__main__":
     if len(sys.argv)<2:
         print __doc__
         sys.exit(-1)
-    opts, args = getopt.getopt(sys.argv[1:], "p:s:r:a:f:o:t:e:w:T:ihluv",
-                               ["chan=","unit=","help","kkwik","version"])
+
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "p:s:r:a:f:o:t:e:w:T:ihluv",
+                                   ["chan=","unit=","help","kkwik","version"])
+    except getopt.GetoptError, e:
+        print "Error: %s" % e
+        sys.exit(-1)
+    
     opts = dict(opts)
     if opts.has_key('-h') or opts.has_key('--help'):
         print __doc__

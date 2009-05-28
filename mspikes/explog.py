@@ -77,7 +77,7 @@ class explog(object):
     @property
     def sites(self):
         """ Return a list of currently defined sites """
-        return self.elog.root._g_listGroup()[0]
+        return [grp._v_name for grp in self.elog.root if grp._v_name.startswith('site')]
 
     def _getgroup(self):
         """ Returns the group for the current site """
@@ -96,6 +96,10 @@ class explog(object):
         for r in table:
             yield r
 
+    def __getitem__(self,key):
+        table = self._gettable('entries')
+        return table[key]
+
     def __itersites(self):
         for sname in self.sites:
             b,pen,site = sname.split("_")
@@ -111,6 +115,7 @@ class explog(object):
         """
         table = self._gettable('entries')
         rnums = table.getWhereList('abstime==%d' % abstime)
+        #rnums = [r.nrow for r in table if r['abstime']==abstime]
         return table.readCoordinates(rnums)
 
     def getfiles(self, abstime=None):
@@ -121,7 +126,9 @@ class explog(object):
         if abstime==None:
             return table[:]
         rnums = table.getWhereList('abstime==%d' % abstime)
+        #rnums = [r.nrow for r in table if  r['abstime']==abstime]
         return table.readCoordinates(rnums)
+
        
     def getentrytimes(self, entry=None):
         """
@@ -253,9 +260,7 @@ def readexplog(logfile, outfile, site_sort=False):
     def setsite(pen,site):
         # check for the site first
         sname = 'site_%d_%d' % (pen,site)
-        sites = h5.root._g_listGroup()[0]
-        h5.flush()
-        if sname in sites:
+        if sname in h5.root:
             grp = h5.getNode('/',sname)
             entries = grp.entries
             stimuli = grp.stimuli
@@ -411,15 +416,13 @@ def readexplog(logfile, outfile, site_sort=False):
 
     # do some cleanup
     h5.flush()
-    for grpn in h5.root._g_listGroup()[0]:
-        grp = h5.getNode('/',grpn)
-        if grp._v_name=='/':
-            continue
-        # check for files; otherwise drop
-        if grp.files.shape==(0,):
-            grp._f_remove(recursive=True)
-        else:
-            assignstimuli(grp)
+    for grp in h5.root:
+        if 'files' in grp:
+            # check for files; otherwise drop
+            if grp.files.shape==(0,):
+                grp._f_remove(recursive=True)
+            else:
+                assignstimuli(grp)
 
     return explog(h5)
 
