@@ -7,6 +7,7 @@ module for processing toe_lis files
  
 """
 import numpy as n
+from decorator import deprecated
 
 class toelis(object):
     """
@@ -25,17 +26,15 @@ class toelis(object):
         of lists, and these lists are indexed in a nrepeats x nunits
         array of integers.
 
-        The object can be initialized empty or with data, which
-        can be a list of lists.  The <nunits> and <nrepeats>
-        parameters can be used to reshape the 1D data.
-
+        The object can be initialized empty or with data, which can be
+        a list of lists.  The <nunits> and <nrepeats> parameters can
+        be used to reshape the 1D data.  Data are coerced into numpy
+        ndarrays; note that if the data are already in ndarrays the
+        toelis will have a VIEW of the data and any modifications will
+        affect the input data.
         """
 
         if data!=None:
-            for item in data:
-                if n.isscalar(item):
-                    raise ValueError, "Input data must be a list"
-
             nitems = len(data)
             self.index = n.arange(nitems)
             if nunits==1 and nrepeats==1:
@@ -45,7 +44,14 @@ class toelis(object):
                       % len(data)
             
             self.index.shape = (nrepeats, nunits)
-            self.events = data
+            if isinstance(data, self.__class__):
+                self.events = data.events
+            else:
+                self.events = []
+                for item in data:
+                    if n.isscalar(item):
+                        raise ValueError, "Input data cannot be a scalar"
+                    self.events.append(n.asarray(item))
             
         else:
             nlists = nrepeats * nunits
@@ -71,10 +77,7 @@ class toelis(object):
             return self.events[index]
 
     def __iter__(self):
-        i = 0
-        while i < len(self.events):
-            yield self.events[i]
-            i+=1
+        return self.events.__iter__()
 
     def offset(self, offset):
         """
@@ -84,8 +87,7 @@ class toelis(object):
             raise TypeError, " can only add scalars to toelis events"
         for i in range(len(self.events)):
             self.events[i] = n.asarray(self.events[i]) + offset
-                
-
+ 
     def __repr__(self):
         if self.nrepeats < 100:
             return "<%s %d reps, %d units, %d events>" % (self.__class__.__name__,
@@ -147,6 +149,7 @@ class toelis(object):
             adjust = 0
         return toelis([x[((x>=onset) & (x<=offset))] - adjust for x in self])
 
+    @deprecated
     def tondarray(self):
         """
         Ensures that all the event lists are ndarray objects
@@ -156,16 +159,29 @@ class toelis(object):
 
     def extend(self, newlis, dim=0):
         """
-        Concatenates two toelis objects along a dimension. By default, the second
-        toelis is treated as more repeats, but set <dim> to 1 to treat them as additional
-        units.
+        Concatenates two toelis objects along a dimension. By default,
+        the second toelis is treated as more repeats, but set <dim> to
+        1 to treat them as additional units.
         """
         if not self.index.shape[(1 - dim)]==newlis.index.shape[(1 - dim)]:
             raise ValueError, "Dimensions do not match for merging along dim %d " % dim
 
         offset = len(self)
-        self.index = n.concatenate((self.index, newlis.index + offset))
+        self.index = n.concatenate((self.index, newlis.index + offset), axis=dim)
         self.events.extend(newlis.events)
+
+    def merge(self, newlis, offset=0.0):
+        """
+        Merge two toelis objects by concatenating events in
+        corresponding repeats.  For example, if tl1[0]= [1,2,3] and
+        tl2[0]= [4,5,6], after tl1.merge(tl2), tl1[0] = [1,2,3,4,5,6].
+
+        <offset> is added to all events in newlis
+        """
+        if not self.index.shape==newlis.index.shape:
+            raise ValueError, "Repeat and unit dimensions must match"
+        self.events = [n.concatenate([elist, newlis[i] + offset]) for i,elist in enumerate(self)]
+            
 
     def unit(self, unit):
         """
