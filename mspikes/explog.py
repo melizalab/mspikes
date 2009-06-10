@@ -259,6 +259,7 @@ def readexplog(logfile, outfile, site_sort=False):
     # how the entries for those files are stored in the hdf5 file
     def setsite(pen,site):
         # check for the site first
+        h5.flush()
         sname = 'site_%d_%d' % (pen,site)
         if sname in h5.root:
             grp = h5.getNode('/',sname)
