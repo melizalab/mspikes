@@ -3,8 +3,10 @@
 """
 module for processing toe_lis files
 
- CDM, 9/2006
- 
+Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 import numpy as n
 from decorator import deprecated
@@ -42,7 +44,7 @@ class toelis(object):
             if not (nunits * nrepeats == len(data)):
                 raise IndexError, "Number of units and repeats do not add up to data length (%d)" \
                       % len(data)
-            
+
             self.index.shape = (nrepeats, nunits)
             if isinstance(data, self.__class__):
                 self.events = data.events
@@ -52,7 +54,7 @@ class toelis(object):
                     if n.isscalar(item):
                         raise ValueError, "Input data cannot be a scalar"
                     self.events.append(n.asarray(item))
-            
+
         else:
             nlists = nrepeats * nunits
             self.index = n.arange(nlists)
@@ -87,7 +89,7 @@ class toelis(object):
             raise TypeError, " can only add scalars to toelis events"
         for i in range(len(self.events)):
             self.events[i] = n.asarray(self.events[i]) + offset
- 
+
     def __repr__(self):
         if self.nrepeats < 100:
             return "<%s %d reps, %d units, %d events>" % (self.__class__.__name__,
@@ -113,7 +115,7 @@ class toelis(object):
     @property
     def nunits(self):
         return self.index.shape[1]
-    
+
     @property
     def nrepeats(self):
         return self.index.shape[0]
@@ -181,7 +183,7 @@ class toelis(object):
         if not self.index.shape==newlis.index.shape:
             raise ValueError, "Repeat and unit dimensions must match"
         self.events = [n.concatenate([elist, newlis[i] + offset]) for i,elist in enumerate(self)]
-            
+
 
     def unit(self, unit):
         """
@@ -217,7 +219,7 @@ class toelis(object):
         a horribly kludgy format.  See toelis.loadfile() for a description of the format
         """
         # this is much easier to construct in memory
-    
+
         output = []
         l_units = [0]
         for ui in range(self.nunits):
@@ -251,7 +253,7 @@ class toelis(object):
         x = self.unit(unit).events
         if reps != None:
             x = x[reps]
-        
+
         y = n.concatenate([n.ones(x[i].shape) * i for i in range(len(x))])
         x = n.concatenate(x)
         return x,y
@@ -310,7 +312,7 @@ def readfile(filename):
             # the pointer is p_repeats[-1] + l_repeats[-1]
             p_repeats.append(p_repeats[-1] + l_repeats[-1])
             l_repeats.append(int(line))
-            #print "repeat pointers: %s" % p_repeats            
+            #print "repeat pointers: %s" % p_repeats
         elif linenum in p_repeats:
             # now set the current_repeat index and read in a float
             current_repeat = p_repeats.index(linenum)
@@ -324,4 +326,3 @@ def readfile(filename):
     out.tondarray()
     return out
 # end readfile
-

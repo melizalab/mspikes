@@ -2,6 +2,11 @@
 # -*- coding: iso-8859-1 -*-
 """
 Extracts spikes from pcm_seq2 files
+
+Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 
 import numpy as nx
@@ -36,7 +41,7 @@ def sitestats(elog, channels=None, pen=None, site=None):
     nchan = chanid.size
     chanidx = nx.zeros(chanid.max()+1,dtype='i')    # we know these are integers
     for ind,id in enumerate(chanid): chanidx[id] = ind
-    
+
     neps = len(files) / nchan
 
     mu = nx.zeros((neps,nchan))
@@ -88,7 +93,7 @@ def get_projections(spikes, **kwargs):
 
     Optional Arguments:
     ndims - the number of principal components to use in calculating projections
-            (default 3)    
+            (default 3)
     peaktrough - if true, include peak and trough calculations as features
     """
 
@@ -99,7 +104,7 @@ def get_projections(spikes, **kwargs):
         nfeats = ndims + 3
     else:
         nfeats = ndims
-        
+
     proj = nx.zeros((nevents,nchans,nfeats),'d')
 
     for i in range(nchans):
@@ -125,8 +130,8 @@ def thresh_spikes(S, thresh, **kwargs):
     <S> - the signal. Can be a vector or, for multiple channels,
           a matrix in which each column is a channel
     <thresh> - the crossing point(s) for the discriminator. Needs
-               to be a 
-    
+               to be a
+
     Optional arguments:
     <window> - the number of points to search ahead for the peak (in samples)
     <refrac> - the minimum distance between spikes (in samples)
@@ -139,7 +144,7 @@ def thresh_spikes(S, thresh, **kwargs):
         raise TypeError, "Input must be an ndarray"
     if S.ndim==1:
         S.shape = (S.size,1)
-        
+
     nsamp, nchan = S.shape
 
     if nx.isscalar(thresh):
@@ -153,7 +158,7 @@ def thresh_spikes(S, thresh, **kwargs):
 
     code = """
           #line 193 "extractor.py"
-    
+
           for (int samp = 0; samp < nsamp; samp++) {
                for (int chan = 0; chan < nchan; chan++) {
                     if (S(samp, chan) > thresh(chan)) {
@@ -196,7 +201,7 @@ def realign(spikes, **kwargs):
     downsamp    = if true, the data are downsampled back to the original
                   sampling rate after peak realignment
     """
-    
+
     ax = kwargs.get('axis',1)
     resamp_rate = kwargs.get('resamp_rate',3)
     max_shift = kwargs.get('max_shift',4) * resamp_rate
@@ -210,7 +215,7 @@ def realign(spikes, **kwargs):
     else:
         peaks  = upsamp.argmax(axis=ax)
     shift  = (peaks - nx.median(peaks)).astype('i')
-    
+
     goodpeaks = nx.absolute(shift)<=(max_shift)
     nbadpeaks = shift.size - goodpeaks.sum()
     # this line will leave artefacts alone
@@ -222,7 +227,7 @@ def realign(spikes, **kwargs):
         upsamp = upsamp[goodpeaks,:,:]
     else:
         goodpeaks = None
-    
+
     shape = list(upsamp.shape)
     start = -shift.min()
     stop  = upsamp.shape[1]-shift.max()
@@ -239,4 +244,3 @@ def realign(spikes, **kwargs):
         return dnsamp,goodpeaks
     else:
         return shifted,goodpeaks
-    

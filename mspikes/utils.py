@@ -2,6 +2,11 @@
 # -*- coding: iso-8859-1 -*-
 """
 Module with some utility functions and classes for mspikes
+
+Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 
 import numpy as nx
@@ -98,7 +103,7 @@ class filecache(dict):
             return val
 
     def __setitem__(self, key, value):
-        raise NotImplementedError, "Use getter methods to add items to the cache"    
+        raise NotImplementedError, "Use getter methods to add items to the cache"
 
 
 
@@ -135,4 +140,3 @@ def pcasvd(data, output_dim=None):
     u,s,v = svd(data, full_matrices=0)
     v = v[:output_dim,:]
     return gemm(data, v, trans_b=1), v
-

@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
-Functions for extracting spike data from pcm_seq2 files into klusters/klustakwik format
+Functions for extracting spike data from pcm_seq2 files into
+klusters/klustakwik format
+
+Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 
 import os
@@ -74,7 +80,7 @@ def extractgroups(elog, base, channelgroups, **kwargs):
             cnum += len(channels)
             continue
 
-        print "%d events" % events.size            
+        print "%d events" % events.size
         nsamp = spikes.shape[1]
         writespikes("%s.spk.%d" % (base, group), spikes)
 
@@ -126,7 +132,7 @@ def extractspikes(elog, channels, **kwargs):
     <start>      - ignore episodes prior to <start>
     <stop>       - ignore episode after <stop>
     """
-    
+
     if kwargs.has_key('abs_thresh'):
         fac = False;
         abs_thresh = nx.asarray(kwargs['abs_thresh'])
@@ -140,7 +146,7 @@ def extractspikes(elog, channels, **kwargs):
     # set up the cache
     fcache = filecache()
     fcache.handler = _pcmseqio.pcmfile
-    
+
     entries = elog.getfiles()
     entries.sort(order=('abstime','channel'))
     abstimes = elog.getentrytimes()
@@ -161,7 +167,7 @@ def extractspikes(elog, channels, **kwargs):
         while 1:
             enttime = entry['abstime']
             if enttime > eptime: break
-            if enttime < eptime: 
+            if enttime < eptime:
                 pass
             if (max_rms==None or not rms_all_chans) and entry['channel'] not in channels:
                 # pass if we don't need this channel's data for anything
@@ -172,7 +178,7 @@ def extractspikes(elog, channels, **kwargs):
                 fp.entry = entry['entry']
                 S = fp.read()
                 Sstats = signalstats(S)
-                
+
                 if invert:
                     S *= -1
                 if entry['channel'] in channels:
@@ -208,7 +214,7 @@ def extractspikes(elog, channels, **kwargs):
 
     if len(spikes)==0:
         return nx.asarray(spikes), nx.asarray(events)
-    
+
     allspikes = nx.concatenate(spikes, axis=0)
     events = nx.concatenate(events)
 
@@ -253,7 +259,7 @@ def extractfeatures(spikes, events=None, **kwargs):
     """
     Calculates principal components of the spike set.
 
-    peaktrough - if true, include peak and trough calculations as features             
+    peaktrough - if true, include peak and trough calculations as features
 
     Provide this argument to add a last column with timestamps:
     events - dictionary of event times (relative to episode start), indexed
@@ -286,9 +292,9 @@ def groupstimuli(elog, **kwargs):
     # load stimulus times
     stimtable = elog._gettable('stimuli')
     eptable = elog._gettable('entries')
-    
+
     msr = float(elog.samplerate)
-    
+
     # load event times
     events = readevents(elog, kwargs.get('units',None))
     nunits = len(events)
@@ -315,7 +321,7 @@ def groupstimuli(elog, **kwargs):
             continue
 
         tl = toelis.toelis([unit[epnum] for unit in events], nunits=nunits)
-        
+
         # figure out the offset
         if stim.size > 0:
             offset = (stim[0]['abstime'] - stim[0]['entrytime']) / msr
@@ -326,7 +332,7 @@ def groupstimuli(elog, **kwargs):
             tls[ind].extend(tl)
         else:
             tls[ind] = tl
-                
+
     return tls
 
 
@@ -367,4 +373,3 @@ def readevents(elog, units=None):
         return allunits[units]
     else:
         return [allunits[i] for i in units]
-    

@@ -2,13 +2,18 @@
 # -*- coding: iso-8859-1 -*-
 """
 module for reading explog files. These files contain a bunch of very
-essential meta-data generated during data acquisition by saber, in particular
-time offsets for triggers and stimulus presentation
+essential meta-data generated during data acquisition by saber, in
+particular time offsets for triggers and stimulus presentation
+
+Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 
 import tables as t
 import re, sys, os
-    
+
 __all__ = ['explog','readexplog']
 
 class explog(object):
@@ -20,9 +25,9 @@ class explog(object):
     Several features of how saber stores data, and with extracellular
     physiology experiments in general determine the structure of this
     hdf5 file.
-    
+
     Recordings are generally associated with a particular penetration
-    and recording site.  
+    and recording site.
 
     Recording is assumed to be episodic; that is, recording on one
     or more channels is triggered at a given time.  Episodes do not
@@ -129,7 +134,7 @@ class explog(object):
         #rnums = [r.nrow for r in table if  r['abstime']==abstime]
         return table.readCoordinates(rnums)
 
-       
+
     def getentrytimes(self, entry=None):
         """
         Every entry has an abstime associated with it (the start of the
@@ -189,7 +194,7 @@ class explog(object):
 
 # end class explog
 
-# regular expressions used in parsing the explogfile   
+# regular expressions used in parsing the explogfile
 _reg_create = re.compile(r"'(?P<file>(?P<base>\S+)_\w+.pcm_seq2)' (?P<action>created|closed)")
 _reg_triggeron = re.compile(r"_ON, (?P<chan>\S+):entry (?P<entry>\d+) \((?P<onset>\d+)\)")
 _reg_triggeroff = re.compile(r"_OFF, (?P<chan>\S+):entry (?P<entry>\d+), wrote (?P<samples>\d+)")
@@ -236,7 +241,7 @@ def readexplog(logfile, outfile, site_sort=False):
     channels = []
     files  = {}
     triggers = {}
-    
+
     currentpen   = 0
     currentsite  = 0
     currgrp      = None
@@ -253,7 +258,7 @@ def readexplog(logfile, outfile, site_sort=False):
 
     # channels are defined for the whole file
     chantable = h5.createTable(h5.root,'channels',Channels)
-    
+
 
     # these functions should be called whenever a file is opened, as they will determine
     # how the entries for those files are stored in the hdf5 file
@@ -461,13 +466,13 @@ def assignstimuli(group, cull_unrecorded=True):
                 i += 1
 
     stimuli.flush()
-    
+
     if cull_unrecorded:
         # easiest just to copy the valid rows to a new table
         valid = stimuli.getWhereList('entrytime!=0')
         if len(valid)==0:
             print "Warning: no stimuli match %s, keeping old list" % group
-        else:        
+        else:
             stimuli.rename('oldstimuli')
             newstimuli = _maketable(group._v_file, group, 'stimuli', Stimuli)
             newstimuli.append(stimuli[:][valid])
@@ -490,12 +495,12 @@ if __name__=="__main__":
     if len(sys.argv) < 2:
         print """
         explog.py [-s] [-o <outfile>] <explog>
-        
+
         Run this script to parse a text explog into an h5 file. Optionally
         (with -s) sort pcm_seq2 files into directories by pen/site. By default
         the output .h5 file is <explog>.explog.h5; use the -o flag to specify
         something else.
-        
+
         """
         sys.exit(-1)
 
@@ -516,5 +521,5 @@ if __name__=="__main__":
 
     if os.path.exists(outfile):
         os.remove(outfile)
-        
+
     z = readexplog(infile, outfile, site_sort)
