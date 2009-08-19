@@ -9,7 +9,6 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 import numpy as n
-from decorator import deprecated
 
 class toelis(object):
     """
@@ -151,7 +150,6 @@ class toelis(object):
             adjust = 0
         return toelis([x[((x>=onset) & (x<=offset))] - adjust for x in self])
 
-    @deprecated
     def tondarray(self):
         """
         Ensures that all the event lists are ndarray objects
