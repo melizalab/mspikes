@@ -5,7 +5,7 @@
 # Alike 3.0 United States License
 # (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-spike_extract - extracts spike times and features from pcm_seq2 data
+spike_extract - extracts spike times and features from extracellular data
 
 Usage:
 
