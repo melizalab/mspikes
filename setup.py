@@ -2,12 +2,12 @@ from distribute_setup import use_setuptools
 use_setuptools()
 from setuptools import setup, find_packages
 
-from distutils.core import Extension
+from numpy.distutils.core import setup,Extension
 from distutils.sysconfig import get_python_lib
 import os,sys
 
 _readklu = Extension('_readklu', sources = ['src/readklu.cc'] )
-
+_spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 
 setup(name = "mspikes",
       version = "2.0a1",
@@ -28,5 +28,5 @@ setup(name = "mspikes",
       maintainer = "CD Meliza",
       maintainer_email = "dmeliza@uchicago.edu",
       ext_package = 'mspikes',
-      ext_modules = [ _readklu ]
+      ext_modules = [ _readklu, _spikes ]
       )
