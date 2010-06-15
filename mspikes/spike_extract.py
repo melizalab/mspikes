@@ -7,176 +7,210 @@
 """
 spike_extract - extracts spike times and features from extracellular data
 
-Usage:
+Usage: spike_extract [OPTIONS] <sitefile.arf>
 
-spike_extract [-v]: prints version information
+Options:
 
-spike_extract [-l] [-o <outfile>] <explog>
+ --chan CHANNELS : specify which channels to analyze. If multiple
+ -c CHANNELS       channels were recorded, these can be specified and
+                   grouped using the --chan flag.  For example,
+                   --chan='1,5,7' will extract spikes from channels
+                   1,5, and 7.  Channel groups are currently not supported.
 
-         Preprocess <explog> and move pcm_seq2 files to directories for
-         each pen/site (e.g. site_5_1)
-         [-l] - leave files in the current directory
-         [-o <outfile>] - specify an alternative parsed explog file
+ -r/-a THRESHS:    specify dynamic/absolute thresholds for spike
+                   extraction.  Either one value for all channels, or
+                   a quoted, comma delimited list, like '6.5,6.5,5'
 
-spike_extract -p <pen> -s <site> [--chan=""] [-i] [-r <rms_thresh> | -a <abs_thresh>]
-         [-t|-T <max_rms>] [-f 3] [-w 20] [--kkwik] <explog.h5>
+ -t/-T RMS:        limit analysis to episodes where the total rms is less
+                   than <max_rms>.  Use -t to calculate total rms
+                   across specified channels; use -T to calculate rms
+                   across all valid channels.
+                   
+ -i [CHANS]:       invert data from specific channels (all if unspecified)
 
-         Extract spike times and features for a pen/site into klusters format
+ -f NFEATS:        how many principal components and their
+                   projections to calculate (default 3 per channel).
+ -R:               include raw features
 
-         --chan: specify which channels to analyze. If multiple channels were
-         recorded, these can be specified and grouped using the --chan
-         flag.  For example, --chan='1,5,7' will extract spikes from
-         channels 1,5, and 7.  If recording from tetrodes, grouping can
-         be done with parentheses: e.g.  --chan='(1,2,3,4),(5,6,7,8)'
+ -w WINDOW:        number of points on either side of the spike
+                   to analyze (default 20)
 
-         -r/-a: specify dynamic/absolute thresholds for spike extraction.
-         Either one value for all channels, or a quoted, comma
-         delimited list, like '6.5,6.5,5'
+ --kkwik:          run KlustaKwik on each group after it's extracted
 
-         -t/-T limits analysis to episodes where the total rms is less
-         than <max_rms>.  Use -t to calculate total rms across specified channels;
-         use -T to calculate rms across all valid channels.
+ Outputs a number of files that can be used with Klusters or KlustaKwik.
+   <sitefile>.spk.<g> - the spike file
+   <sitefile>.fet.<g> - the feature file
+   <sitefile>.clu.<g> - the cluster file (all spikes assigned to one cluster)
+   <sitefile>.xml - the control file used by Klusters
 
-         -f flag controls how many principal components and their
-         projections to calculate (default 3 per channel).
-         -w controls the number of points on either side of the spike
-         stored in the .spk file (default 20)
-
-         --kkwik: run KlustaKwik on each group after it's extracted
-
-         Outputs a number of files that can be used with Klusters or KlustaKwik.
-           <base>.spk.<g> - the spike file
-           <base>.fet.<g> - the feature file
-           <base>.clu.<g> - the cluster file (all spikes assigned to one cluster)
-           <base>.xml - the control file used by Klusters
-
-        where <base> is site_<pen>_<site>
-        and <g> is the spike group
+ To do simple thresholding, use the following flag:
+ --simple:         extract spike times directly to arf file. Ignores -f,-w,
+                   and --kkwik flags
 
 """
 
-import os, sys, getopt
+# docstring for tetrode grouping
+#If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
+
+import os, sys, getopt, pdb
 from mspikes import __version__
+import arf
+import extractor, klusters
 
 options = {
-    'rms_thresh' : [4.5],
+    'thresholds' : [4.5],
+    'abs_thresh' : False,
     'rms_all_chans' : False,
     'nfeats' : 3,
+    'measurements' : (),
     'window' : 20,
     'channels' : [0],
+    'inverted' : (),
     'kkwik': False,
-    'sort_raw' : True
+    'simple' : False,
+    'resamp' : 3,
+    'refrac' : 20,
     }
 
-### Check options before loading modules, which are pretty heavy
+def simple_extraction(arffile, log=None, **options):
+    """
+    For each channel, run through all the entries in the arf file,
+    extract the spike times based on simple thresholding, and create a
+    new channel with the spike times.
+
+    arffile: the file to analyze. opened in append mode, so be careful
+             about accessing it before this function terminates
+    log: if not None, output some status information here
+    """
+    channels = options.get('channels')
+    threshs = options.get('thresholds')
+    with arf.arf(arffile,'a') as arfp:
+        for channel,thresh in zip(channels,threshs):
+            if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
+                              (channel, thresh, "abs" if options['abs_thresh'] else "rms"))
+            attributes = dict(units='s', datatype=arf.DataTypes.SPIKET,
+                               method='threshold', threshold=thresh, window=options['window'],
+                               inverted=channel in options['inverted'], resamp=options['resamp'],
+                               refrac=options['refrac'], mspikes_version=__version__,)
+            spikecount = 0
+            for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, **options):
+                chan_name = entry.get_record(channel)['name'] + '_thresh'
+                entry.add_data((times,), chan_name, replace=True, **attributes)
+                spikecount += times.size
+                if log:
+                    log.write(".")
+                    log.flush()
+            if log: log.write(" %d events\n" % spikecount)
+        
+
+def klusters_extraction(arffile, log=None, **options):
+    """
+    For each channel, run through all the entries in the arf
+    file. Extract the spike waveforms and compute principal components
+    and any other measurements. Creates the files used by
+    klusters/klustakwik for spike sorting.
+
+    arffile: the file to analyze
+    """
+    from numpy import concatenate, column_stack, sum, diff
+    channels = options.get('channels')
+    threshs = options.get('thresholds')
+    basename = os.path.splitext(arffile)[0]
+    with klusters.klustersite(basename, **options) as ks:
+        with arf.arf(arffile,'r') as arfp:
+            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
+            for channel,thresh in zip(channels,threshs):
+                if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
+                                  (channel, thresh, "abs" if options['abs_thresh'] else "rms"))
+                alltimes = []
+                allspikes = []
+                spikecount = 0
+                for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, **options):
+                    times *= 20000
+                    times += float(long(entry.record['name'][1:]) - tstamp_offset)
+                    alltimes.append(times)
+                    allspikes.append(spikes)
+                    lastt = times[-1]
+                    spikecount += times.size
+                    if log:
+                        log.write(".")
+                        log.flush()
+                if log: log.write(" %d events\n" % spikecount)
+                if log: log.write("Aligning spikes\n")
+                spikes_aligned = extractor.align_spikes(concatenate(allspikes,axis=0), **options)
+                if log: log.write("Calculating features\n")
+                spike_projections = extractor.projections(spikes_aligned, **options)[0]
+                spike_measurements = extractor.measurements(spikes_aligned, **options)
+                if spike_measurements:
+                    spike_features = column_stack((spike_projections, spike_measurements, concatenate(alltimes)))
+                else:
+                    spike_features = column_stack((spike_projections, concatenate(alltimes)))
+
+                if log: log.write("Writing data to klusters group %s.%d\n" % (basename, ks.group))
+                ks.addevents(spikes_aligned, spike_features)
+                ks.group += 1
+
+def channel_options(options):
+    """
+    Validate channel and threshold options.  Modifies options in
+    place.
+    """
+    channels = options.get('channels')
+    thresh = options.get('thresholds')
+    if not all(isinstance(x,int) for x in channels):
+        raise ValueError, "Channels must be integers"  # fix this when we support groups
+    if len(thresh)==1:
+        thresh *= len(channels)
+    if len(thresh) != len(channels):
+        raise ValueError, "Channels and thresholds not the same length"
+    options['thresholds'] = thresh
+        
+
 if __name__=="__main__":
 
-    if len(sys.argv)<2:
-        print __doc__
-        sys.exit(-1)
-
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "p:s:r:a:f:o:t:e:w:T:ihluv",
-                                   ["chan=","unit=","help","kkwik","version"])
+        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:T:i:f:Rw:",
+                                   ["chan=","simple","help","kkwik","version"])
     except getopt.GetoptError, e:
         print "Error: %s" % e
         sys.exit(-1)
 
-    opts = dict(opts)
-    if opts.has_key('-h') or opts.has_key('--help'):
-        print __doc__
+    for o,a in opts:
+        if o in ('-h','--help'):
+            print __doc__
+            sys.exit(0)
+        elif o == '--version':
+            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+            sys.exit(0)
+        elif o in ('-c','--chan'):
+            #exec "chans = [%s]" % a
+            options['channels'] = tuple(int(x) for x in a.split(','))
+        elif o in ('-r','-a'):
+            options['thresholds'] = tuple(float(x) for x in a.split(','))
+            if o == '-a': options['abs_thresh'] = True
+        elif o in ('-t','-T'):
+            options['max_rms'] = float(a)
+            if o == '-T': options['rms_all_chans'] = True
+        elif o == '-i':
+            options['inverted'] = tuple(int(x) for x in a.split(','))
+        elif o == '-f':
+            options['nfeats'] = int(a)
+        elif o == '-R':
+            options['measurements'] = extractor._default_measurements
+        elif o == '-w':
+            options['window'] = int(a)
+        elif o == '--kkwik':
+            options['kkwik'] = True
+        elif o == '--simple':
+            options['simple'] = True
+
+    if len(args) != 1:
+        print "Error: no input file specified"
         sys.exit(-1)
-    if opts.has_key('-v') or opts.has_key('--version'):
-        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
-        sys.exit(0)
-    if opts.has_key('-u'):
-        # undocumented feature; moves pcm files back into current directory
-        ans = raw_input('Move all pcm_seq2 files back into the current directory? [y/N] ')
-        if ans.lower()=='y':
-            for fname in os.listdir('.'):
-                if fname.startswith('site_') and os.path.isdir(fname):
-                    os.system('mv %s/* .' % fname)
-                    os.rmdir(fname)
-            print "Done!"
-        sys.exit(0)
-###
 
-from mspikes import klusters, explog
-
-###
-
-if __name__=="__main__":
-
-    k = None
-
-    assert len(args) == 1, "Error: specify a parsed or unparsed explog file."
-    infile = args[0]
-    infileext = os.path.splitext(infile)[-1]
-    if infileext == '.explog':
-        # process flat explog file
-        outfile = infile + '.h5'
-        if opts.has_key('-l'):
-            options['sort_raw'] = False
-        if opts.has_key('-o'):
-            outfile = opts['-o']
-
-        if os.path.exists(outfile):
-            os.remove(outfile)
-        k = explog.readexplog(infile, outfile, options['sort_raw'])
-        print "Parsed explog: %d episodes, %d stimuli, and %d channels" % \
-              (k.totentries, k.totstimuli, k.nchannels)
-
-    elif infileext == '.h5':
-        if opts.has_key('-p'):
-            pen = int(opts['-p'])
-        else:
-            print "Error: must specify pen/site"
-            sys.exit(-1)
-        if opts.has_key('-s'):
-            site = int(opts['-s'])
-        else:
-            print "Error: must specify pen/site"
-            sys.exit(-1)
-
-        # open the explog file
-        k = explog.explog(infile)
-        k.site = (pen,site)
-
-        for o,a in opts.items():
-            if o == '-r':
-                exec "thresh = [%s]" % a
-                options['rms_thresh'] = thresh
-            elif o == '-a':
-                exec "thresh = [%s]" % a
-                options['abs_thresh'] = thresh
-            elif o == '-t':
-                options['max_rms'] = float(a)
-            elif o == '-T':
-                options['max_rms'] = float(a)
-                options['rms_all_chans'] = True
-            elif o == '-f':
-                options['nfeats'] = int(a)
-            elif o == '-w':
-                options['window'] = int(a)
-            elif o == '--kkwik':
-                options['kkwik'] = True
-            elif o == '--chan':
-                exec "chans = [%s]" % a
-                options['channels'] = chans
-            elif o == '-i':
-                options['invert'] = True
-
-        if options.has_key('rms_thresh') and len(options['rms_thresh'])==1:
-            options['rms_thresh'] *= len(options['channels'])
-        if options.has_key('abs_thresh') and len(options['abs_thresh'])==1:
-            options['abs_thresh'] *= len(options['channels'])
-
-        changroups = options.pop('channels')
-        klusters.extractgroups(k, 'site_%d_%d' % k.site, changroups, **options)
-
+    channel_options(options)
+    print options
+    if options['simple']:
+        simple_extraction(args[0], log=sys.stdout, **options)
     else:
-        print "Error: %s only accepts .explog and .explog.h5 files as input" % __file__
-        sys.exit(-1)
-
-    # cleanup removes an annoying message
-    del(k)
+        klusters_extraction(args[0], log=sys.stdout, **options)

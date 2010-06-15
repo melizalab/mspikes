@@ -18,12 +18,14 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
     channel:        the channel to extract
     thresh:         the threshold (in absolute or rms units)
     abs_thresh:     if True, thresholding is absolute
+    inverted:       if True, or if (channel in inverted), invert signal prior to processing
     window:         the number of samples per spike (def. 20)
     resamp:         resampling factor (def. 3)
     refrac:         the min. number of samples between peak and
                     next threshold crossing (def. window)
 
-    Yields (for each entry):
+    Yields:
+    entry:            the current entry object
     spike times:      spike times
     spike waveforms:  the waveforms for each spike, with dimension
                       nevents x window * resamp
@@ -35,12 +37,15 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
     resamp = kwargs.get('resamp', 3)
     refrac = kwargs.get('refrac',window)
     absthresh = kwargs.get('abs_thresh',False)
+    invert = kwargs.get('inverted',[])
 
     for entry in arfp:
         data,Fs = entry.get_data(channel)
+        if invert or channel in invert:
+            data *= -1
         if not absthresh:
             mean,rms = signal_stats(data)
-            T = int(thresh / rms)
+            T = int(thresh * rms)
         else:
             T = thresh
         spike_t = spike_times(data, T, window, refrac).nonzero()[0]
@@ -48,7 +53,7 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
         if resamp > 1:
             spike_w  = fftresample(spike_w, window * resamp * 2)
             spike_t += find_peaks(spike_w, window * resamp, resamp)
-        yield 1./ Fs * spike_t, spike_w
+        yield entry, 1./ Fs * spike_t, spike_w
 
 
 def find_peaks(spikes, peak, resamp):
@@ -65,7 +70,7 @@ def find_peaks(spikes, peak, resamp):
     return spikes[:,r].argmax(1) - resamp
 
 
-def projections(spikes, nfeats=3):
+def projections(spikes, **kwargs):
     """
     Calculate projections of spikes on principal components.
 
@@ -76,6 +81,7 @@ def projections(spikes, nfeats=3):
     projections on to first nfeats PCs, dimension nevents x nfeats
     """
     from scipy.linalg import svd, get_blas_funcs
+    nfeats = kwargs.get('nfeats')
     nevents,nsamples = spikes.shape
     gemm,= get_blas_funcs(('gemm',),(spikes,spikes))
 
@@ -84,8 +90,9 @@ def projections(spikes, nfeats=3):
     v = v[:nfeats,:]
     return gemm(1.0, data, v, trans_b=1), v
 
+_default_measurements = ('height','trough1','trough2','ptt','peakw','troughw')
 
-def measurements(spikes, features=('height','trough1','trough2','ptt','peakw','troughw')):
+def measurements(spikes, **kwargs):
     """
     Makes the following measurements on spike shape:
     height -   max value of trace
@@ -97,13 +104,15 @@ def measurements(spikes, features=('height','trough1','trough2','ptt','peakw','t
     ...
 
     spikes:    resampled, aligned spike waveforms, nevents x nsamples
+    measurements: sequence of features to measure
+    
     Returns:   nevents x nfeats array
     """
     from numpy import column_stack, asarray
     nevents, nsamples = spikes.shape
     peak_ind = nsamples/2
     out = []
-    for f in features:
+    for f in kwargs.get('measurements'):
         if f == 'height':
             out.append(spikes.max(1))
         elif f == 'trough1':
@@ -118,10 +127,13 @@ def measurements(spikes, features=('height','trough1','trough2','ptt','peakw','t
         elif f == 'troughw':
             val = [(spike[peak_ind:] <= spike[peak_ind:].min()/2).sum() for spike in spikes]
             out.append(asarray(val))
-    return column_stack(out)
+    if out:
+        return column_stack(out)
+    else:
+        return None
 
 
-def realign(spikes, resamp):
+def align_spikes(spikes, **kwargs):
     """
     Realigns spike waveforms based on peak time.
 
@@ -138,6 +150,7 @@ def realign(spikes, resamp):
     was shifted or not.
     """
     from numpy import zeros
+    resamp = kwargs.get('resamp')
     nevents,nsamples = spikes.shape
     start = find_peaks(spikes, nsamples / 2, resamp) + resamp
     nshifted = nsamples - resamp*2

@@ -1,24 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
-modules for extracting and sorting spike data.
+mspikes extracts spike times and waveforms from extracellular data
+stored in ARF files.  The main entry points are in spike_extract,
+which does the thresholding, realignment, and PCA calculations, and in
+group_events, which generates toe_lis files with trials grouped by
+unit and stimulus.
 
-Component modules:
-
-explog - reads explog files in native SABER format and a compressed
-         hdf5-based format; parses native format to h5 format
-
-klusters - contains code specific for reading and writing file formats
-           used by klusters and klustakwik
-
+Component modules
+===============================
 extractor - functions for detecting and processing spike events
-            (imported by klusters)
+klusters -  read and write klusters/klustakwik file formats
 
-utils - general math and data processing functions
-
-toelis - functions and class for manipulating time-of-event list data
 
 """
 
-__version__ = "1.1.4"
-__all__ = ['extractor','klusters','utils','explog','toelis']
+__version__ = "2.0a1"
+__all__ = ['extractor','klusters']
