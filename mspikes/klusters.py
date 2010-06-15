@@ -47,6 +47,7 @@ class klustersite(object):
         self.groups = tuple((x if hasattr(x,'__len__') else (x,) for x in kwargs['channels']))
         self.nsamples = 2 * kwargs['window'] * kwargs['resamp'] - kwargs['resamp'] * 2
         self.nfeatures = tuple((kwargs['nfeats'] + len(kwargs['measurements'])) * len(c) + 1 for c in self.groups)
+        self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
         self.thresh = kwargs['thresholds']
         self.writexml()
 
@@ -133,6 +134,18 @@ class klustersite(object):
         fp = open("%s.fet.%d" % (self.sitename, self.group + 1),'wt')
         fp.write("%d\n" % self.nfeatures[self.group])
         return fp
+
+    def run_klustakwik(self):
+        """ Runs KlustaKwik on the current group """
+        from subprocess import Popen
+        nfeats = self.nkfeats[self.group]
+        totfeats = self.nfeatures[self.group]
+        self.fet[self.group].flush()
+        cmd = ["KlustaKwik",self.sitename,str(self.group+1),
+               "-Screen","0",
+               "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]
+        return Popen(cmd, bufsize=-1)#, stdout=output)
+
 
 # Variables:
 # indent-tabs-mode: t

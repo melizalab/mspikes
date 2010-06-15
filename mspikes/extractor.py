@@ -125,7 +125,7 @@ def measurements(spikes, **kwargs):
 
     spikes:    resampled, aligned spike waveforms, nevents x nsamples
     measurements: sequence of features to measure
-    
+
     Returns:   nevents x nfeats array
     """
     from numpy import column_stack, asarray

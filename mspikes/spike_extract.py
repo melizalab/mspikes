@@ -22,7 +22,7 @@ Options:
  -t    RMS:        limit analysis to episodes where the total rms is less
                    than RMS.  Specify one value for all channels, or
                    comma-delimited list to specify per channel.
-                   
+
  -i [CHANS]:       invert data from specific channels (all if unspecified)
 
  -f NFEATS:        how many principal components and their
@@ -49,7 +49,7 @@ Options:
 # docstring for tetrode grouping
 #If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
 
-import os, sys, getopt, pdb
+import os
 from mspikes import __version__
 import arf
 import extractor, klusters
@@ -91,7 +91,7 @@ def simple_extraction(arffile, log=None, **options):
                 if times.size > 0:
                     chan_name = entry.get_record(channel)['name'] + '_thresh'
                     entry.add_data((times,), chan_name, replace=True, **attributes)
-        
+
 
 def klusters_extraction(arffile, log=None, **options):
     """
@@ -107,6 +107,8 @@ def klusters_extraction(arffile, log=None, **options):
     threshs = options.get('thresholds')
     rmsthreshs = options.get('max_rms')
     basename = os.path.splitext(arffile)[0]
+
+    kkwik_pool = []
     with klusters.klustersite(basename, **options) as ks:
         with arf.arf(arffile,'r') as arfp:
             tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
@@ -133,7 +135,19 @@ def klusters_extraction(arffile, log=None, **options):
                         spike_features = column_stack((spike_projections, concatenate(alltimes)))
                     ks.addevents(spikes_aligned, spike_features)
                     if log: log.write("Wrote data to klusters group %s.%d\n" % (basename, ks.group))
+                    if options.get('kkwik',False):
+                        if log: log.write("Starting KlustaKwik\n")
+                        kkwik_pool.append(ks.run_klustakwik())
+
                 ks.group += 1
+        for i,job in enumerate(kkwik_pool):
+            if log:
+                log.write("Waiting for KlustaKwik job %d to finish..." % i)
+                log.flush()
+            job.wait()
+            if log:
+                log.write("done\n")
+
 
 def channel_options(options):
     """
@@ -159,8 +173,8 @@ def channel_options(options):
         raise ValueError, "Channels and RMS thresholds not the same length"
     options['max_rms'] = maxrms
 
-if __name__=="__main__":
-
+def main():
+    import sys, getopt
     try:
         opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:",
                                    ["chan=","simple","help","kkwik","version"])
@@ -201,8 +215,15 @@ if __name__=="__main__":
         sys.exit(-1)
 
     channel_options(options)
-    print options
     if options['simple']:
         simple_extraction(args[0], log=sys.stdout, **options)
     else:
         klusters_extraction(args[0], log=sys.stdout, **options)
+
+
+if __name__=="__main__":
+    main()
+
+
+# Variables:
+# End:
