@@ -9,7 +9,7 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 
-def extract_spikes(arfp, channel, thresh, **kwargs):
+def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     """
     Extract spike times and waveforms from all the entries in an arf
     file.
@@ -17,6 +17,10 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
     arfp:           input file handle
     channel:        the channel to extract
     thresh:         the threshold (in absolute or rms units)
+    maxrms:         if defined, the maximum RMS allowed for an epoch;
+                    if it exceeds this value it is skipped
+    log:            if not None, output some status information here
+
     abs_thresh:     if True, thresholding is absolute
     inverted:       if True, or if (channel in inverted), invert signal prior to processing
     window:         the number of samples per spike (def. 20)
@@ -39,12 +43,23 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('inverted',[])
 
+    if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
+                      (channel, thresh, "abs" if absthresh else "rms"))
+    spikecount = 0
     for entry in arfp:
         data,Fs = entry.get_data(channel)
         if invert or channel in invert:
             data *= -1
-        if not absthresh:
+        if not absthresh or maxrms:
             mean,rms = signal_stats(data)
+
+        if maxrms and rms > maxrms:
+            if log:
+                log.write("S")
+                log.flush()
+            continue
+
+        if not absthresh:
             T = int(thresh * rms)
         else:
             T = thresh
@@ -53,7 +68,12 @@ def extract_spikes(arfp, channel, thresh, **kwargs):
         if resamp > 1:
             spike_w  = fftresample(spike_w, window * resamp * 2)
             spike_t += find_peaks(spike_w, window * resamp, resamp)
+        if log:
+            log.write(".")
+            log.flush()
+        spikecount += spike_t.size
         yield entry, 1./ Fs * spike_t, spike_w
+    if log: log.write(" %d events\n" % spikecount)
 
 
 def find_peaks(spikes, peak, resamp):

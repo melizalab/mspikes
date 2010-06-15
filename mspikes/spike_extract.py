@@ -11,20 +11,17 @@ Usage: spike_extract [OPTIONS] <sitefile.arf>
 
 Options:
 
- --chan CHANNELS : specify which channels to analyze. If multiple
- -c CHANNELS       channels were recorded, these can be specified and
-                   grouped using the --chan flag.  For example,
-                   --chan='1,5,7' will extract spikes from channels
+ --chan CHANNELS : specify which channels to analyze, multiple channels
+                   as a list, i.e. --chan='1,5,7' will extract spikes from channels
                    1,5, and 7.  Channel groups are currently not supported.
 
  -r/-a THRESHS:    specify dynamic/absolute thresholds for spike
                    extraction.  Either one value for all channels, or
                    a quoted, comma delimited list, like '6.5,6.5,5'
 
- -t/-T RMS:        limit analysis to episodes where the total rms is less
-                   than <max_rms>.  Use -t to calculate total rms
-                   across specified channels; use -T to calculate rms
-                   across all valid channels.
+ -t    RMS:        limit analysis to episodes where the total rms is less
+                   than RMS.  Specify one value for all channels, or
+                   comma-delimited list to specify per channel.
                    
  -i [CHANS]:       invert data from specific channels (all if unspecified)
 
@@ -60,7 +57,7 @@ import extractor, klusters
 options = {
     'thresholds' : [4.5],
     'abs_thresh' : False,
-    'rms_all_chans' : False,
+    'max_rms' : [None],
     'nfeats' : 3,
     'measurements' : (),
     'window' : 20,
@@ -80,27 +77,20 @@ def simple_extraction(arffile, log=None, **options):
 
     arffile: the file to analyze. opened in append mode, so be careful
              about accessing it before this function terminates
-    log: if not None, output some status information here
     """
     channels = options.get('channels')
     threshs = options.get('thresholds')
+    rmsthreshs = options.get('max_rms')
     with arf.arf(arffile,'a') as arfp:
-        for channel,thresh in zip(channels,threshs):
-            if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
-                              (channel, thresh, "abs" if options['abs_thresh'] else "rms"))
+        for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
             attributes = dict(units='s', datatype=arf.DataTypes.SPIKET,
                                method='threshold', threshold=thresh, window=options['window'],
                                inverted=channel in options['inverted'], resamp=options['resamp'],
                                refrac=options['refrac'], mspikes_version=__version__,)
-            spikecount = 0
-            for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, **options):
-                chan_name = entry.get_record(channel)['name'] + '_thresh'
-                entry.add_data((times,), chan_name, replace=True, **attributes)
-                spikecount += times.size
-                if log:
-                    log.write(".")
-                    log.flush()
-            if log: log.write(" %d events\n" % spikecount)
+            for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
+                if times.size > 0:
+                    chan_name = entry.get_record(channel)['name'] + '_thresh'
+                    entry.add_data((times,), chan_name, replace=True, **attributes)
         
 
 def klusters_extraction(arffile, log=None, **options):
@@ -112,64 +102,67 @@ def klusters_extraction(arffile, log=None, **options):
 
     arffile: the file to analyze
     """
-    from numpy import concatenate, column_stack, sum, diff
+    from numpy import concatenate, column_stack
     channels = options.get('channels')
     threshs = options.get('thresholds')
+    rmsthreshs = options.get('max_rms')
     basename = os.path.splitext(arffile)[0]
     with klusters.klustersite(basename, **options) as ks:
         with arf.arf(arffile,'r') as arfp:
             tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
-            for channel,thresh in zip(channels,threshs):
-                if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
-                                  (channel, thresh, "abs" if options['abs_thresh'] else "rms"))
+            for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
                 alltimes = []
                 allspikes = []
-                spikecount = 0
-                for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, **options):
+                for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
                     times *= 20000
                     times += float(long(entry.record['name'][1:]) - tstamp_offset)
                     alltimes.append(times)
                     allspikes.append(spikes)
                     lastt = times[-1]
-                    spikecount += times.size
-                    if log:
-                        log.write(".")
-                        log.flush()
-                if log: log.write(" %d events\n" % spikecount)
-                if log: log.write("Aligning spikes\n")
-                spikes_aligned = extractor.align_spikes(concatenate(allspikes,axis=0), **options)
-                if log: log.write("Calculating features\n")
-                spike_projections = extractor.projections(spikes_aligned, **options)[0]
-                spike_measurements = extractor.measurements(spikes_aligned, **options)
-                if spike_measurements:
-                    spike_features = column_stack((spike_projections, spike_measurements, concatenate(alltimes)))
+                if sum(x.size for x in alltimes) == 0:
+                    if log: log.write("Skipping channel\n")
                 else:
-                    spike_features = column_stack((spike_projections, concatenate(alltimes)))
-
-                if log: log.write("Writing data to klusters group %s.%d\n" % (basename, ks.group))
-                ks.addevents(spikes_aligned, spike_features)
+                    if log: log.write("Aligning spikes\n")
+                    spikes_aligned = extractor.align_spikes(concatenate(allspikes,axis=0), **options)
+                    if log: log.write("Calculating features\n")
+                    spike_projections = extractor.projections(spikes_aligned, **options)[0]
+                    spike_measurements = extractor.measurements(spikes_aligned, **options)
+                    if spike_measurements is not None:
+                        spike_features = column_stack((spike_projections, spike_measurements, concatenate(alltimes)))
+                    else:
+                        spike_features = column_stack((spike_projections, concatenate(alltimes)))
+                    ks.addevents(spikes_aligned, spike_features)
+                    if log: log.write("Wrote data to klusters group %s.%d\n" % (basename, ks.group))
                 ks.group += 1
 
 def channel_options(options):
     """
-    Validate channel and threshold options.  Modifies options in
-    place.
+    Validate channel-related option, making sure any options that are
+    defined on a per-channel basis have the appropriate length.
+    Modifies options in place.
     """
     channels = options.get('channels')
     thresh = options.get('thresholds')
+    maxrms = options.get('max_rms')
     if not all(isinstance(x,int) for x in channels):
         raise ValueError, "Channels must be integers"  # fix this when we support groups
+
     if len(thresh)==1:
         thresh *= len(channels)
     if len(thresh) != len(channels):
         raise ValueError, "Channels and thresholds not the same length"
     options['thresholds'] = thresh
-        
+
+    if len(maxrms)==1:
+        maxrms *= len(channels)
+    if len(maxrms) != len(channels):
+        raise ValueError, "Channels and RMS thresholds not the same length"
+    options['max_rms'] = maxrms
 
 if __name__=="__main__":
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:T:i:f:Rw:",
+        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:",
                                    ["chan=","simple","help","kkwik","version"])
     except getopt.GetoptError, e:
         print "Error: %s" % e
@@ -188,9 +181,8 @@ if __name__=="__main__":
         elif o in ('-r','-a'):
             options['thresholds'] = tuple(float(x) for x in a.split(','))
             if o == '-a': options['abs_thresh'] = True
-        elif o in ('-t','-T'):
-            options['max_rms'] = float(a)
-            if o == '-T': options['rms_all_chans'] = True
+        elif o == '-t':
+            options['max_rms'] = tuple(float(x) for x in a.split(','))
         elif o == '-i':
             options['inverted'] = tuple(int(x) for x in a.split(','))
         elif o == '-f':
