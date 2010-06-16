@@ -163,6 +163,12 @@ class klustersite(object):
                "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]
         return Popen(cmd, bufsize=-1)#, stdout=output)
 
+def check_times(spike_times):
+    """ Assert that the spike times are monotonically increasing """
+    from numpy import diff
+    dt = diff(spike_times)
+    if any(dt < 1):
+        raise ValueError, "Spike times are not monotonic! (%s)" % dt.nonzero()[0]
 
 # Variables:
 # indent-tabs-mode: t

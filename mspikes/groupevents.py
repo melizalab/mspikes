@@ -5,122 +5,195 @@
 # Alike 3.0 United States License
 # (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-groupevents.py - Groups event times into toe_lis files by stimulus and unit
+mspike_group - Group clustered event times by stimulus and unit
 
-Usage: groupevents.py [-h|-v] [--units=\"...\"] [--stimulus=\"...\"]
-                      [--start=<start>] [--stop=<stop>] [-l] [-e]
-                       <basename> <explog.h5>
+Usage: mspike_group [OPTIONS] <sitefile.arf>
 
-         -v displays version information
+Specify one or more of the following flags to control output. If neither
+is supplied, the data will be processed but with no output.
 
-         --stimulus specifies which stimuli to include in the grouping
-         (otherwise all stimuli are processed)
-         Supply a comma-delimited list of the stimuli, without extensions, e.g.
-         --stimulus='A,B,C' (single or double quotes required)
+ -a:                 add event data to the ARF file. In each entry, a channel
+                     is created for each unit
+ -t:                 create toelis files, organized by stimulus and unit
 
-         --units specifies which units to extract. Unit numbers start
-         with the first unit (1) in the first group and increase
-         numerically through each of the groups.
+Options:
 
-         --start and --stop specify a range of episodes to include (default all)
+ --stimulus STIMS:   specify which stimuli to include in the grouping,
+                     as a comma-delimited list of stimulus names. By
+                     default all stimuli are processed.
 
-         -l causes the new toelis files to be left in the current directory
-         (by default they are placed in new directories)
+ --units UNITS:      only extract specific units. Unit numbers start
+                     with the first unit (1) in the first group and increase
+                     numerically through each of the groups.
 
-         -e causes the event data to be grouped by entry rather than stimulus
+ --start TIME:       only output events occurring between specified times,
+ --stop TIME:        in units of seconds (the same units used in klustakwik)
 
-         <basename> specifies the basename of the fet and clu files that
-         contain the event time and cluster information
-
-         <explog.h5> refers to either the parsed explog.h5 file,
-         which is used to assign event times to particular episodes.
+ -b BASENAME:        use the klusters data organized under BASENAME rather than
+                     sitefile. By default this is assumed to be the same as
+                     the basename of the ARf file.
 
 """
-from mspikes import explog, klusters, __version__
-from numpy import arange
+import os, arf
+from extractor import __version__
+from spike_extract import _spike_resamp
 
-def groupevents(elog, **kwargs):
-    print "Loading events from %s..." % sitename
-    tls = klusters.groupstimuli(elog, **kwargs)
+options = {
+    'arf_add' : False,
+    'toe_make' : False,
+    'stimuli' : None,
+    'units' : None,
+    'start' : None,
+    'stop' : None,
+    'basename' : None,
+    }
 
-    if isinstance(tls.keys()[0], int):
-        templ = "%s_%03d.toe_lis"
+def episode_times(arfp):
+    """ Get episode times from arf file, adjusted for resampling """
+    from numpy import asarray, argsort
+    etimes = asarray([long(x[1:])*_spike_resamp for x in arfp.entries])
+    sortind = argsort(etimes)
+    mintime = min(etimes)
+    return etimes[sortind]-mintime, sortind
+
+def count_units(sitename):
+    """ Determine how many units are defined for a site """
+    from glob import iglob
+    from _readklu import getclusters
+    return tuple(len(getclusters(f)) for f in iglob("%s.clu.*" % sitename))
+
+
+def sort_events(sitename, episode_times, log=None):
+    """
+    Read event times and cluster identity from *.fet.n and *.clu.n
+    files and sort them by unit and episode.  The clu file
+    contains the cluster assignments, and the fet file contains
+    the event times, in units of samples.
+
+    episode_times:  a sorted array of episode times, in the same
+                    units as the event times.
+
+    Returns a list of lists. Each element of the list corresponds to a
+    unit; only valid units (i.e. excluding clusters 0 and 1 if there
+    are higher numbered clusters) are returned.  Each subelement is a list
+    of event times in each episode.
+    """
+    from glob import iglob
+    from _readklu import readclusters
+    from klusters import klustersite
+    current_unit = 1
+    allevents = []
+    groups = []
+    for f in iglob("%s.clu.*" % sitename):
+        group = int(f.split('.')[-1])
+        fname = klustersite._fettemplate % (sitename, group)
+        cname = klustersite._clutemplate % (sitename, group)
+        events = readclusters(fname, cname, episode_times, 20.0 * _spike_resamp)
+        if log: log.write("Group %d: %s\n" % (group, tuple(current_unit + i for i in xrange(len(events)))))
+        current_unit += len(events)
+        groups.extend((group,) * len(events))
+        allevents.extend(events)
+    return groups, allevents
+
+def group_events(arffile, log=None, **options):
+    """
+    Sort events by unit and stimulus
+
+    arffile:  the file to analyze
+    log:      if specified, output progress to this handle
+    arf_add:  if True, add spike times to arf file
+    toe_make: if True, generate toe_lis files organized by stimulus
+    stimuli:  if not None, restrict toe_make output to stimuli in the list
+    units:    if not None, restrict analysis to these units
+    start:    if not None, only include episodes with times (in sec) after this
+    stop:     if not None, only include episodes with times before this
+    basename: specify the basename of the klusters file (default is based
+              off arffile name
+    """
+    from collections import defaultdict
+    from itertools import izip
+    from arf.io import toelis
+
+    arf_add = options.get('arf_add',False)
+    toe_make = options.get('toe_make',False)
+    basename = options.get('basename',None) or os.path.splitext(arffile)[0]
+    if log: log.write("Loading events from %s\n" % basename)
+
+    if arf_add:
+        attributes = dict(datatype=arf.DataTypes.SPIKET, method='klusters', resamp=_spike_resamp,
+                          mspikes_version=__version__,)
+        arf_mode = 'a'
     else:
-        templ = "%s_%s.toe_lis"
+        arf_mode = 'r'
 
-    if kwargs.has_key('units'):
-        unit_list = kwargs['units']
-    else:
-        keyl = tls.keys()[0]
-        unit_list = arange(tls[keyl].nunits)
+    with arf.arf(arffile,arf_mode) as arfp:
+        eptimes,epnums = episode_times(arfp)
+        groups, events = sort_events(basename, eptimes, log)
+        tls = [defaultdict(toelis.toelis)] * len(groups)
+        if log: log.write("Sorting events")
+        for i,spikes in enumerate(izip(*events)):
+            entry = arfp[epnums[i]]
+            if arf_add:
+                chan_names = tuple("unit_%03d" % x for x in range(len(spikes)))
+                entry.add_data(spikes, chan_names, replace=True, node_name='klusters_units',
+                               units=('ms',)*len(groups), groups=groups, **attributes)
+            if toe_make:
+                stim = entry.record['protocol']
+                for j,elist in enumerate(spikes):
+                    tls[j][stim].append(elist)
+            if log:
+                log.write(".")
+                log.flush()
+        if log: log.write("done\n")
 
-    for i in range(len(unit_list)):
-        print "Grouping repeats for unit %d..." % (unit_list[i]+1)
-        filebase = "cell_%s_%s_%d" % (elog.site + (unit_list[i]+1,))
-        if make_dirs:
-            if not os.path.exists(filebase): os.mkdir(filebase)
-            filebase = os.path.join(filebase, filebase)
+    if toe_make:
+        for i,unit in enumerate(tls):
+            tdir = "%s_%d" % (basename, i+1)
+            os.mkdir(tdir)
+            for stim,tl in unit.items():
+                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, i+1, stim))
+                toelis.toefile(name).write(tl)
+            if log: log.write("Created directory for unit %s\n" % tdir)
 
-        for stim,tl in tls.items():
-            if kwargs.has_key('stimuli') and (stim not in kwargs['stimuli']):
-                continue
-            tlname = templ % (filebase, stim)
-            if tl.unit(i).nrepeats > 0:
-                tl.unit(i).writefile(tlname)
+def main():
+    import os, sys, getopt
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "atphb:",
+                                   ["stimulus=","units=","start=","stop=","version","help"])
+    except getopt.GetoptError, e:
+        print "Error: %s" % e
+        sys.exit(-1)
 
+    for o,a in opts:
+        if o in ('-h','--help'):
+            print __doc__
+            sys.exit(0)
+        elif o == '--version':
+            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+            sys.exit(0)
+        elif o == '-a':
+            options['arf_add'] = True
+        elif o == '-t':
+            options['toe_make'] = True
+        elif o == '--units':
+            options['units'] = tuple(int(x)-1 for x in a.split(','))
+        elif o == '--stimulus':
+            options['stimuli'] = tuple(x.strip() for x in a.split(','))
+        elif o == '--start':
+            options['start'] = int(a)
+        elif o == '--stop':
+            options['stop'] = int(a)
+        elif o == '-b':
+            options['basename'] = a
+
+    if len(args) != 1:
+        print "Error: no input file specified"
+        sys.exit(-1)
+
+    group_events(args[0], log=sys.stdout, **options)
 
 if __name__=="__main__":
+    main()
 
-    import sys, getopt,os
-
-    if len(sys.argv) < 2:
-        print __doc__
-        sys.exit(-1)
-
-
-    opts, args = getopt.getopt(sys.argv[1:], "hvle", \
-                               ["units=", "stimulus=", "start=", "stop=", "help","version",])
-
-    opts = dict(opts)
-    if opts.has_key('-h') or opts.has_key('--help'):
-        print __doc__
-        sys.exit(-1)
-    if opts.has_key('-v') or opts.has_key('--version'):
-        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
-        sys.exit(0)
-    if len(args) < 2:
-        print "Error: need a basename and an explog"
-        sys.exit(-1)
-
-    kwargs = {}
-    unit_list = None
-    stimulus_list = None
-    make_dirs = True
-    startep = None
-    stopep = None
-    for o,a in opts.items():
-        if o == '--units':
-            kwargs['units'] = [int(x)-1 for x in a.split(',')]
-            print "Units: %s" % kwargs['units']
-        elif o == '--stimulus':
-            kwargs['stimuli'] = [x.strip() for x in a.split(',')]
-        elif o == '--start':
-            startep = int(a)
-        elif o == '--stop':
-            stopep = int(a)
-        elif o == '-l':
-            make_dirs = False
-        elif o == '-e':
-            kwargs['byepisode'] = True
-
-    # try to guess pen and site from the basename
-    sitename = args[0]
-    name,pen,site = sitename.split('_')
-    elog = explog.explog(args[1], pen=pen, site=site)
-
-    if startep!=None or stopep!=None:
-        kwargs['range'] = slice(startep, stopep)
-
-    groupevents(elog, **kwargs)
-
-    del(elog)
+# Variables:
+# End:
