@@ -10,6 +10,7 @@ Alike 3.0 United States License
 """
 __version__ = "2.0a1"
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
+_default_samplerate = 20000
 
 def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     """

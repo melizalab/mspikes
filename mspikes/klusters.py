@@ -46,6 +46,8 @@ class klustersite(object):
         nfeats:     the number of PCA features per channel
         measurements:  the raw feature measurements
         window:     the number of samples per spike (automatically adjusted for resampling)
+        sampling_rate:  the base sampling rate of the data (default 20000)
+        resamp:         resampling factor for the spikes
         """
         self.sitename = sitename
         self.groups = tuple((x if hasattr(x,'__len__') else (x,) for x in kwargs['channels']))
@@ -53,7 +55,7 @@ class klustersite(object):
         self.nfeatures = tuple((kwargs['nfeats'] + len(kwargs['measurements'])) * len(c) + 1 for c in self.groups)
         self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
         self.thresh = kwargs['thresholds']
-        self.samplerate = 20000 * kwargs['resamp']
+        self.samplerate = kwargs['sampling_rate'] * kwargs['resamp']
         self.writexml()
 
         self.spk = defaultdict(self._openspikefile)
