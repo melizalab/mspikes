@@ -36,6 +36,7 @@ Options:
 """
 import os, arf
 from extractor import __version__, _spike_resamp, _default_samplerate, _dummy_writer
+from klusters import xml_channels
 
 options = {
     'arf_add' : False,
@@ -127,6 +128,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     log.write("Loading events from %s\n" % basename)
     if len(count_units(basename))==0:
         raise IOError, "No klusters data defined for %s" % basename
+    source_channels = xml_channels(basename + '.xml')
 
     if arf_add:
         attributes = dict(datatype=arf.DataTypes.SPIKET, method='klusters', resamp=_spike_resamp,
@@ -163,7 +165,8 @@ def group_events(arffile, log=_dummy_writer, **options):
                 if arf_add:
                     chan_names = tuple("unit_%03d" % x for x in range(len(spikes)))
                     entry.add_data(spikes, chan_names, replace=True, node_name='klusters_units',
-                                   units=('ms',)*len(groups), groups=groups, **attributes)
+                                   units=('ms',)*len(groups),
+                                   source_channels=tuple(source_channels[g-1] for g in groups), **attributes)
                 if toe_make:
                     for j,elist in enumerate(spikes):
                         tls[j][stim].append(elist)

@@ -12,7 +12,7 @@ Usage: spike_extract [OPTIONS] <sitefile.arf>
 Options:
 
  --chan CHANNELS : specify which channels to analyze, multiple channels
-                   as a list, i.e. --chan='1,5,7' will extract spikes from channels
+ -c CHANNELS       as a list, i.e. --chan='1,5,7' will extract spikes from channels
                    1,5, and 7.  Channel groups are currently not supported.
 
  -r/-a THRESHS:    specify dynamic/absolute thresholds for spike
@@ -88,9 +88,10 @@ def simple_extraction(arffile, log=extractor._dummy_writer, **options):
     with arf.arf(arffile,'a') as arfp:
         for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
             attributes = dict(units='ms', datatype=arf.DataTypes.SPIKET,
-                               method='threshold', threshold=thresh, window=options['window'],
-                               inverted=channel in options['inverted'], resamp=options['resamp'],
-                               mspikes_version=extractor.__version__,)
+                              method='threshold', threshold=thresh, window=options['window'],
+                              source_channels=((channel,),),
+                              inverted=channel in options['inverted'], resamp=options['resamp'],
+                              mspikes_version=extractor.__version__,)
             for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
                 if times.size > 0:
                     chan_name = entry.get_record(channel)['name'] + '_thresh'

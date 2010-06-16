@@ -165,6 +165,16 @@ class klustersite(object):
                "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]
         return Popen(cmd, bufsize=-1)#, stdout=output)
 
+def xml_channels(xmlfile):
+    """
+    Figure out which channels correspond to which groups. Returns a
+    list of tuples, containing the channels defined in each group.
+    """
+    from xml.etree import ElementTree
+    tree = ElementTree.parse(xmlfile)
+    return [tuple(int(channel.text) for channel in group.findall('channel')) \
+            for group in tree.findall('spikeDetection/channelGroups/group/channels')]
+
 def check_times(spike_times):
     """ Assert that the spike times are monotonically increasing """
     from numpy import diff
