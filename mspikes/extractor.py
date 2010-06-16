@@ -9,6 +9,7 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 __version__ = "2.0a1"
+_spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 
 def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     """
@@ -42,7 +43,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     from spikes import spike_times, extract_spikes, signal_stats
 
     window = kwargs.get('window',20)
-    resamp = kwargs.get('resamp', 3)
+    resamp = kwargs.get('resamp', _spike_resamp)
     refrac = kwargs.get('refrac',window)
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('inverted',[])

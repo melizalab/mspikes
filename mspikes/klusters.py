@@ -53,7 +53,7 @@ class klustersite(object):
         self.nfeatures = tuple((kwargs['nfeats'] + len(kwargs['measurements'])) * len(c) + 1 for c in self.groups)
         self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
         self.thresh = kwargs['thresholds']
-        self.samplerate = 20000 * kwargs['resamp'] # for some reason, if this correct klusters has major crashes
+        self.samplerate = 20000 * kwargs['resamp']
         self.writexml()
 
         self.spk = defaultdict(self._openspikefile)

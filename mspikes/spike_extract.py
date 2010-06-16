@@ -53,7 +53,6 @@ import os
 import arf
 import extractor, klusters
 
-_spike_resamp = 3
 
 options = {
     'thresholds' : [4.5],
@@ -66,7 +65,7 @@ options = {
     'inverted' : (),
     'kkwik': False,
     'simple' : False,
-    'resamp' : _spike_resamp,
+    'resamp' : extractor._spike_resamp,
     }
 
 def simple_extraction(arffile, log=None, **options):
@@ -85,7 +84,7 @@ def simple_extraction(arffile, log=None, **options):
         for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
             attributes = dict(units='ms', datatype=arf.DataTypes.SPIKET,
                                method='threshold', threshold=thresh, window=options['window'],
-                               inverted=channel in options['inverted'], resamp=_spike_resamp,
+                               inverted=channel in options['inverted'], resamp=options['resamp'],
                                mspikes_version=extractor.__version__,)
             for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
                 if times.size > 0:
@@ -102,6 +101,10 @@ def klusters_extraction(arffile, log=None, **options):
 
     arffile: the file to analyze
     """
+    # commented lines in this function downsample the spike times to
+    # the original sampling rate. This fixes an issue with klusters
+    # where certain sampling rates cause horrible crashes, but throws
+    # away the sub-sampling-interval precision of spike times.
     from numpy import concatenate, column_stack
     channels = options.get('channels')
     threshs = options.get('thresholds')
@@ -111,12 +114,15 @@ def klusters_extraction(arffile, log=None, **options):
     kkwik_pool = []
     with klusters.klustersite(basename, **options) as ks:
         with arf.arf(arffile,'r') as arfp:
-            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:]) * _spike_resamp
+            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:]) * options['resamp']
+            #tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
             for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
                 alltimes = []
                 allspikes = []
                 for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
-                    times += long(entry.record['name'][1:])*_spike_resamp - tstamp_offset
+                    times += long(entry.record['name'][1:])*options['resamp'] - tstamp_offset
+                    #times /= options['resamp']
+                    #times += long(entry.record['name'][1:]) - tstamp_offset
                     alltimes.append(times)
                     allspikes.append(spikes)
                     lastt = times[-1]
@@ -134,7 +140,6 @@ def klusters_extraction(arffile, log=None, **options):
                         spike_features = column_stack((spike_projections, spike_measurements, alltimes))
                     else:
                         spike_features = column_stack((spike_projections, alltimes))
-                    #ks.addevents(spikes_aligned[800:850,:], spike_features[800:850,:])
                     ks.addevents(spikes_aligned, spike_features)
                     if log: log.write("Wrote data to klusters group %s.%d\n" % (basename, ks.group+1))
                     if options.get('kkwik',False):

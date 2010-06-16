@@ -35,8 +35,7 @@ Options:
 
 """
 import os, arf
-from extractor import __version__
-from spike_extract import _spike_resamp
+from extractor import __version__, _spike_resamp
 
 options = {
     'arf_add' : False,
