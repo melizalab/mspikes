@@ -9,10 +9,16 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 __version__ = "2.0a1"
+
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 _default_samplerate = 20000
 
-def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
+class _dummy_writer(object):
+    @staticmethod
+    def write(message):
+        pass
+
+def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwargs):
     """
     Extract spike times and waveforms from all the entries in an arf
     file.
@@ -49,8 +55,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('inverted',[])
 
-    if log: log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
-                      (channel, thresh, "abs" if absthresh else "rms"))
+    log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
+              (channel, thresh, "abs" if absthresh else "rms"))
     spikecount = 0
     for entry in arfp:
         data,Fs = entry.get_data(channel)
@@ -60,9 +66,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
             mean,rms = signal_stats(data)
 
         if maxrms and rms > maxrms:
-            if log:
-                log.write("S")
-                log.flush()
+            log.write("S")
+            log.flush()
             continue
 
         if not absthresh:
@@ -75,12 +80,11 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
             spike_w  = fftresample(spike_w, window * resamp * 2)
             spike_t  *= resamp
             spike_t  += find_peaks(spike_w, window * resamp, resamp)
-        if log:
-            log.write(".")
-            log.flush()
+        log.write(".")
+        log.flush()
         spikecount += spike_t.size
         yield entry, spike_t, spike_w, Fs * resamp
-    if log: log.write(" %d events\n" % spikecount)
+    log.write(" %d events\n" % spikecount)
 
 
 def find_peaks(spikes, peak, resamp):
@@ -197,7 +201,6 @@ def fftresample(S, npoints, axis=1):
     from scipy.fftpack import rfft, irfft
     Sf = rfft(S, axis=axis)
     return (1. * npoints / S.shape[axis]) * irfft(Sf, npoints, axis=axis, overwrite_x=1)
-
 
 # Variables:
 # End:
