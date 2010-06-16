@@ -145,7 +145,8 @@ def group_events(arffile, log=_dummy_writer, **options):
         groups, events = sort_events(basename, eptimes, log, units)
         if len(groups)==0:
             log.write("No valid units specified: exiting\n")
-            return
+        elif units is not None:
+            log.write("Extracting data from: %s\n" % units)
         tls = [defaultdict(toelis.toelis)] * len(groups)
         log.write("Sorting events: ")
         for i,spikes in enumerate(izip(*events)):

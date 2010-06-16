@@ -14,8 +14,8 @@ pcm_seq2 file.
 ** Requirements:
 
 Python version 2.5 or higher; numpy version >=1.3 (for numerics);
-scipy version >=0.5 (for FFT, SVD, and weave); pytables >= 2.0 (for
-generating and accessing the hdf5 version of the explog).
+scipy version >=0.5 (for FFT and linear algebra); and arf >=1.0.0, for 
+data IO.
 
 Optional: matplotlib >= 0.90 is used by spike_view to plot spike
 statistics and waveforms.  If this isn't installed, that script won't run.
@@ -23,9 +23,6 @@ statistics and waveforms.  If this isn't installed, that script won't run.
 ** Installation:
 
 In the mspikes directory, run python setup.py install
-
-The first time the scripts are run, weave may have to compile some
-of the inlined code.
 
 ** Copyright/Licence
 
@@ -38,63 +35,72 @@ Alike 3.0 United States License
 
 ** Usage:
 
-What we want to get to are toe_lis files with spike times for each
-presentation of the stimulus. Files should be grouped by recording
-site (pen/site commands in saber) and by unit. This is a multi-stage
-process, described below with example commands.  See the data/ directory
-for an example dataset and more detailed usage information.
+First, the raw saber data need to be converted to ARF format.  During
+this process the data is annotated with metadata found in the saber
+explog file.  The 'arfxplog' program that ships with arf is designed to
+convert a saber experiment to ARf format:
 
+$ arfxplog -v -a <animal> -e <experimenter> -T EXTRAC_HP -s <explog>
 
-1. Parse the explog file into series of tables describing the times,
-   locations, and associated stimuli for episodes. Optionally sort
-   pcm_seq2 files according to site. Run:
-   spike_extract <explog>
+Giving arfxplog the '-s' option causes it to split the data into files
+corresponding to recording site (pen/site commands in saber).  
 
-2. Eliminate unusable episodes. For instance, the animal might
-   have moved.  Single events can usually be sorted out; prolonged wiggling
-   generates big clusters of noise that can dramatically increase the
-   RMS of the signal.  Calculate the RMS of each entry and plot it
-   as a time series.  The bad episodes should pop out, even if the amount
-   of cellular activity varies greatly.  Use the -t or --start/--stop flags
-   in subsequent commands to exclude bad episodes.
+Second, inspect the data to determine which episodes and channels are
+likely to contain single- or multiple-unit activity.  For recordings
+in which the animal is awake it is usually desirable to exclude
+episodes where it moved.  Single events can usually be sorted out, but
+prolonged wiggling generates big clusters of noise that can
+dramatically increase the RMS of the signal. Plot the RMS for each
+episode using the following command:
+
+$ mspike_view --stats <site.arf>
+
+The bad episodes can be excluded at later stages based on RMS or
+time. The 'mspike_view' program can also be used to view the raw spike
+waveforms and determine an appropriate threshold for the window
+discriminator. It usually makes sense to set the threshold in terms of
+RMS units above the mean, since the DC offset and RMS noise level can
+shift over the course of acquisition.  The threshold can usually be
+set fairly low (around 4.5x RMS) because any single unit worth the
+name will cluster out from the noise. Use the following command to
+examine waveforms (restricting to channels of interest with the chan
+argument):
    
-   spike_view --stats -p <pen> -s <site> <explog.h5>
+$ mspike_view [--chan=<chan1>,<chan2>,...] <site.arf>
 
-3. Pick a threshold for the window discriminator. It usually makes
-   sense to set the threshold in terms of RMS units above the mean,
-   since the DC offset and RMS noise level can shift over the course
-   of acquisition.  The threshold can usually be set fairly low
-   (around 4.5x RMS) because any single unit worth the name will
-   cluster out from the noise. Use the following command to examine
-   waveforms (restricting to channels of interest with the chan argument):
-   
-   spike_view -p <pen> -s <site> [--chan=""] <explog.h5>
+IMPORTANT NOTE: Channels are numbered starting from 0. Multiple
+channels must be specified as a comma-separated list.
 
-   IMPORTANT NOTE: Channels are numbered starting from 0. Multiple channels
-   must be specified as a comma-separated list surrounded by quotes.
+Third, extract spike times and, optionally, spike waveforms.  For
+multi-unit activity or for extremely well isolated units, simple
+threshold detection is sufficient.  To detect spikes and store the
+event times in the ARF file, use the following command:
 
-4. Extract spikes and compute principal components of waveforms. 
-   Waveforms need to be upsampled and realigned before doing this.  
-   Then calculate the projections of the waveforms on the top N
-   principal components.
+$ mspike_extract --simple [--chan=<c1>,<c2>,...] -r <thresh> [OPTIONS] <site.arf>
 
-   spike_extract -p <pen> -s <site> [--chan=""] -r <thresh> <explog.h5>
+However, to isolate single units from noise and other units, it is
+necessary to extract the waveforms and compute one or more features of
+the spike waveforms.  Mspikes uses principal components as well as
+several direct measures of spike shape.  The following command will
+extract spike waveforms and measure features.
 
-   If -r is used to specify the threshold, the units are relative to the
-   RMS power of the episode (and the same as the units showed by spike_view)
-   Alternatively, set an absolute threshold using -a (in amplifier units)
+$ mspike_extract [--chan=<c1>,<c2>,...] -r <thresh> [OPTIONS] <site.arf>
 
-5. Sort spikes. The files generated in step (4) are usable by KlustaKwik
-   (for automated spike-sorting) and Klusters (for manual cluster cutting).
-   Recommend using KlustaKwik followed by Klusters to check clusters and
-   adjust as needed.  To automatically call KlustaKwik on the output of
-   spike_extract, add the --kkwik flag.
+This command will export data in a format readable by KlustaKwik (for
+automated spike-sorting) and Klusters (for manual cluster cutting).
+We recommend using KlustaKwik followed by Klusters to check clusters and
+adjust as needed.  To automatically call KlustaKwik on the output of
+mspike_extract, add the --kkwik flag.
 
-6. Aggregate events into episodes (based on the start/stop times of episodes)
-   and combine episodes based on the stimulus.  Output toe_lis files for each
-   stimulus and each unit.  There are many arguments to groupevents
-   that can be used to restrict output to specific episodes, units,
-   or stimuli.
+Finally, collate events based on unit, episode, and stimulus with the
+mspike_group tool:
 
-   groupevents ... <explog.h5>
+$ mspike_group -a -t <site.arf>
+
+The '-a' flag tells mspike_group to add event data to the original arf
+file, grouped by unit and entry.  The '-t' flag tells it to further
+organize the event data by stimulus, and output multi-repeat toe_lis
+files for each stimulus.  Both flags are optional.  Additional options
+are available to restrict the script to specific units, stimuli, and
+epidodes.
 
