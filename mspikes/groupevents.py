@@ -204,9 +204,9 @@ def main():
         elif o == '--stimulus':
             options['stimuli'] = tuple(x.strip() for x in a.split(','))
         elif o == '--start':
-            options['start'] = int(a)
+            options['start'] = float(a)
         elif o == '--stop':
-            options['stop'] = int(a)
+            options['stop'] = float(a)
         elif o == '-b':
             options['basename'] = a
 

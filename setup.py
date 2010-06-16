@@ -10,7 +10,7 @@ _readklu = Extension('_readklu', sources = ['src/readklu.cc'] )
 _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 
 setup(name = "mspikes",
-      version = "2.0a1",
+      version = "2.0a2",
       packages = find_packages(),
       entry_points = {'console_scripts': ['mspike_extract = mspikes.spike_extract:main',
                                           'mspike_group = mspikes.groupevents:main']},

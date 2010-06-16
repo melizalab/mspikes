@@ -22,6 +22,9 @@ Options:
  -t    RMS:        limit analysis to episodes where the total rms is less
                    than RMS.  Specify one value for all channels, or
                    comma-delimited list to specify per channel.
+                   
+ --start TIME:     only process episodes occurring between specified times,
+ --stop TIME:      in units of seconds
 
  -i [CHANS]:       invert data from specific channels (all if unspecified)
 
@@ -58,6 +61,8 @@ options = {
     'thresholds' : [4.5],
     'abs_thresh' : False,
     'max_rms' : [None],
+    'start' : None,
+    'stop' : None,
     'nfeats' : 3,
     'measurements' : (),
     'window' : 20,
@@ -188,7 +193,7 @@ def main():
     import sys, getopt
     try:
         opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:h",
-                                   ["chan=","simple","help","kkwik","version"])
+                                   ["chan=","start=","stop=","simple","help","kkwik","version"])
     except getopt.GetoptError, e:
         print "Error: %s" % e
         sys.exit(-1)
@@ -208,6 +213,10 @@ def main():
             if o == '-a': options['abs_thresh'] = True
         elif o == '-t':
             options['max_rms'] = tuple(float(x) for x in a.split(','))
+        elif o == '--start':
+            options['start'] = float(a)
+        elif o == '--stop':
+            options['stop'] = float(a)
         elif o == '-i':
             options['inverted'] = tuple(int(x) for x in a.split(','))
         elif o == '-f':

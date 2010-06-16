@@ -8,7 +8,7 @@ Free for use under Creative Commons Attribution-Noncommercial-Share
 Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-__version__ = "2.0a1"
+__version__ = "2.0a2"
 
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 _default_samplerate = 20000
@@ -30,6 +30,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
                     if it exceeds this value it is skipped
     log:            if not None, output some status information here
 
+    start:          if not None, exclude episodes starting before this time (in sec)
+    stop:          if not None, exclude episodes starting after this time (in sec)    
     abs_thresh:     if True, thresholding is absolute
     inverted:       if True, or if (channel in inverted), invert signal prior to processing
     window:         the number of samples per spike (def. 20)
@@ -54,11 +56,18 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     refrac = kwargs.get('refrac',window)
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('inverted',[])
-
+    start, stop = kwargs.get('start',None), kwargs.get('stop',None)
+    
     log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
               (channel, thresh, "abs" if absthresh else "rms"))
     spikecount = 0
+    first_episode_time = arfp._get_catalog().cols.timestamp[:].min()
     for entry in arfp:
+        log.flush()
+        etime = entry.record['timestamp'] - first_episode_time
+        if (start and etime < start) or (stop and etime > stop):
+            log.write("S")
+            continue
         data,Fs = entry.get_data(channel)
         if invert or channel in invert:
             data *= -1
@@ -67,7 +76,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 
         if maxrms and rms > maxrms:
             log.write("S")
-            log.flush()
             continue
 
         if not absthresh:
@@ -81,7 +89,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
             spike_t  *= resamp
             spike_t  += find_peaks(spike_w, window * resamp, resamp)
         log.write(".")
-        log.flush()
         spikecount += spike_t.size
         yield entry, spike_t, spike_w, Fs * resamp
     log.write(" %d events\n" % spikecount)
