@@ -8,6 +8,7 @@ Free for use under Creative Commons Attribution-Noncommercial-Share
 Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
+__version__ = "2.0a1"
 
 def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
     """
@@ -30,9 +31,12 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
 
     Yields:
     entry:            the current entry object
-    spike times:      spike times
+    spike times:      spike times, in units of (samples * resamp). E.g, if
+                      data are sampled at 20 kHz and resampled 3x, a spike
+                      occurring at 1 ms would have a time of 60.
     spike waveforms:  the waveforms for each spike, with dimension
                       nevents x window * resamp
+    sampling rate:    sampling rate of waveform (and time units)
     """
     from numpy import where
     from spikes import spike_times, extract_spikes, signal_stats
@@ -67,12 +71,13 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=None, **kwargs):
         spike_w = extract_spikes(data, spike_t, window)
         if resamp > 1:
             spike_w  = fftresample(spike_w, window * resamp * 2)
-            spike_t += find_peaks(spike_w, window * resamp, resamp)
+            spike_t  *= resamp
+            spike_t  += find_peaks(spike_w, window * resamp, resamp)
         if log:
             log.write(".")
             log.flush()
         spikecount += spike_t.size
-        yield entry, 1./ Fs * spike_t, spike_w
+        yield entry, spike_t, spike_w, Fs * resamp
     if log: log.write(" %d events\n" % spikecount)
 
 

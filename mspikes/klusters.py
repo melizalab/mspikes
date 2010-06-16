@@ -31,6 +31,10 @@ class klustersite(object):
     >>>     ks.group += 1
     >>>     ks.addevents(spikes, features)
     """
+    _spktemplate = "%s.spk.%d"
+    _clutemplate = "%s.clu.%d"
+    _fettemplate = "%s.fet.%d"
+
     def __init__(self, sitename, **kwargs):
         """
         Initialize a klusters site.
@@ -49,6 +53,7 @@ class klustersite(object):
         self.nfeatures = tuple((kwargs['nfeats'] + len(kwargs['measurements'])) * len(c) + 1 for c in self.groups)
         self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
         self.thresh = kwargs['thresholds']
+        self.samplerate = 20000 * kwargs['resamp'] # for some reason, if this correct klusters has major crashes
         self.writexml()
 
         self.spk = defaultdict(self._openspikefile)
@@ -65,6 +70,31 @@ class klustersite(object):
         for v in self.clu.values(): v.close()
         for v in self.fet.values(): v.close()
 
+    @property
+    def spikefile(self):
+        return self._spktemplate % (self.sitename, self.group + 1)
+
+    @property
+    def clufile(self):
+        return self._clutemplate  % (self.sitename, self.group + 1)
+
+    @property
+    def fetfile(self):
+        return self._fettemplate % (self.sitename, self.group + 1)
+
+    def _openspikefile(self):
+        """ Open handle to spike file """
+        return open(self.spikefile,'wb')
+
+    def _openclufile(self):
+        fp = open(self.clufile,'wt')
+        fp.write("1\n")
+        return fp
+
+    def _openfetfile(self):
+        fp = open(self.fetfile,'wt')
+        fp.write("%d\n" % self.nfeatures[self.group])
+        return fp
 
     def writexml(self):
         """  Generate the xml file for the site """
@@ -74,7 +104,7 @@ class klustersite(object):
                            " <acquisitionSystem>\n",
                            "  <nBits>16</nBits>\n",
                            "  <nChannels>%d</nChannels>\n" % total_channels,
-                           "  <samplingRate>20000</samplingRate>\n",
+                           "  <samplingRate>%d</samplingRate>\n" % self.samplerate,
                            "  <voltageRange>20</voltageRange>\n",
                            "  <amplification>100</amplification>\n",
                            "  <offset>0</offset>\n",
@@ -121,26 +151,13 @@ class klustersite(object):
         fp = self.clu[self.group]
         for j in xrange(features.shape[0]): fp.write("1\n")
 
-    def _openspikefile(self):
-        """ Open handle to spike file """
-        return open("%s.spk.%d" % (self.sitename, self.group + 1),'wb')
-
-    def _openclufile(self):
-        fp = open("%s.clu.%d" % (self.sitename, self.group + 1),'wt')
-        fp.write("1\n")
-        return fp
-
-    def _openfetfile(self):
-        fp = open("%s.fet.%d" % (self.sitename, self.group + 1),'wt')
-        fp.write("%d\n" % self.nfeatures[self.group])
-        return fp
-
     def run_klustakwik(self):
         """ Runs KlustaKwik on the current group """
         from subprocess import Popen
         nfeats = self.nkfeats[self.group]
         totfeats = self.nfeatures[self.group]
-        self.fet[self.group].flush()
+        self.fet[self.group].close()
+        self.clu[self.group].close()
         cmd = ["KlustaKwik",self.sitename,str(self.group+1),
                "-Screen","0",
                "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]

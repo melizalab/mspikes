@@ -12,8 +12,9 @@ _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 setup(name = "mspikes",
       version = "2.0a1",
       packages = find_packages(),
-      #scripts = ['spike_view','spike_extract','groupevents'],
-
+      entry_points = {'console_scripts': ['mspike_extract = mspikes.spike_extract:main',
+                                          'mspike_group = mspikes.groupevents:main']},
+      
       description = """ Python scripts and modules for processing
       spike data from SABER, a data acquisition program that stores
       data in pcm_seq2 format and writes metadata to a flat 'explog'

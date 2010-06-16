@@ -50,9 +50,10 @@ Options:
 #If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
 
 import os
-from mspikes import __version__
 import arf
 import extractor, klusters
+
+_spike_resamp = 3
 
 options = {
     'thresholds' : [4.5],
@@ -65,8 +66,7 @@ options = {
     'inverted' : (),
     'kkwik': False,
     'simple' : False,
-    'resamp' : 3,
-    'refrac' : 20,
+    'resamp' : _spike_resamp,
     }
 
 def simple_extraction(arffile, log=None, **options):
@@ -83,14 +83,14 @@ def simple_extraction(arffile, log=None, **options):
     rmsthreshs = options.get('max_rms')
     with arf.arf(arffile,'a') as arfp:
         for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
-            attributes = dict(units='s', datatype=arf.DataTypes.SPIKET,
+            attributes = dict(units='ms', datatype=arf.DataTypes.SPIKET,
                                method='threshold', threshold=thresh, window=options['window'],
-                               inverted=channel in options['inverted'], resamp=options['resamp'],
-                               refrac=options['refrac'], mspikes_version=__version__,)
-            for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
+                               inverted=channel in options['inverted'], resamp=_spike_resamp,
+                               mspikes_version=extractor.__version__,)
+            for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
                 if times.size > 0:
                     chan_name = entry.get_record(channel)['name'] + '_thresh'
-                    entry.add_data((times,), chan_name, replace=True, **attributes)
+                    entry.add_data((times * 1000. / Fs,), chan_name, replace=True, **attributes)
 
 
 def klusters_extraction(arffile, log=None, **options):
@@ -111,30 +111,32 @@ def klusters_extraction(arffile, log=None, **options):
     kkwik_pool = []
     with klusters.klustersite(basename, **options) as ks:
         with arf.arf(arffile,'r') as arfp:
-            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
+            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:]) * _spike_resamp
             for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
                 alltimes = []
                 allspikes = []
-                for entry, times, spikes in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
-                    times *= 20000
-                    times += float(long(entry.record['name'][1:]) - tstamp_offset)
+                for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
+                    times += long(entry.record['name'][1:])*_spike_resamp - tstamp_offset
                     alltimes.append(times)
                     allspikes.append(spikes)
                     lastt = times[-1]
                 if sum(x.size for x in alltimes) == 0:
                     if log: log.write("Skipping channel\n")
                 else:
+                    alltimes = concatenate(alltimes)
+                    klusters.check_times(alltimes)
                     if log: log.write("Aligning spikes\n")
                     spikes_aligned = extractor.align_spikes(concatenate(allspikes,axis=0), **options)
                     if log: log.write("Calculating features\n")
                     spike_projections = extractor.projections(spikes_aligned, **options)[0]
                     spike_measurements = extractor.measurements(spikes_aligned, **options)
                     if spike_measurements is not None:
-                        spike_features = column_stack((spike_projections, spike_measurements, concatenate(alltimes)))
+                        spike_features = column_stack((spike_projections, spike_measurements, alltimes))
                     else:
-                        spike_features = column_stack((spike_projections, concatenate(alltimes)))
+                        spike_features = column_stack((spike_projections, alltimes))
+                    #ks.addevents(spikes_aligned[800:850,:], spike_features[800:850,:])
                     ks.addevents(spikes_aligned, spike_features)
-                    if log: log.write("Wrote data to klusters group %s.%d\n" % (basename, ks.group))
+                    if log: log.write("Wrote data to klusters group %s.%d\n" % (basename, ks.group+1))
                     if options.get('kkwik',False):
                         if log: log.write("Starting KlustaKwik\n")
                         kkwik_pool.append(ks.run_klustakwik())
@@ -176,7 +178,7 @@ def channel_options(options):
 def main():
     import sys, getopt
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:",
+        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:h",
                                    ["chan=","simple","help","kkwik","version"])
     except getopt.GetoptError, e:
         print "Error: %s" % e
@@ -187,7 +189,7 @@ def main():
             print __doc__
             sys.exit(0)
         elif o == '--version':
-            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
+            print "%s version: %s" % (os.path.basename(sys.argv[0]), extractor.__version__)
             sys.exit(0)
         elif o in ('-c','--chan'):
             #exec "chans = [%s]" % a
