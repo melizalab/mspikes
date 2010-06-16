@@ -5,111 +5,146 @@
 # Alike 3.0 United States License
 # (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-spike_view - inspect waveforms and statistics of pcm spike data
+mspike_view - inspect waveforms and statistics of pcm spike data
 
-Usage:
+Usage: spike_view [OPTIONS] <sitefile.arf>
 
-spike_view [-h|-v]: Display help or version information
+ --stats:     Plot total RMS for each channel. Otherwise plot raw waveforms.
+              This is a computationally intensive operation for multichannel data.
 
-spike_view -p <pen> -s <site> [--chan=""] [--units=<clufile>] <explog.h5>
+ --chan CHANNELS : specify which channels to analyze, multiple channels
+ -c CHANNELS       as a list, i.e. --chan='1,5,7' will plot data from channels
+                   1,5, and 7
 
-     Plots raw waveform data for episodes in a pen/site
-
-     --chan: specify which channels to plot (single number, or comma-delimited
-     list)
-
-     --units: specify a Klusters .clu file to annotate the data with spike times
-     (only works when a single channel is specified)
-
-spike_view --stats -p <pen> -s <site> [--chan=""] <explog.h5>
-
-     Plots the RMS of each episode as a time series.  Useful for determining when
-     episodes are corrupted by movement artefacts, etc.  If you plan to use
-     the -t flag in spike_extract, make sure you specify the channels you plan to
-     extract from, since RMS can vary considerably across channels.
-
-Note that the explog must be preprocessed prior to using this command;
-see spike_extract
+ --unit UNITS :    specify channels with event time data to overlay on the raw
+ -u UNITS          data
 
 C. Daniel Meliza, 2008
 """
 
-import os, sys, getopt
-from mspikes import __version__
+import os
+import arf
+from extractor import __version__, _default_samplerate
+import itertools
 
+options = {
+    'channels' : None,
+    'units' : None,
+    'plot_stats': False,
+    }
 
-def sitestats(elog, channels=None, pen=None, site=None):
+def entry_stats(arffile, **options):
+    """ Calculate RMS of each entry for each channel """
+    from collections import defaultdict
+    from spikes import signal_stats
+    from numpy import ones, nan
+    channels = options.get('channels',None)
+
+    with arf.arf(arffile,'r') as arfp:
+        sr = arfp.get_attributes(key='sampling_rate') or _default_samplerate
+        etime = arfp._get_catalog().cols.timestamp[:]
+        etime -= etime.min()
+        stats = defaultdict(lambda : ones(etime.size) * nan)
+        for i,entry in enumerate(arfp):
+            for channel in entry._get_catalog():
+                cname = channel['name']
+                if channels is not None and cname not in channels: continue
+                if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
+                    data,Fs = entry.get_data(cname)
+                    mean,rms = signal_stats(data)
+                    stats[cname][i] = rms
+    return etime, dict(stats)
+
+def plot_stats(arffile, **options):
+    import matplotlib.pyplot as plt
+    time,stats = entry_stats(arffile, **options)
+    nchan = len(stats)
+
+    fig = plt.figure()
+    grid = [fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
+    fig.subplots_adjust(hspace=0.)
+    for i,k in enumerate(sorted(stats.keys())):
+        grid[i].plot(time,stats[k],'o')
+    plt.setp(grid[:-1],'xticks',[])
+
+    return fig
+
+class dataiter(object):
     """
-    Calculates the first and second moments for each entry.
-    Returns 2 NxP arrays, where N is the number of episodes
-    and P is the number of channels; and a 1xN vector with
-    the episode abstimes
+    Provides backwards/forwards iteration through arf file, returning
+    data in the EXTRAC_HP channels and attempting to annotate them
+    with the appropriate spike data.
 
-    channels - restrict analysis to particular channels
+    Yields: {c1name:{'pcm':c1,u1name:u1a,u1bname:u1b,...},...}
     """
-    oldsite = elog.site
-    if pen!=None and site!=None:
-        elog.site = (pen,site)
-    files = elog.getfiles()
-    files.sort(order=('abstime','channel'))
 
-    # restrict to specified channels
-    if channels!=None:
-        ind = nx.asarray([(x in channels) for x in files['channel']])
-        if ind.sum()==0:
-            raise ValueError, "Channels argument does not specify any valid channels"
-        files = files[ind]
+    def __init__(self, arfp, **options):
+        self.channels = options.get('channels',None)
+        self.units = options.get('units',None)
+        self.arfp = arfp
+        self.cache = {}
+        self.position = -1
 
-    chanid = nx.unique(files['channel'])
-    nchan = chanid.size
-    chanidx = nx.zeros(chanid.max()+1,dtype='i')    # we know these are integers
-    for ind,id in enumerate(chanid): chanidx[id] = ind
+    def next(self):
+        if self.position == self.arfp.nentries - 1 : raise StopIteration, "Reached end of ARF file"
+        self.position += 1
+        entry = self.arfp[self.position]
+        if self.position not in self.cache:
+            self._load_data(entry)
+        return entry, self.cache[self.position]
 
-    neps = len(files) / nchan
+    def prev(self):
+        if self.position <= 0: raise StopIteration, "Reached beginning of ARF file"
+        self.position -= 1
+        entry = self.arfp[self.position]
+        if self.position not in self.cache:
+            self._load_data(entry)
+        return entry, self.cache[self.position]
 
-    mu = nx.zeros((neps,nchan))
-    rms = nx.zeros((neps,nchan))
-    fcache = filecache()
-    fcache.handler = _pcmseqio.pcmfile
-    for i,file in enumerate(files):
-        pfp = fcache[file['filebase']]
-        pfp.entry = file['entry']
-        stats = signalstats(pfp.read())
-        col = chanidx[file['channel']]
-        row = i / nchan
-        mu[row,col] = stats[0]
-        rms[row,col] = stats[1]
+    def _load_data(self, entry):
+        from collections import defaultdict
+        out = defaultdict(dict)
+        catalog = entry._get_catalog().read()
+        for channel in catalog:
+            cname = channel['name']
+            if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
+                if self.channels is not None and cname not in self.channels: continue
+                data,Fs = entry.get_data(cname)
+                out[cname]['pcm'] = data
+                out[cname]['sampling_rate'] = Fs
+            elif channel['datatype'] == arf.DataTypes.SPIKET:
+                if self.units is not None and cname not in self.units: continue
+                node = getattr(entry,channel['node'])
+                try:
+                    for sc in node.attrs.source_channels[channel['column']]:
+                        src_cname = catalog[sc]['name']
+                        if src_cname in out:
+                            out[src_cname][cname] = entry.get_data(cname)
+                except:
+                    pass
+        self.cache[entry.index] = dict(out)
 
-    elog.site = oldsite
-    return mu, rms, nx.unique(files['abstime'])
+    
+def plot_waveforms(arffile, **options):
+    import matplotlib.pyplot as plt
 
+    datag = iter_data(arffile, **options)
 
-### Check options before loading modules, which are pretty heavy
-if __name__=="__main__":
+    #def next_
+    entry,data = datag.next()
+    nchan = len(data)
 
-    if len(sys.argv)<2:
-        print __doc__
-        sys.exit(-1)
-    opts, args = getopt.getopt(sys.argv[1:], "p:s:hv",
-                               ["stats", "chan=","units=","help","version",])
-    opts = dict(opts)
-    if opts.has_key('-h') or opts.has_key('--help'):
-            print __doc__
-            sys.exit(-1)
-    if opts.has_key('-v') or opts.has_key('--version'):
-        print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
-        sys.exit(0)
-###
+    fig = plt.figure()
+    grid = [fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
+    fig.subplots_adjust(hspace=0.)
+    for i,k in enumerate(sorted(data.keys())):
+        grid[i].plot(data[k]['pcm'])
 
-import numpy as nx
-from mspikes import explog, _pcmseqio, klusters
-from mspikes.utils import signalstats, filecache
-from pylab import figure, setp, connect, show, ioff, draw
+    return fig
+                    
+    
 
-# cache handles to files
-_fcache = filecache()
-_fcache.handler = _pcmseqio.pcmfile
-
+## from pylab import figure, setp, connect, show, ioff, draw
 
 # colors used in labelling spikes
 _manycolors = ['b','g','r','#00eeee','m','y',
@@ -117,16 +152,7 @@ _manycolors = ['b','g','r','#00eeee','m','y',
                'burlywood','darkgreen','sienna','crimson',
                ]
 
-def colorcycle(ind=None, colors=_manycolors):
-    """
-    Returns the color cycle, or a color cycle, for manually advancing
-    line colors.
-    """
-    if ind != None:
-        return colors[ind % len(colors)]
-    else:
-        return colors
-
+colorcycle = itertools.cycle(_manycolors)
 
 def plotentry(k, entry, channels=None, eventlist=None, fig=None):
     atime = k.getentrytimes(entry)
@@ -186,52 +212,43 @@ def plotevents(ax, t, y, entry, eventlist):
         p = ax.plot(times, values,'o')
         p[0].set_markerfacecolor(colorcycle(j))
 
+def main():
+    import sys, getopt
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "c:u:h",
+                                   ["chan=","unit=","stats","help","version"])
+    except getopt.GetoptError, e:
+        print "Error: %s" % e
+        sys.exit(-1)
 
-def extractevents(unitfile, elog, Fs=1.0):
-    # this might fail if the clu file has a funny name
-    ffields = unitfile.split('.')
-    assert len(ffields) > 2, "The specified cluster file '%s' does not have the right format" % unitfile
-    cfile = ".".join(ffields[:-2] + ["clu",ffields[-1]])
-    ffile = ".".join(ffields[:-2] + ["fet",ffields[-1]])
-    assert os.path.exists(cfile), "The specified cluster file '%s' does not exist" % cfile
-    assert os.path.exists(ffile), "The specified feature file '%s' does not exist" % ffile
+    for o,a in opts:
+        if o in ('-h','--help'):
+            print __doc__
+            sys.exit(0)
+        elif o == '--version':
+            print "%s version: %s" % (os.path.basename(sys.argv[0]), extractor.__version__)
+            sys.exit(0)
+        elif o in ('-c','--chan'):
+            options['channels'] = tuple(int(x) for x in a.split(','))
+        elif o in ('-u','--unit'):
+            if len(a) > 0:
+                options['units'] = tuple(int(x) for x in a.split(','))
+            else:
+                options['units'] = ''  # try to figure out unit-channel match
+        elif o == '--stats':
+            options['plot_stats'] = True
+    
+    if len(args) != 1:
+        print "Error: no input file specified"
+        sys.exit(-1)
 
-    atimes = elog.getentrytimes().tolist()
-    atimes.sort()
-    return klusters._readklu.readclusters(ffile, cfile, atimes, Fs)
-
+    if options['plot_stats']:
+        plot_stats(args, **options)
+    else:
+        plot_waveforms(args, **options)
 
 ####  SCRIPT
 if __name__=="__main__":
-
-    assert len(args) == 1, "Error: specify a parsed explog file."
-    infile = args[0]
-    assert os.path.splitext(infile)[-1], "Error: input file must be an hdf5 file (parsed explog)"
-
-    ### all drawing is offscreen
-    ioff()
-
-    ### all other modes require pen and site
-    if opts.has_key('-p'):
-        pen = int(opts['-p'])
-    else:
-        print "Error: must specify pen/site"
-        sys.exit(-1)
-    if opts.has_key('-s'):
-        site = int(opts['-s'])
-    else:
-        print "Error: must specify pen/site"
-        sys.exit(-1)
-
-    # open the kluster.site object
-    k = explog.explog(infile)
-    k.site = (pen,site)
-
-    # process channel argument
-    if opts.has_key('--chan'):
-        exec "chans = [%s]" % opts['--chan']
-    else:
-        chans = None
 
     ### STATS:
     if opts.has_key('--stats'):
