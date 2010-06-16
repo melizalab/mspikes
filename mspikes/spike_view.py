@@ -38,6 +38,52 @@ import os, sys, getopt
 from mspikes import __version__
 
 
+def sitestats(elog, channels=None, pen=None, site=None):
+    """
+    Calculates the first and second moments for each entry.
+    Returns 2 NxP arrays, where N is the number of episodes
+    and P is the number of channels; and a 1xN vector with
+    the episode abstimes
+
+    channels - restrict analysis to particular channels
+    """
+    oldsite = elog.site
+    if pen!=None and site!=None:
+        elog.site = (pen,site)
+    files = elog.getfiles()
+    files.sort(order=('abstime','channel'))
+
+    # restrict to specified channels
+    if channels!=None:
+        ind = nx.asarray([(x in channels) for x in files['channel']])
+        if ind.sum()==0:
+            raise ValueError, "Channels argument does not specify any valid channels"
+        files = files[ind]
+
+    chanid = nx.unique(files['channel'])
+    nchan = chanid.size
+    chanidx = nx.zeros(chanid.max()+1,dtype='i')    # we know these are integers
+    for ind,id in enumerate(chanid): chanidx[id] = ind
+
+    neps = len(files) / nchan
+
+    mu = nx.zeros((neps,nchan))
+    rms = nx.zeros((neps,nchan))
+    fcache = filecache()
+    fcache.handler = _pcmseqio.pcmfile
+    for i,file in enumerate(files):
+        pfp = fcache[file['filebase']]
+        pfp.entry = file['entry']
+        stats = signalstats(pfp.read())
+        col = chanidx[file['channel']]
+        row = i / nchan
+        mu[row,col] = stats[0]
+        rms[row,col] = stats[1]
+
+    elog.site = oldsite
+    return mu, rms, nx.unique(files['abstime'])
+
+
 ### Check options before loading modules, which are pretty heavy
 if __name__=="__main__":
 
