@@ -43,7 +43,9 @@ convert a saber experiment to ARf format:
 $ arfxplog -v -a <animal> -e <experimenter> -T EXTRAC_HP -s <explog>
 
 Giving arfxplog the '-s' option causes it to split the data into files
-corresponding to recording site (pen/site commands in saber).  
+corresponding to recording site (pen/site commands in saber).
+IMPORTANT: specify the data type as EXTRAC_HP if you want to see it in
+mspike_view.
 
 Second, inspect the data to determine which episodes and channels are
 likely to contain single- or multiple-unit activity.  For recordings

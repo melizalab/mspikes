@@ -22,10 +22,11 @@ Usage: spike_view [OPTIONS] <sitefile.arf>
 C. Daniel Meliza, 2008
 """
 
-import os
+import os, itertools
 import arf
-from extractor import __version__, _default_samplerate
-import itertools
+from extractor import __version__, _default_samplerate, _dummy_writer
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid.parasite_axes import SubplotHost
 
 options = {
     'channels' : None,
@@ -33,31 +34,34 @@ options = {
     'plot_stats': False,
     }
 
-def entry_stats(arffile, **options):
+def entry_stats(arfp, log=_dummy_writer, **options):
     """ Calculate RMS of each entry for each channel """
     from collections import defaultdict
     from spikes import signal_stats
     from numpy import ones, nan
     channels = options.get('channels',None)
 
-    with arf.arf(arffile,'r') as arfp:
-        sr = arfp.get_attributes(key='sampling_rate') or _default_samplerate
-        etime = arfp._get_catalog().cols.timestamp[:]
-        etime -= etime.min()
-        stats = defaultdict(lambda : ones(etime.size) * nan)
-        for i,entry in enumerate(arfp):
-            for channel in entry._get_catalog():
-                cname = channel['name']
-                if channels is not None and cname not in channels: continue
-                if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
-                    data,Fs = entry.get_data(cname)
-                    mean,rms = signal_stats(data)
-                    stats[cname][i] = rms
+    sr = arfp.get_attributes(key='sampling_rate') or _default_samplerate
+    etime = arfp._get_catalog().cols.timestamp[:]
+    etime -= etime.min()
+    stats = defaultdict(lambda : ones(etime.size) * nan)
+    log.write("Calculating statistics ")
+    for i,entry in enumerate(arfp):
+        for channel in entry._get_catalog():
+            cname = channel['name']
+            if channels is not None and cname not in channels: continue
+            if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
+                data,Fs = entry.get_data(cname)
+                mean,rms = signal_stats(data)
+                stats[cname][i] = rms
+        log.write(".")
+        log.flush()
+    log.write(" done\n")
     return etime, dict(stats)
 
-def plot_stats(arffile, **options):
+def plot_stats(arfp, **options):
     import matplotlib.pyplot as plt
-    time,stats = entry_stats(arffile, **options)
+    time,stats = entry_stats(arfp, **options)
     nchan = len(stats)
 
     fig = plt.figure()
@@ -65,11 +69,14 @@ def plot_stats(arffile, **options):
     fig.subplots_adjust(hspace=0.)
     for i,k in enumerate(sorted(stats.keys())):
         grid[i].plot(time,stats[k],'o')
+        grid[i].set_ylabel(k)
     plt.setp(grid[:-1],'xticks',[])
+    grid[0].set_title("RMS")
+    grid[-1].set_xlabel("Time (s)")
 
     return fig
 
-class dataiter(object):
+class arfcache(object):
     """
     Provides backwards/forwards iteration through arf file, returning
     data in the EXTRAC_HP channels and attempting to annotate them
@@ -86,7 +93,7 @@ class dataiter(object):
         self.position = -1
 
     def next(self):
-        if self.position == self.arfp.nentries - 1 : raise StopIteration, "Reached end of ARF file"
+        if self.position + 1 >= self.arfp.nentries: raise StopIteration
         self.position += 1
         entry = self.arfp[self.position]
         if self.position not in self.cache:
@@ -94,7 +101,7 @@ class dataiter(object):
         return entry, self.cache[self.position]
 
     def prev(self):
-        if self.position <= 0: raise StopIteration, "Reached beginning of ARF file"
+        if self.position <= 0: raise StopIteration
         self.position -= 1
         entry = self.arfp[self.position]
         if self.position not in self.cache:
@@ -124,93 +131,59 @@ class dataiter(object):
                     pass
         self.cache[entry.index] = dict(out)
 
+class plotter(object):
+
+    def __init__(self, arfp, **options):
+        self.cache = arfcache(arfp, **options)
+        self.create_figure()
+        self.entry, self.data = self.cache.next()
+
+    def create_figure(self):
+        plt.rcParams['path.simplify'] = False
+        self.fig = plt.figure()
+        self.fig.canvas.mpl_connect('key_press_event',self.keypress)
+
+    def keypress(self, event):
+        if event.key in ('+', '='):
+            try:
+                self.entry, self.data = self.cache.next()
+                self.update()
+            except:
+                pass
+        elif event.key in ('-', '_'):
+            try:
+                self.entry,self.data = self.cache.prev()
+                self.update()
+            except:
+                pass
+
+    def update(self):
+        from numpy import linspace
+        if self.entry is None: return
+        nchan = len(self.data)
+        grid = self.fig.axes
+        if len(grid) != nchan:
+            self.fig.clf()
+            grid = [self.fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
+            self.fig.subplots_adjust(hspace=0.)
+        for i,k in enumerate(sorted(self.data.keys())):
+            d = self.data[k]['pcm']
+            Fs = self.data[k]['sampling_rate'] / 1000.
+            t = linspace(0, d.size/Fs, d.size)
+            stuff = [t,d,'k']
+            for q,times in self.data[k].items():
+                if q not in ('pcm','sampling_rate'):
+                    ind = t.searchsorted(times)
+                    stuff.extend((times,d[ind],'o'))
+            grid[i].plot(*stuff)
+            grid[i].set_xlim((0,d.size/Fs))
+            grid[i].set_ylabel(k)
+            # to do: add RMS scale
+
+        plt.setp(grid[:-1], 'xticklabels', '')
+        grid[0].set_title('entry %d: %s (%s)' % (self.entry.index, self.entry._v_name, self.entry.record['protocol']))
+        grid[-1].set_xlabel('Time (ms)')
     
-def plot_waveforms(arffile, **options):
-    import matplotlib.pyplot as plt
-
-    datag = iter_data(arffile, **options)
-
-    #def next_
-    entry,data = datag.next()
-    nchan = len(data)
-
-    fig = plt.figure()
-    grid = [fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
-    fig.subplots_adjust(hspace=0.)
-    for i,k in enumerate(sorted(data.keys())):
-        grid[i].plot(data[k]['pcm'])
-
-    return fig
-                    
-    
-
-## from pylab import figure, setp, connect, show, ioff, draw
-
-# colors used in labelling spikes
-_manycolors = ['b','g','r','#00eeee','m','y',
-               'teal',  'maroon', 'olive', 'orange', 'steelblue', 'darkviolet',
-               'burlywood','darkgreen','sienna','crimson',
-               ]
-
-colorcycle = itertools.cycle(_manycolors)
-
-def plotentry(k, entry, channels=None, eventlist=None, fig=None):
-    atime = k.getentrytimes(entry)
-    stim = k.getstimulus(atime)['name']
-    files = k.getfiles(atime)
-    files.sort(order='channel')
-    pfp = []
-    for f in files:
-        fp = _fcache[f['filebase'].tostring()]
-        fp.entry = f['entry']
-        pfp.append(fp)
-    if channels==None:
-        channels = files['channel'].tolist()
-
-    nplots = len(channels)
-    # clear the figure and create subplots if needed
-    if fig==None:
-        fig = figure()
-
-    ax = fig.get_axes()
-
-    if len(ax) != nplots:
-        fig.clf()
-        ax = []
-        for i in range(nplots):
-            ax.append(fig.add_subplot(nplots,1,i+1))
-        fig.subplots_adjust(hspace=0.)
-
-    for i in range(nplots):
-        s = pfp[channels[i]].read()
-        t = nx.linspace(0,s.shape[0]/k.samplerate,s.shape[0])
-        mu,rms = signalstats(s)
-        y = (s - mu)/rms
-
-        ax[i].cla()
-        ax[i].hold(True)
-        ax[i].plot(t,y,'k')
-        ax[i].set_ylabel("%d" % channels[i])
-        if eventlist!=None:
-            plotevents(ax[i], t, y, entry, eventlist)
-
-    # fiddle with the plots a little to make them pretty
-    for i in range(len(ax)-1):
-        setp(ax[i].get_xticklabels(),visible=False)
-
-    ax[0].set_title('site_%d_%d (%d) %s' % (k.site + (entry,stim)))
-    ax[-1].set_xlabel('Time (ms)')
-    draw()
-    return fig
-
-
-def plotevents(ax, t, y, entry, eventlist):
-    for j in range(len(eventlist)):
-        idx = nx.asarray(eventlist[j][entry],dtype='i')
-        times = t[idx]
-        values = y[idx]
-        p = ax.plot(times, values,'o')
-        p[0].set_markerfacecolor(colorcycle(j))
 
 def main():
     import sys, getopt
@@ -229,10 +202,10 @@ def main():
             print "%s version: %s" % (os.path.basename(sys.argv[0]), extractor.__version__)
             sys.exit(0)
         elif o in ('-c','--chan'):
-            options['channels'] = tuple(int(x) for x in a.split(','))
+            options['channels'] = a.split(',')
         elif o in ('-u','--unit'):
             if len(a) > 0:
-                options['units'] = tuple(int(x) for x in a.split(','))
+                options['units'] = a.split(',')
             else:
                 options['units'] = ''  # try to figure out unit-channel match
         elif o == '--stats':
@@ -242,48 +215,13 @@ def main():
         print "Error: no input file specified"
         sys.exit(-1)
 
-    if options['plot_stats']:
-        plot_stats(args, **options)
-    else:
-        plot_waveforms(args, **options)
-
-####  SCRIPT
-if __name__=="__main__":
-
-    ### STATS:
-    if opts.has_key('--stats'):
-        # stats mode computes statistics for the site
-        m,rms,t = klusters.sitestats(k, channels=chans)
-        if rms.ndim > 1:
-            rms = rms.mean(1)
-        # plot them
-        fig = figure()
-        ax = fig.add_subplot(111)
-        ax.plot(rms,'o')
-        ax.set_xlabel('Entry')
-        ax.set_ylabel('RMS')
-        show()
-
-    ### INSPECT:
-    else:
-
-        if opts.has_key('--units') and (k.nchannels==1 or (chans != None and len(chans)==1)):
-            events = extractevents(opts['--units'], k)
+    with arf.arf(args[0],'r') as arfp:
+        if options['plot_stats']:
+            plot_stats(arfp, log=sys.stdout, **options)
         else:
-            events = None
+            pltter = plotter(arfp, **options)
+            pltter.update()
+        plt.show()
 
-        def keypress(event):
-            if event.key in ('+', '='):
-                keypress.currententry += 1
-                plotentry(k, keypress.currententry, channels=chans, eventlist=events, fig=fig)
-            elif event.key in ('-', '_'):
-                keypress.currententry -= 1
-                plotentry(k, keypress.currententry, channels=chans, eventlist=events, fig=fig)
-
-        keypress.currententry = int(opts.get('-e','0'))
-        fig = plotentry(k, keypress.currententry, channels=chans, eventlist=events)
-        connect('key_press_event',keypress)
-        show()
-
-
-    del(k)
+if __name__=="__main__":
+    main()

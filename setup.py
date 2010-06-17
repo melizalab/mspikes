@@ -10,10 +10,11 @@ _readklu = Extension('_readklu', sources = ['src/readklu.cc'] )
 _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 
 setup(name = "mspikes",
-      version = "2.0a2",
+      version = "2.0b1",
       packages = find_packages(),
       entry_points = {'console_scripts': ['mspike_extract = mspikes.spike_extract:main',
-                                          'mspike_group = mspikes.groupevents:main']},
+                                          'mspike_group = mspikes.groupevents:main',
+                                          'mspike_view = mspikes.spike_view:main']},
       
       description = """ Python scripts and modules for processing
       spike data from SABER, a data acquisition program that stores
