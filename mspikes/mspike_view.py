@@ -199,7 +199,7 @@ def main():
             print __doc__
             sys.exit(0)
         elif o == '--version':
-            print "%s version: %s" % (os.path.basename(sys.argv[0]), extractor.__version__)
+            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
             sys.exit(0)
         elif o in ('-c','--chan'):
             options['channels'] = a.split(',')

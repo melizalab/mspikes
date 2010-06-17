@@ -12,9 +12,9 @@ _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 setup(name = "mspikes",
       version = "2.0b1",
       packages = find_packages(),
-      entry_points = {'console_scripts': ['mspike_extract = mspikes.spike_extract:main',
-                                          'mspike_group = mspikes.groupevents:main',
-                                          'mspike_view = mspikes.spike_view:main']},
+      entry_points = {'console_scripts': ['mspike_extract = mspikes.mspike_extract:main',
+                                          'mspike_group = mspikes.mspike_group:main',
+                                          'mspike_view = mspikes.mspike_view:main']},
       
       description = """ Python scripts and modules for processing
       spike data from SABER, a data acquisition program that stores
