@@ -6,7 +6,7 @@ from numpy.distutils.core import setup,Extension
 from distutils.sysconfig import get_python_lib
 import os,sys
 
-_readklu = Extension('_readklu', sources = ['src/readklu.cc'] )
+_readklu = Extension('klustio', sources = ['src/klustio.cc'] )
 _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 
 setup(name = "mspikes",

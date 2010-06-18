@@ -59,7 +59,7 @@ def episode_times(arfp):
 def count_units(sitename):
     """ Determine how many units are defined for a site """
     from glob import iglob
-    from _readklu import getclusters
+    from klustio import getclusters
     return tuple(len(getclusters(f)) for f in iglob("%s.clu.*" % sitename))
 
 
@@ -79,7 +79,7 @@ def sort_events(sitename, episode_times, log=_dummy_writer, units=None):
     of event times in each episode.
     """
     from glob import iglob
-    from _readklu import readclusters
+    from klustio import sort_unit_episode
     from klusters import klustersite
     current_unit = 1
     allevents = []

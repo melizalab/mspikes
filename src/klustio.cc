@@ -1,5 +1,5 @@
 /*
- * readklu.cc
+ * klustio.cc
  *
  * A python extension module to read cluster and site files in
  * Klusters/KlustaKwik format
@@ -39,7 +39,7 @@ getclusters(FILE* cfp, set<int> &clusters)
 }
 
 static void
-readklu(FILE* cfp, FILE* ffp, const vector<long>& atimes, map<int, vector<vector<long> > > &uvec)
+sort_unit_episode(FILE* cfp, FILE* ffp, const vector<long>& atimes, map<int, vector<vector<long> > > &uvec)
 {
 
         int rp = 0;
@@ -110,7 +110,7 @@ readklu(FILE* cfp, FILE* ffp, const vector<long>& atimes, map<int, vector<vector
 }
 
 static PyObject*
-readklu_getclusters(PyObject* self, PyObject* args)
+klustio_getclusters(PyObject* self, PyObject* args)
 {
         const char *cname;
         if (!PyArg_ParseTuple(args, "s", &cname))
@@ -135,7 +135,7 @@ readklu_getclusters(PyObject* self, PyObject* args)
 }
 
 static PyObject*
-readklu_readclusters(PyObject* self, PyObject* args)
+klustio_sort_unit_episode(PyObject* self, PyObject* args)
 {
         const char *fname, *cname;
         PyObject *abstimes, *iterator, *item;
@@ -177,7 +177,7 @@ readklu_readclusters(PyObject* self, PyObject* args)
 
         // run the cluster grouping function
         map<int, vector<vector<long> > > uvec;
-        readklu(cfp, ffp, atimes, uvec);
+        sort_unit_episode(cfp, ffp, atimes, uvec);
 
         fclose(cfp);
         fclose(ffp);
@@ -206,18 +206,18 @@ readklu_readclusters(PyObject* self, PyObject* args)
         return ulist;
 }
 
-static PyMethodDef readklu_methods[] = {
-    {"getclusters",  readklu_getclusters, METH_VARARGS,
+static PyMethodDef klustio_methods[] = {
+    {"getclusters",  klustio_getclusters, METH_VARARGS,
      "Return a list of the clusters defined in the clu file."},
-    {"readclusters",  readklu_readclusters, METH_VARARGS,
+    {"sort_unit_episode",  klustio_sort_unit_episode, METH_VARARGS,
      "Return the cluster assignments of all the events in the clu file which are also in abstimes."},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
 extern "C" {
 PyMODINIT_FUNC
-init_readklu(void)
+init_klustio(void)
 {
-    (void) Py_InitModule("_readklu", readklu_methods);
+    (void) Py_InitModule("klustio", klustio_methods);
 }
 }
