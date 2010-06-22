@@ -17,6 +17,9 @@ class _dummy_writer(object):
     @staticmethod
     def write(message):
         pass
+    @staticmethod
+    def flush():
+        pass
 
 def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwargs):
     """
