@@ -147,9 +147,13 @@ def group_events(arffile, log=_dummy_writer, **options):
         groups, events = sort_events(basename, eptimes, log, units)
         if len(groups)==0:
             log.write("No valid units specified: exiting\n")
-        elif units is not None:
-            log.write("Extracting data from: %s\n" % units)
-        tls = [defaultdict(toelis.toelis)] * len(groups)
+            return
+
+        if units is None:
+            units = range(len(groups))
+
+        log.write("Extracting data from units: %s\n" % units)
+        tls = dict((u,defaultdict(toelis.toelis)) for u in units)
         log.write("Sorting events: ")
         for i,spikes in enumerate(izip(*events)):
             etime = eptimes[i] * 1. / sr
@@ -163,23 +167,24 @@ def group_events(arffile, log=_dummy_writer, **options):
                 log.write("S")
             else:
                 if arf_add:
-                    chan_names = tuple("unit_%03d" % x for x in range(len(spikes)))
+                    chan_names = tuple("unit_%03d" % (x+1) for x in units)
                     entry.add_data(spikes, chan_names, replace=True, node_name='klusters_units',
                                    units=('ms',)*len(groups),
                                    source_channels=tuple(source_channels[g-1] for g in groups), **attributes)
                 if toe_make:
                     for j,elist in enumerate(spikes):
-                        tls[j][stim].append(elist)
+                        tls[units[j]][stim].append(elist)
                 log.write(".")
             log.flush()
         log.write(" done\n")
 
     if toe_make:
-        for i,unit in enumerate(tls):
-            tdir = "%s_%d" % (basename, i+1)
-            os.mkdir(tdir)
+        for unum,unit in tls.items():
+            tdir = "%s_%d" % (basename, unum+1)
+            if not os.path.exists(tdir):
+                os.mkdir(tdir)
             for stim,tl in unit.items():
-                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, i+1, stim))
+                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum+1, stim))
                 toelis.toefile(name).write(tl)
             log.write("Created directory for unit %s\n" % tdir)
 
@@ -204,9 +209,9 @@ def main():
         elif o == '-t':
             options['toe_make'] = True
         elif o == '--units':
-            options['units'] = tuple(int(x)-1 for x in a.split(','))
+            options['units'] = list(int(x)-1 for x in a.split(','))
         elif o == '--stimulus':
-            options['stimuli'] = tuple(x.strip() for x in a.split(','))
+            options['stimuli'] = list(x.strip() for x in a.split(','))
         elif o == '--start':
             options['start'] = float(a)
         elif o == '--stop':
