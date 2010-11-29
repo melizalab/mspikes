@@ -84,7 +84,7 @@ def sort_events(sitename, episode_times, log=_dummy_writer, units=None):
     current_unit = 1
     allevents = []
     groups = []
-    for f in iglob("%s.clu.*" % sitename):
+    for f in sorted(iglob("%s.clu.*" % sitename)):
         group = int(f.split('.')[-1])
         fname = klustersite._fettemplate % (sitename, group)
         cname = klustersite._clutemplate % (sitename, group)
