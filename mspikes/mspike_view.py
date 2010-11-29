@@ -183,6 +183,7 @@ class plotter(object):
         plt.setp(grid[:-1], 'xticklabels', '')
         grid[0].set_title('entry %d: %s (%s)' % (self.entry.index, self.entry._v_name, self.entry.record['protocol']))
         grid[-1].set_xlabel('Time (ms)')
+        self.fig.canvas.draw()
     
 
 def main():
