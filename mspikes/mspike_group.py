@@ -172,8 +172,12 @@ def group_events(arffile, log=_dummy_writer, **options):
                                    units=('ms',)*len(groups),
                                    source_channels=tuple(source_channels[g-1] for g in groups), **attributes)
                 if toe_make:
+                    # toe spikes are adjusted for stimulus onset
+                    stimlist = entry.stimuli.read()
+                    stimstart = stimlist[stimlist["name"]==stim]
+                    spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
                     for j,elist in enumerate(spikes):
-                        tls[units[j]][stim].append(elist)
+                        tls[units[j]][stim].append(elist - spike_offset)
                 log.write(".")
             log.flush()
         log.write(" done\n")
