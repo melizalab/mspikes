@@ -56,7 +56,7 @@ class klustersite(object):
         self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
         self.thresh = kwargs['thresholds']
         self.samplerate = kwargs['sampling_rate'] * kwargs['resamp']
-        self.writexml()
+        self.skipped = [[] for x in self.groups]
 
         self.spk = defaultdict(self._openspikefile)
         self.clu = defaultdict(self._openclufile)
@@ -68,6 +68,7 @@ class klustersite(object):
         return self
 
     def __exit__(self, type, value, traceback):
+        self.writexml()
         for v in self.spk.values(): v.close()
         for v in self.clu.values(): v.close()
         for v in self.fet.values(): v.close()
@@ -130,6 +131,10 @@ class klustersite(object):
                 fp.write("    <peakSampleIndex>%d</peakSampleIndex>\n" % (self.nsamples/2))
 
                 fp.write("    <nFeatures>%d</nFeatures>\n" % (self.nfeatures[i] - 1))
+                fp.write("    <skipped>\n    ")
+                for etime in self.skipped[i]:
+                    fp.write("<time>%d</time>" % etime)
+                fp.write("\n    </skipped>\n")
                 fp.write("   </group>\n")
             fp.write("  </channelGroups>\n </spikeDetection>\n</parameters>\n")
 
@@ -153,6 +158,16 @@ class klustersite(object):
         fp = self.clu[self.group]
         for j in xrange(features.shape[0]): fp.write("1\n")
 
+    def skipepochs(self, *epochs):
+        """
+        Mark one or more recording epochs as skipped; this information
+        can be used later to determine if the absence of any spike
+        times for an epoch is due to the epoch being skipped or not.
+
+        epochs: a list of IDs for the epochs that were skipped
+        """
+        self.skipped[self.group].extend(epochs)
+
     def run_klustakwik(self):
         """ Runs KlustaKwik on the current group """
         from subprocess import Popen
@@ -165,15 +180,25 @@ class klustersite(object):
                "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]
         return Popen(cmd, bufsize=-1)#, stdout=output)
 
-def xml_channels(xmlfile):
+class klustxml(object):
     """
-    Figure out which channels correspond to which groups. Returns a
-    list of tuples, containing the channels defined in each group.
+    Class to retrieve metadata from klusters xml file
     """
-    from xml.etree import ElementTree
-    tree = ElementTree.parse(xmlfile)
-    return [tuple(int(channel.text) for channel in group.findall('channel')) \
-            for group in tree.findall('spikeDetection/channelGroups/group/channels')]
+    def __init__(self, xmlfile):
+        from xml.etree import ElementTree
+        self.tree = ElementTree.parse(xmlfile)
+
+    @property
+    def channels(self):
+        """ List of tuples, containing the channels defined in each group. """
+        return [tuple(int(channel.text) for channel in group.findall('channel')) \
+                for group in self.tree.findall('spikeDetection/channelGroups/group/channels')]
+
+    @property
+    def skipped(self):
+        """ List of tuples, containing the entries skipped for each group """
+        return [tuple(int(skt.text) for skt in group.findall("skipped/time")) \
+                for group in self.tree.findall('spikeDetection/channelGroups/group/')]
 
 def check_times(spike_times):
     """ Assert that the spike times are monotonically increasing """

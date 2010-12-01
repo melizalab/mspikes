@@ -131,15 +131,21 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
             for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
                 alltimes = []
                 allspikes = []
-                for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh, maxrms, log, **options):
-                    times += long(entry.record['name'][1:])*options['resamp'] - tstamp_offset
-                    #times /= options['resamp']
-                    #times += long(entry.record['name'][1:]) - tstamp_offset
-                    alltimes.append(times)
-                    allspikes.append(spikes)
-                    lastt = times[-1]
+                for entry, times, spikes, Fs in extractor.extract_spikes(arfp, channel, thresh,
+                                                                         maxrms, log, **options):
+                    if times is None:
+                        # mark unused epochs by their record ID, since this guaranteed to be unique
+                        ks.skipepochs(entry.record["recid"])
+                    else:
+                        times += long(entry.record['name'][1:])*options['resamp'] - tstamp_offset
+                        #times /= options['resamp']
+                        #times += long(entry.record['name'][1:]) - tstamp_offset
+                        alltimes.append(times)
+                        allspikes.append(spikes)
+                        lastt = times[-1]
+                
                 if sum(x.size for x in alltimes) == 0:
-                    log.write("Skipping channel\n")
+                    log.write("No spikes: skipping channel\n")
                 else:
                     alltimes = concatenate(alltimes)
                     klusters.check_times(alltimes)

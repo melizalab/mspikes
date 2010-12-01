@@ -36,7 +36,6 @@ Options:
 """
 import os, arf
 from extractor import __version__, _spike_resamp, _default_samplerate, _dummy_writer
-from klusters import xml_channels
 
 options = {
     'arf_add' : False,
@@ -118,6 +117,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     from collections import defaultdict
     from itertools import izip
     from arf.io import toelis
+    from klusters import klustxml
 
     arf_add = options.get('arf_add',False)
     toe_make = options.get('toe_make',False)
@@ -129,7 +129,9 @@ def group_events(arffile, log=_dummy_writer, **options):
     log.write("* Loading events from %s\n" % basename)
     if len(count_units(basename))==0:
         raise IOError, "No klusters data defined for %s" % basename
-    source_channels = xml_channels(basename + '.xml')
+    kxml = klustxml(basename + '.xml')
+    source_channels = kxml.channels
+    skipped_entries = kxml.skipped
 
     if arf_add:
         attributes = dict(datatype=arf.DataTypes.SPIKET, method='klusters', resamp=_spike_resamp,
@@ -154,11 +156,14 @@ def group_events(arffile, log=_dummy_writer, **options):
             units = range(len(groups))
 
         log.write("* Extracting data from units: %s\n" % [u+1 for u in units])
-        tls = dict((u,defaultdict(toelis.toelis)) for u in units)
+        tls = [defaultdict(toelis.toelis) for u in units]
+        tlskipped = [[] for u in units]
+        
         log.write("Sorting events: ")
         for i,spikes in enumerate(izip(*events)):
             etime = eptimes[i] * 1. / sr
             entry = arfp[epnums[i]]
+            recid = entry.record['recid']
             stim = entry.record['protocol']
             if start and etime < start:
                 log.write("S")
@@ -171,28 +176,34 @@ def group_events(arffile, log=_dummy_writer, **options):
                     chan_names = tuple("unit_%03d" % (x+1) for x in units)
                     entry.add_data(spikes, chan_names, replace=True, node_name='klusters_units',
                                    units=('ms',)*len(groups),
-                                   source_channels=tuple(source_channels[g-1] for g in groups), **attributes)
+                                   source_channels=tuple(source_channels[g-1] for g in groups),
+                                   was_skipped=tuple(recid in skipped_entries[g-1] for g in groups),
+                                   **attributes)
                 if toe_make:
                     # toe spikes are adjusted for stimulus onset
                     stimlist = entry.stimuli.read()
                     stimstart = stimlist[stimlist["name"]==stim]
                     spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
                     for j,elist in enumerate(spikes):
-                        tls[units[j]][stim].append(elist - spike_offset)
+                        if recid in skipped_entries[groups[j]-1]:
+                            tlskipped[j].append(recid)
+                        else:
+                            tls[j][stim].append(elist - spike_offset)
                 log.write(".")
             log.flush()
         log.write(" done\n")
 
     if toe_make:
         log.write("* Saving toe_lis files:\n")
-        for unum,unit in tls.items():
-            tdir = "%s_%d" % (basename, unum+1)
+        for j,unit in enumerate(tls):
+            unum = units[j] + 1
+            tdir = "%s_%d" % (basename, unum)
             if not os.path.exists(tdir):
                 os.mkdir(tdir)
             for stim,tl in unit.items():
-                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum+1, stim))
+                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum, stim))
                 toelis.toefile(name).write(tl)
-            log.write("Unit %s: %s\n" % (tdir, " ".join(unit.keys())))
+            log.write("Unit %s (skip %d): %s\n" % (tdir, len(tlskipped[j]), " ".join(unit.keys())))
 
 def main():
     import os, sys, getopt

@@ -50,6 +50,9 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     spike waveforms:  the waveforms for each spike, with dimension
                       nevents x window * resamp
     sampling rate:    sampling rate of waveform (and time units)
+
+    If the entry is skipped (due to exceeding maxrms), the last three
+    values in the yielded tuple are None
     """
     from numpy import where
     from spikes import spike_times, extract_spikes, signal_stats
@@ -79,6 +82,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 
         if maxrms and rms > maxrms:
             log.write("S")
+            yield entry, None, None, None
             continue
 
         if not absthresh:
