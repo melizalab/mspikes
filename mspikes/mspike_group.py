@@ -84,6 +84,7 @@ def sort_events(sitename, episode_times, log=_dummy_writer, units=None):
     current_unit = 1
     allevents = []
     groups = []
+    log.write("Units in electrode groups:\n")
     for f in sorted(iglob("%s.clu.*" % sitename)):
         group = int(f.split('.')[-1])
         fname = klustersite._fettemplate % (sitename, group)
@@ -125,7 +126,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     stimuli = options.get('stimuli',None)
     units = options.get('units',None)
     
-    log.write("Loading events from %s\n" % basename)
+    log.write("* Loading events from %s\n" % basename)
     if len(count_units(basename))==0:
         raise IOError, "No klusters data defined for %s" % basename
     source_channels = xml_channels(basename + '.xml')
@@ -152,7 +153,7 @@ def group_events(arffile, log=_dummy_writer, **options):
         if units is None:
             units = range(len(groups))
 
-        log.write("Extracting data from units: %s\n" % units)
+        log.write("* Extracting data from units: %s\n" % [u+1 for u in units])
         tls = dict((u,defaultdict(toelis.toelis)) for u in units)
         log.write("Sorting events: ")
         for i,spikes in enumerate(izip(*events)):
@@ -183,6 +184,7 @@ def group_events(arffile, log=_dummy_writer, **options):
         log.write(" done\n")
 
     if toe_make:
+        log.write("* Saving toe_lis files:\n")
         for unum,unit in tls.items():
             tdir = "%s_%d" % (basename, unum+1)
             if not os.path.exists(tdir):
@@ -190,7 +192,7 @@ def group_events(arffile, log=_dummy_writer, **options):
             for stim,tl in unit.items():
                 name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum+1, stim))
                 toelis.toefile(name).write(tl)
-            log.write("Created directory for unit %s\n" % tdir)
+            log.write("Unit %s: %s\n" % (tdir, " ".join(unit.keys())))
 
 def main():
     import os, sys, getopt
