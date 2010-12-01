@@ -15,7 +15,8 @@ setup(name = "mspikes",
       entry_points = {'console_scripts': ['mspike_extract = mspikes.mspike_extract:main',
                                           'mspike_group = mspikes.mspike_group:main',
                                           'mspike_view = mspikes.mspike_view:main',
-                                          'mspike_shape = mspikes.mspike_shape:main']},
+                                          'mspike_shape = mspikes.mspike_shape:main',
+                                          'mspike_merge = mspikes.mspike_merge:main']},
       
       description = """ Python scripts and modules for processing
       spike data from SABER, a data acquisition program that stores
