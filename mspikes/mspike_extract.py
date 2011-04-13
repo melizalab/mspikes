@@ -52,7 +52,7 @@ Options:
 # docstring for tetrode grouping
 #If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
 
-import os
+import os, sys
 import arf
 import extractor, klusters
 
@@ -196,22 +196,19 @@ def channel_options(options):
         raise ValueError, "Channels and RMS thresholds not the same length"
     options['max_rms'] = maxrms
 
-def main():
-    import sys, getopt
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "c:r:a:t:i:f:Rw:h",
-                                   ["chan=","start=","stop=","simple","help","kkwik","version"])
-    except getopt.GetoptError, e:
-        print "Error: %s" % e
-        sys.exit(-1)
+def main(argv=None):
+    import getopt
+    if argv==None: argv = sys.argv
+    opts, args = getopt.getopt(argv[1:], "c:r:a:t:i:f:Rw:h",
+                               ["chan=","start=","stop=","simple","help","kkwik","version"])
 
     for o,a in opts:
         if o in ('-h','--help'):
             print __doc__
-            sys.exit(0)
+            return 0
         elif o == '--version':
-            print "%s version: %s" % (os.path.basename(sys.argv[0]), extractor.__version__)
-            sys.exit(0)
+            print "%s version: %s" % (os.path.basename(argv[0]), extractor.__version__)
+            return 0
         elif o in ('-c','--chan'):
             #exec "chans = [%s]" % a
             options['channels'] = tuple(int(x) for x in a.split(','))
@@ -237,9 +234,9 @@ def main():
         elif o == '--simple':
             options['simple'] = True
 
-    if len(args) != 1:
+    if len(args) < 1:
         print "Error: no input file specified"
-        sys.exit(-1)
+        return -1
 
     channel_options(options)
     if options['simple']:
@@ -247,9 +244,10 @@ def main():
     else:
         klusters_extraction(args[0], log=sys.stdout, **options)
 
+    return 0
 
 if __name__=="__main__":
-    main()
+    sys.exit(main())
 
 
 # Variables:

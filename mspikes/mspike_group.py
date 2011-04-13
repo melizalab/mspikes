@@ -34,7 +34,7 @@ Options:
                      the basename of the ARf file.
 
 """
-import os, arf
+import os, sys, arf
 from extractor import __version__, _spike_resamp, _default_samplerate, _dummy_writer
 
 options = {
@@ -205,22 +205,19 @@ def group_events(arffile, log=_dummy_writer, **options):
                 toelis.toefile(name).write(tl)
             log.write("Unit %s (skip %d): %s\n" % (tdir, len(tlskipped[j]), " ".join(unit.keys())))
 
-def main():
-    import os, sys, getopt
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "atphb:",
-                                   ["stimulus=","units=","start=","stop=","version","help"])
-    except getopt.GetoptError, e:
-        print "Error: %s" % e
-        sys.exit(-1)
+def main(argv=None):
+    import getopt
+    if argv==None: argv = sys.argv
+    opts, args = getopt.getopt(argv[1:], "atphb:n:",
+                               ["stimulus=","units=","start=","stop=","version","help"])
 
     for o,a in opts:
         if o in ('-h','--help'):
             print __doc__
-            sys.exit(0)
+            return 0
         elif o == '--version':
-            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
-            sys.exit(0)
+            print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+            return 0
         elif o == '-a':
             options['arf_add'] = True
         elif o == '-t':
@@ -235,18 +232,22 @@ def main():
             options['stop'] = float(a)
         elif o == '-b':
             options['basename'] = a
+        elif o == '-n':
+            options['unitname'] = a
 
-    if len(args) != 1:
+    if len(args) < 1:
         print "Error: no input file specified"
-        sys.exit(-1)
+        return -1
 
     try:
         group_events(args[0], log=sys.stdout, **options)
+        return 0
     except Exception, e:
         sys.stdout.write("Error: %s\n" % e)
+        return -1
 
 if __name__=="__main__":
-    main()
+    sys.exit(main())
 
 # Variables:
 # End:

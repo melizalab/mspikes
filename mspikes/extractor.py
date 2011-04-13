@@ -8,7 +8,7 @@ Free for use under Creative Commons Attribution-Noncommercial-Share
 Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-__version__ = "2.0b2"
+__version__ = "2.0b3"
 
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 _default_samplerate = 20000

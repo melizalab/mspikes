@@ -22,7 +22,7 @@ Usage: spike_view [OPTIONS] <sitefile.arf>
 C. Daniel Meliza, 2008
 """
 
-import os, itertools
+import os, sys, itertools
 import arf
 from extractor import __version__, _default_samplerate, _dummy_writer
 import matplotlib.pyplot as plt
@@ -186,22 +186,19 @@ class plotter(object):
         self.fig.canvas.draw()
     
 
-def main():
-    import sys, getopt
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "c:u:h",
-                                   ["chan=","unit=","stats","help","version"])
-    except getopt.GetoptError, e:
-        print "Error: %s" % e
-        sys.exit(-1)
+def main(argv=None):
+    import getopt
+    if argv==None: argv = sys.argv
+    opts, args = getopt.getopt(argv[1:], "c:u:h",
+                               ["chan=","unit=","stats","help","version"])
 
     for o,a in opts:
         if o in ('-h','--help'):
             print __doc__
-            sys.exit(0)
+            return 0
         elif o == '--version':
-            print "%s version: %s" % (os.path.basename(sys.argv[0]), __version__)
-            sys.exit(0)
+            print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+            return 0
         elif o in ('-c','--chan'):
             options['channels'] = a.split(',')
         elif o in ('-u','--unit'):
@@ -212,9 +209,9 @@ def main():
         elif o == '--stats':
             options['plot_stats'] = True
     
-    if len(args) != 1:
+    if len(args) < 1:
         print "Error: no input file specified"
-        sys.exit(-1)
+        return -1
 
     with arf.arf(args[0],'r') as arfp:
         if options['plot_stats']:
@@ -223,6 +220,7 @@ def main():
             pltter = plotter(arfp, **options)
             pltter.update()
         plt.show()
+    return 0
 
 if __name__=="__main__":
-    main()
+    sys.exit(main())
