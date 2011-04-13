@@ -170,7 +170,7 @@ def group_events(arffile, log=_dummy_writer, **options):
             etime = eptimes[i] * 1. / sr
             entry = arfp[epnums[i]]
             recid = entry.record['recid']
-            stim = entry.record['protocol']
+            stim = entry.record['protocol'] or "nostim"
             if start and etime < start:
                 log.write("S")
             elif stop and etime > stop:
@@ -186,10 +186,11 @@ def group_events(arffile, log=_dummy_writer, **options):
                                    was_skipped=tuple(recid in skipped_entries[g-1] for g in groups),
                                    **attributes)
                 if toe_make:
-                    # toe spikes are adjusted for stimulus onset
-                    stimlist = entry.stimuli.read()
-                    stimstart = stimlist[stimlist["name"]==stim]
-                    spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
+                    # toe spikes are adjusted for stimulus onset -- if there's a stimulus
+                    if 'stimuli' in entry:
+                        stimlist = entry.stimuli.read()
+                        stimstart = stimlist[stimlist["name"]==stim]
+                        spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
                     for j,elist in enumerate(spikes):
                         if recid in skipped_entries[groups[j]-1]:
                             tlskipped[j].append(recid)
