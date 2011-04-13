@@ -19,7 +19,7 @@ using std::vector;
 using std::set;
 using std::map;
 
-static long
+long
 getclusters(FILE* cfp, set<int> &clusters)
 {
         int clust, rp, fpos;
@@ -38,7 +38,41 @@ getclusters(FILE* cfp, set<int> &clusters)
         return nlines;
 }
 
-static void
+void
+sort_unit(FILE* cfp, FILE* ffp, map<int, vector<long > > &uvec)
+{
+        int rp = 0;
+        int nfeats;
+        set<int> clusters;
+        rp = fscanf(ffp, "%d\n", &nfeats);
+        getclusters(cfp, clusters);
+
+        // with one cluster, that's the one we use
+        // with more than one cluster, we drop 0
+        // if there's still more than one cluster, we drop 1
+        if ((clusters.size()> 1) && (clusters.count(0)))
+                clusters.erase(0);
+        if ((clusters.size()> 1) && (clusters.count(1)))
+                clusters.erase(1);
+
+        uvec.clear();
+        for (set<int>::const_iterator it = clusters.begin(); it != clusters.end(); it++) {
+                int cluster = *it;
+                uvec[cluster] = vector<long>(0);
+        }
+
+	int clust;
+	long atime;
+        while (rp != EOF) {
+                for (int j = 0; j < nfeats && rp != EOF; j++)
+                        rp = fscanf(ffp, "%ld", &atime);
+                rp = fscanf(cfp, "%d\n", &clust);
+                if (clusters.count(clust))
+			uvec[clust].push_back(atime);
+        }
+}
+
+void
 sort_unit_episode(FILE* cfp, FILE* ffp, const vector<long>& atimes, map<int, vector<vector<long> > > &uvec)
 {
 
@@ -109,6 +143,7 @@ sort_unit_episode(FILE* cfp, FILE* ffp, const vector<long>& atimes, map<int, vec
 
 }
 
+/* Python interface */
 static PyObject*
 klustio_getclusters(PyObject* self, PyObject* args)
 {
@@ -132,6 +167,51 @@ klustio_getclusters(PyObject* self, PyObject* args)
                 PyList_SetItem(out, i, PyInt_FromLong((long)*it));
 
         return out;
+}
+
+static PyObject*
+klustio_sort_unit(PyObject* self, PyObject* args)
+{
+        const char *fname, *cname;
+        vector<long> atimes;
+
+        if (!PyArg_ParseTuple(args, "ss", &fname, &cname))
+                return NULL;
+
+        // open the files
+        FILE *cfp, *ffp;
+        if ((cfp = fopen(cname, "rt"))==NULL) {
+                PyErr_Format(PyExc_IOError, "Unable to open file %s", cname);
+                return NULL;
+        }
+        if ((ffp = fopen(fname, "rt"))==NULL) {
+                PyErr_Format(PyExc_IOError, "Unable to open file %s", fname);
+                return NULL;
+        }
+
+
+        // run the cluster grouping function
+        map<int, vector<long> > uvec;
+        sort_unit(cfp, ffp, uvec);
+
+        fclose(cfp);
+        fclose(ffp);
+
+        // convert output to python lists
+        PyObject *ulist, *events;
+        ulist = PyList_New(0);
+
+        for (map<int, vector<long> > ::const_iterator it = uvec.begin(); it != uvec.end(); it++) {
+                int unit = it->first;
+                int nevents = uvec[unit].size();
+                events = PyList_New(nevents);
+                for (int j = 0; j < nevents; j++)
+			PyList_SetItem(events, j, PyLong_FromLong(uvec[unit][j]));
+                PyList_Append(ulist, events);   // does not decref rlist
+                Py_DECREF(events);
+        }
+
+        return ulist;
 }
 
 static PyObject*
@@ -206,17 +286,21 @@ klustio_sort_unit_episode(PyObject* self, PyObject* args)
         return ulist;
 }
 
+
 static PyMethodDef klustio_methods[] = {
     {"getclusters",  klustio_getclusters, METH_VARARGS,
-     "Return a list of the clusters defined in the clu file."},
+     "getclusters(clufile) -> a list of the clusters defined in the clu file."},
+    {"sort_unit",  klustio_sort_unit, METH_VARARGS,
+     "sort_unit(fetfile,clufile) -> lists of spike times, sorted by cluster."},
     {"sort_unit_episode",  klustio_sort_unit_episode, METH_VARARGS,
-     "Return the cluster assignments of all the events in the clu file which are also in abstimes."},
+     "sort_unit_episode(fetfile,clufile,abstimes,[samplerate]) -> lists of spike times\n"
+     "sorted by cluster and episode time (abstimes; must be monotonically increasing)."},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
 extern "C" {
 PyMODINIT_FUNC
-init_klustio(void)
+initklustio(void)
 {
     (void) Py_InitModule("klustio", klustio_methods);
 }

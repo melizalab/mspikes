@@ -92,7 +92,7 @@ def sort_events(sitename, episode_times, log=_dummy_writer, units=None):
         group = int(f.split('.')[-1])
         fname = klustersite._fettemplate % (sitename, group)
         cname = klustersite._clutemplate % (sitename, group)
-        events = readclusters(fname, cname, episode_times, 20.0 * _spike_resamp)
+        events = sort_unit_episode(fname, cname, episode_times, 20.0 * _spike_resamp)
         log.write("Group %d: %s\n" % (group, tuple(current_unit + i for i in xrange(len(events)))))
         current_unit += len(events)
         groups.extend((group,) * len(events))

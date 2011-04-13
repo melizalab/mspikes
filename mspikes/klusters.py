@@ -200,6 +200,25 @@ class klustxml(object):
         return [tuple(int(skt.text) for skt in group.findall("skipped/time")) \
                 for group in self.tree.findall('spikeDetection/channelGroups/group/')]
 
+    @property
+    def samplingrate(self):
+        return int(self.tree.find('acquisitionSystem/samplingRate').text)
+
+    @property
+    def ngroups(self):
+        return len(self.tree.findall('spikeDetection/channelGroups/group'))
+
+    def get_spike_times(self, group):
+        """ Yield (channels,spike_times) tuples for all units in the group """
+        from klustio import sort_unit
+        fname = klustersite._fettemplate % (self.sitename, group)
+        cname = klustersite._clutemplate % (self.sitename, group)
+        channels = self.channels
+        spikes = sort_unit(fname,cname)
+        for i,times in enumerate(spikes):
+            yield (channels[i], times)
+
+
 def check_times(spike_times):
     """ Assert that the spike times are monotonically increasing """
     from numpy import diff
