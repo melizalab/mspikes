@@ -13,7 +13,7 @@ Specify one or more of the following flags to control output. If neither
 is supplied, the data will be processed but with no output.
 
  -a:                 add event data to the ARF file. In each entry, a channel
-                     is created for each unit
+                     is created for each unit (named unit_NNN)
  -t:                 create toelis files, organized by stimulus and unit
 
 Options:
@@ -33,6 +33,9 @@ Options:
                      sitefile. By default this is assumed to be the same as
                      the basename of the ARf file.
 
+ -n UNITNAME:        when adding spikes to the ARF file, use UNITNAME as the
+                     base name (default 'unit')
+
 """
 import os, sys, arf
 from extractor import __version__, _spike_resamp, _default_samplerate, _dummy_writer
@@ -45,6 +48,7 @@ options = {
     'start' : None,
     'stop' : None,
     'basename' : None,
+    'unitname': 'unit',
     }
 
 def episode_times(arfp):
@@ -113,6 +117,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     stop:     if not None, only include episodes with times before this
     basename: specify the basename of the klusters file (default is based
               off arffile name
+    unitname: basename for channels in ARF file
     """
     from collections import defaultdict
     from itertools import izip
@@ -125,6 +130,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     start, stop = options.get('start',None), options.get('stop',None)
     stimuli = options.get('stimuli',None)
     units = options.get('units',None)
+    uname = options.get('unitname','unit') + '_%03d'
     
     log.write("* Loading events from %s\n" % basename)
     if len(count_units(basename))==0:
@@ -173,7 +179,7 @@ def group_events(arffile, log=_dummy_writer, **options):
                 log.write("S")
             else:
                 if arf_add:
-                    chan_names = tuple("unit_%03d" % (x+1) for x in units)
+                    chan_names = tuple(uname % x for x in range(len(spikes)))
                     entry.add_data(spikes, chan_names, replace=True, node_name='klusters_units',
                                    units=('ms',)*len(groups),
                                    source_channels=tuple(source_channels[g-1] for g in groups),
