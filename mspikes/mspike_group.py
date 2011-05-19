@@ -131,7 +131,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     stimuli = options.get('stimuli',None)
     units = options.get('units',None)
     uname = options.get('unitname','unit') + '_%03d'
-    
+
     log.write("* Loading events from %s\n" % basename)
     if len(count_units(basename))==0:
         raise IOError, "No klusters data defined for %s" % basename
@@ -164,7 +164,7 @@ def group_events(arffile, log=_dummy_writer, **options):
         log.write("* Extracting data from units: %s\n" % [u+1 for u in units])
         tls = [defaultdict(toelis.toelis) for u in units]
         tlskipped = [[] for u in units]
-        
+
         log.write("Sorting events: ")
         for i,spikes in enumerate(izip(*events)):
             etime = eptimes[i] * 1. / sr
@@ -190,14 +190,14 @@ def group_events(arffile, log=_dummy_writer, **options):
                     if 'stimuli' in entry:
                         stimlist = entry.stimuli.read()
                         stimstart = stimlist[stimlist["name"]==stim]
-                        spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
-                    else:
-                        spike_offset = 0.0
+                        if stimstart.size > 0:
+                            # this works because stimstart is a numpy object
+                            elist = elist - 1000 * stimstart[0]["start"]
                     for j,elist in enumerate(spikes):
                         if recid in skipped_entries[groups[j]-1]:
                             tlskipped[j].append(recid)
                         else:
-                            tls[j][stim].append(elist - spike_offset)
+                            tls[j][stim].append(elist)
                 log.write(".")
             log.flush()
         log.write(" done\n")

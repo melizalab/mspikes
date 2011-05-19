@@ -34,7 +34,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     log:            if not None, output some status information here
 
     start:          if not None, exclude episodes starting before this time (in sec)
-    stop:          if not None, exclude episodes starting after this time (in sec)    
+    stop:          if not None, exclude episodes starting after this time (in sec)
     abs_thresh:     if True, thresholding is absolute
     inverted:       if True, or if (channel in inverted), invert signal prior to processing
     window:         the number of samples per spike (def. 20)
@@ -54,7 +54,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     If the entry is skipped (due to exceeding maxrms), the last three
     values in the yielded tuple are None
     """
-    from numpy import where
     from spikes import spike_times, extract_spikes, signal_stats
 
     window = kwargs.get('window',20)
@@ -63,7 +62,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('inverted',[])
     start, stop = kwargs.get('start',None), kwargs.get('stop',None)
-    
+
     log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
               (channel, thresh, "abs" if absthresh else "rms"))
     spikecount = 0
