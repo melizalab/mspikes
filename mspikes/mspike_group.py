@@ -191,6 +191,8 @@ def group_events(arffile, log=_dummy_writer, **options):
                         stimlist = entry.stimuli.read()
                         stimstart = stimlist[stimlist["name"]==stim]
                         spike_offset = 1000 * stimstart[0]["start"] if stimstart.size > 0 else 0.0
+                    else:
+                        spike_offset = 0.0
                     for j,elist in enumerate(spikes):
                         if recid in skipped_entries[groups[j]-1]:
                             tlskipped[j].append(recid)
