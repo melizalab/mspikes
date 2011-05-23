@@ -187,16 +187,19 @@ def group_events(arffile, log=_dummy_writer, **options):
                                    **attributes)
                 if toe_make:
                     # toe spikes are adjusted for stimulus onset -- if there's a stimulus
+                    offset = None
                     if 'stimuli' in entry:
                         stimlist = entry.stimuli.read()
                         stimstart = stimlist[stimlist["name"]==stim]
                         if stimstart.size > 0:
-                            # this works because stimstart is a numpy object
-                            elist = elist - 1000 * stimstart[0]["start"]
+                            offset = 1000 * stimstart[0]["start"]
                     for j,elist in enumerate(spikes):
                         if recid in skipped_entries[groups[j]-1]:
                             tlskipped[j].append(recid)
                         else:
+                            if offset is not None:
+                                # this works because stimstart is a numpy object
+                                elist = elist - offset
                             tls[j][stim].append(elist)
                 log.write(".")
             log.flush()
