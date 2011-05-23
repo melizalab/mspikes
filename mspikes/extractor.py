@@ -89,14 +89,17 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
         else:
             T = thresh
         spike_t = spike_times(data, T, window, refrac).nonzero()[0]
-        spike_w = extract_spikes(data, spike_t, window)
-        if resamp > 1:
-            spike_w  = fftresample(spike_w, window * resamp * 2)
-            spike_t  *= resamp
-            spike_t  += find_peaks(spike_w, window * resamp, resamp)
-        log.write(".")
-        spikecount += spike_t.size
-        yield entry, spike_t, spike_w, Fs * resamp
+        if spike_t.size > 0:
+            spike_w = extract_spikes(data, spike_t, window)
+            if resamp > 1:
+                spike_w  = fftresample(spike_w, window * resamp * 2)
+                spike_t  *= resamp
+                spike_t  += find_peaks(spike_w, window * resamp, resamp)
+            log.write(".")
+            spikecount += spike_t.size
+            yield entry, spike_t, spike_w, Fs * resamp
+        else:
+            log.write("0")
     log.write(" %d events\n" % spikecount)
 
 
