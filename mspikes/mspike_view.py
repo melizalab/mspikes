@@ -13,13 +13,16 @@ Usage: spike_view [OPTIONS] <sitefile.arf>
               This is a computationally intensive operation for multichannel data.
 
  --chan CHANNELS : specify which channels to analyze, multiple channels
- -c CHANNELS       as a list, i.e. --chan='1,5,7' will plot data from channels
-                   1,5, and 7
+ -c CHANNELS       as a list, using channel names. For example, --chan='ch11,ch15'
+                   will plot data from channels 'ch11' and 'ch15'. By default all channels
+                   with data type EXTRAC_HP will be used.
 
  --unit UNITS :    specify channels with event time data to overlay on the raw
- -u UNITS          data
+ -u UNITS          data (in waveform view only)
 
-C. Daniel Meliza, 2008
+ -e ENTRY :        specify which entry [index] to start at (waveform view only)
+
+C. Daniel Meliza, 2011
 """
 
 import os, sys, itertools
@@ -32,6 +35,7 @@ options = {
     'channels' : None,
     'units' : None,
     'plot_stats': False,
+    'entry' : 0,
     }
 
 def entry_stats(arfp, log=_dummy_writer, **options):
@@ -49,8 +53,8 @@ def entry_stats(arfp, log=_dummy_writer, **options):
     for i,entry in enumerate(arfp):
         for channel in entry._get_catalog():
             cname = channel['name']
-            if channels is not None and cname not in channels: continue
-            if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
+            if channels is None and channel['datatype'] != arf.DataTypes.EXTRAC_HP: continue
+            if channels is None or cname in channels:
                 data,Fs = entry.get_data(cname)
                 mean,rms = signal_stats(data)
                 stats[cname][i] = rms
@@ -63,6 +67,11 @@ def plot_stats(arfp, **options):
     import matplotlib.pyplot as plt
     time,stats = entry_stats(arfp, **options)
     nchan = len(stats)
+    if nchan < 1:
+        if options.get('channels',None) is not None:
+            raise RuntimeError, "No valid channels specified"
+        else:
+            raise RuntimeError, "Data does not have any extracellular highpass type channels -- try specifying manually"
 
     fig = plt.figure()
     grid = [fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
@@ -90,7 +99,7 @@ class arfcache(object):
         self.units = options.get('units',None)
         self.arfp = arfp
         self.cache = {}
-        self.position = -1
+        self.position = options.get('entry',0) - 1
 
     def next(self):
         if self.position + 1 >= self.arfp.nentries: raise StopIteration
@@ -166,6 +175,11 @@ class plotter(object):
             self.fig.clf()
             grid = [self.fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
             self.fig.subplots_adjust(hspace=0.)
+        if len(self.data) < 1:
+            if options.get('channels',None) is not None:
+                raise RuntimeError, "No valid channels specified"
+            else:
+                raise RuntimeError, "Data does not have any extracellular highpass type channels -- try specifying manually"
         for i,k in enumerate(sorted(self.data.keys())):
             d = self.data[k]['pcm']
             Fs = self.data[k]['sampling_rate'] / 1000.
@@ -184,12 +198,12 @@ class plotter(object):
         grid[0].set_title('entry %d: %s (%s)' % (self.entry.index, self.entry._v_name, self.entry.record['protocol']))
         grid[-1].set_xlabel('Time (ms)')
         self.fig.canvas.draw()
-    
+
 
 def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
-    opts, args = getopt.getopt(argv[1:], "c:u:h",
+    opts, args = getopt.getopt(argv[1:], "c:u:e:h",
                                ["chan=","unit=","stats","help","version"])
 
     for o,a in opts:
@@ -206,21 +220,28 @@ def main(argv=None):
                 options['units'] = a.split(',')
             else:
                 options['units'] = ''  # try to figure out unit-channel match
+        elif o == '-e':
+            options['entry'] = int(a)
         elif o == '--stats':
             options['plot_stats'] = True
-    
+
     if len(args) < 1:
         print "Error: no input file specified"
         return -1
 
-    with arf.arf(args[0],'r') as arfp:
-        if options['plot_stats']:
-            plot_stats(arfp, log=sys.stdout, **options)
-        else:
-            pltter = plotter(arfp, **options)
-            pltter.update()
-        plt.show()
-    return 0
+    try:
+        with arf.arf(args[0],'r') as arfp:
+            if options['plot_stats']:
+                plot_stats(arfp, log=sys.stdout, **options)
+            else:
+                pltter = plotter(arfp, **options)
+                pltter.update()
+            plt.show()
+        return 0
+    except RuntimeError, e:
+        print e
+        return -1
 
 if __name__=="__main__":
     sys.exit(main())
+
