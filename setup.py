@@ -9,7 +9,7 @@ _readklu = Extension('klustio', sources = ['src/klustio.cc'] )
 _spikes = Extension('spikes', sources = ['src/spikes.pyf','src/spikes.c'])
 
 setup(name = "mspikes",
-      version = "2.0b4",
+      version = "2.0",
       packages = find_packages(),
       entry_points = {'console_scripts': ['mspike_extract = mspikes.mspike_extract:main',
                                           'mspike_group = mspikes.mspike_group:main',

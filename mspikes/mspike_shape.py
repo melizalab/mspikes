@@ -51,7 +51,7 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
     window = options.get('window',30)
 
     out = defaultdict(list)
-    log.write('Extracting spike waveforms ')
+    log.write('* Extracting spike waveforms ')
     with arf.arf(arffile,'r') as arfp:
         sampling_rate = arfp.get_attributes(key='sampling_rate') or _default_samplerate
         for entry in arfp:
@@ -103,27 +103,36 @@ def write_spikes(sitename, spikes, **options):
 def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
+    print "* Program: %s" % os.path.split(argv[0])[-1]
+    print "* Version: %s" % __version__
+
     opts, args = getopt.getopt(argv[1:], "w:r:u:h",
                                ["help","version"])
-    for o,a in opts:
-        if o in ('-h','--help'):
-            print __doc__
-            return 0
-        elif o == '--version':
-            print "%s version: %s" % (os.path.basename(argv[0]), __version__)
-            return 0
-        elif o == '-w':
-            options['window'] = int(a)
-        elif o == '-r':
-            options['resamp'] = int(a)
-        elif o == '-u':
-            options['units'] = a.split(',')
-    if len(args) < 1:
-        print "Error: no input file specified"
+    try:
+        for o,a in opts:
+            if o in ('-h','--help'):
+                print __doc__
+                return 0
+            elif o == '--version':
+                print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+                return 0
+            elif o == '-w':
+                options['window'] = int(a)
+            elif o == '-r':
+                options['resamp'] = int(a)
+            elif o == '-u':
+                options['units'] = a.split(',')
+    except ValueError, e:
+        print "* Error: can't parse %s option (%s): %s" % (o,a,e)
         return -1
+                
+    if len(args) < 1:
+        print "* Error: no input file specified"
+        return -1
+    print "* Input file: %s" % args[0]
 
     spikes,Fs = extract_spikes(args[0], log=sys.stdout, **options)
-    sys.stdout.write("Aligning waveforms\n")
+    sys.stdout.write("* Aligning waveforms\n")
     mean_spikes = dict((k,average_spikes(s, **options)) for k,s in spikes.items())
     options['sampling_rate'] = Fs
     write_spikes(args[0], mean_spikes, **options)

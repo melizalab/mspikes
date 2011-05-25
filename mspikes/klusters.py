@@ -40,9 +40,8 @@ class klustersite(object):
         Initialize a klusters site.
 
         sitename:   the basename for the files
-        channels:   sequence of channel groups, which can be single
-                    channels or sequences of channels
-        thresh:     the threshold used to extract spikes
+        channels:   sequence of channel names
+        thresh:     the threshold used to extract spikes (same length as channels)
         nfeats:     the number of PCA features per channel
         measurements:  the raw feature measurements
         window:     the number of samples per spike (automatically adjusted for resampling)
@@ -50,19 +49,19 @@ class klustersite(object):
         resamp:         resampling factor for the spikes
         """
         self.sitename = sitename
-        self.groups = tuple((x if hasattr(x,'__len__') else (x,) for x in kwargs['channels']))
+        self.channels = tuple(kwargs['channels'])
         self.nsamples = 2 * kwargs['window'] * kwargs['resamp'] - kwargs['resamp'] * 2
-        self.nfeatures = tuple((kwargs['nfeats'] + len(kwargs['measurements'])) * len(c) + 1 for c in self.groups)
-        self.nkfeats = tuple((kwargs['nfeats'] * len(c)) for c in self.groups)
+        self.nfeatures = kwargs['nfeats'] + len(kwargs['measurements']) + 1
+        self.nkfeats = kwargs['nfeats']
         self.thresh = kwargs['thresholds']
         self.samplerate = kwargs['sampling_rate'] * kwargs['resamp']
-        self.skipped = [[] for x in self.groups]
+        self.skipped = [[] for x in self.channels]
 
         self.spk = defaultdict(self._openspikefile)
         self.clu = defaultdict(self._openclufile)
         self.fet = defaultdict(self._openfetfile)
 
-        self.group = 0
+        self.current_channel = 0
 
     def __enter__(self):
         return self
@@ -75,15 +74,15 @@ class klustersite(object):
 
     @property
     def spikefile(self):
-        return self._spktemplate % (self.sitename, self.group + 1)
+        return self._spktemplate % (self.sitename, self.current_channel + 1)
 
     @property
     def clufile(self):
-        return self._clutemplate  % (self.sitename, self.group + 1)
+        return self._clutemplate  % (self.sitename, self.current_channel + 1)
 
     @property
     def fetfile(self):
-        return self._fettemplate % (self.sitename, self.group + 1)
+        return self._fettemplate % (self.sitename, self.current_channel + 1)
 
     def _openspikefile(self):
         """ Open handle to spike file """
@@ -96,12 +95,12 @@ class klustersite(object):
 
     def _openfetfile(self):
         fp = open(self.fetfile,'wt')
-        fp.write("%d\n" % self.nfeatures[self.group])
+        fp.write("%d\n" % self.nfeatures)
         return fp
 
     def writexml(self):
         """  Generate the xml file for the site """
-        total_channels = sum(len(x) for x in self.groups)
+        total_channels = len(self.channels)
         with open(self.sitename + ".xml", 'wt') as fp:
             fp.writelines(('<parameters creator="mspikes" version="2.0" >\n',
                            " <acquisitionSystem>\n",
@@ -118,19 +117,16 @@ class klustersite(object):
                            " <spikeDetection>\n",
                            "  <channelGroups>\n",))
 
-            for i,channelgroup in enumerate(self.groups):
-                if isinstance(channelgroup, int):
-                    channelgroup = (channelgroup,)
-
+            for i,channel in enumerate(self.channels):
                 fp.write("   <group>\n    <channels>\n")
-                for j,chan in enumerate(channelgroup):
-                    fp.write("     <channel>%d</channel>\n" % chan)
-                    fp.write("     <thresh>%3.2f</thresh>\n" % self.thresh[j])
+                fp.write("     <channel>%d</channel>\n" % i)
+                fp.write("     <name>%s</name>\n" % channel)
+                fp.write("     <thresh>%3.2f</thresh>\n" % self.thresh[i])
                 fp.write("    </channels>\n")
                 fp.write("    <nSamples>%d</nSamples>\n" % self.nsamples)
                 fp.write("    <peakSampleIndex>%d</peakSampleIndex>\n" % (self.nsamples/2))
 
-                fp.write("    <nFeatures>%d</nFeatures>\n" % (self.nfeatures[i] - 1))
+                fp.write("    <nFeatures>%d</nFeatures>\n" % (self.nfeatures))
                 fp.write("    <skipped>\n    ")
                 for etime in self.skipped[i]:
                     fp.write("<time>%d</time>" % etime)
@@ -140,7 +136,7 @@ class klustersite(object):
 
     def addevents(self, spikes, features):
         """
-        Write events to the spk/clu/fet files in the current group.
+        Write events to the spk/clu/fet files in the current channel.
         Can be called more than once, although typically this is not
         very useful because realignment and PCA require all the spikes
         to be in memory.
@@ -151,11 +147,11 @@ class klustersite(object):
         """
         from numpy import savetxt
         assert spikes.shape[0] == features.shape[0], "Number of events in arguments don't match"
-        assert features.shape[1] == self.nfeatures[self.group], \
-               "Group %d should have %d features, got %d" % (self.group, self.nfeatures[self.group], features.shape[1])
-        spikes.astype('int16').tofile(self.spk[self.group])
-        savetxt(self.fet[self.group], features, "%i")
-        fp = self.clu[self.group]
+        assert features.shape[1] == self.nfeatures, \
+               "Should have %d features, got %d" % (self.nfeatures, features.shape[1])
+        spikes.astype('int16').tofile(self.spk[self.current_channel])
+        savetxt(self.fet[self.current_channel], features, "%i")
+        fp = self.clu[self.current_channel]
         for j in xrange(features.shape[0]): fp.write("1\n")
 
     def skipepochs(self, *epochs):
@@ -166,16 +162,16 @@ class klustersite(object):
 
         epochs: a list of IDs for the epochs that were skipped
         """
-        self.skipped[self.group].extend(epochs)
+        self.skipped[self.current_channel].extend(epochs)
 
     def run_klustakwik(self):
         """ Runs KlustaKwik on the current group """
         from subprocess import Popen
-        nfeats = self.nkfeats[self.group]
-        totfeats = self.nfeatures[self.group]
-        self.fet[self.group].close()
-        self.clu[self.group].close()
-        cmd = ["KlustaKwik",self.sitename,str(self.group+1),
+        nfeats = self.nkfeats
+        totfeats = self.nfeatures
+        self.fet[self.current_channel].close()
+        self.clu[self.current_channel].close()
+        cmd = ["KlustaKwik",self.sitename,str(self.current_channel+1),
                "-Screen","0",
                "-UseFeatures","".join(['1']*nfeats+['0']*(totfeats-nfeats))]
         return Popen(cmd, bufsize=-1)#, stdout=output)

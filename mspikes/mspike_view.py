@@ -49,7 +49,7 @@ def entry_stats(arfp, log=_dummy_writer, **options):
     etime = arfp._get_catalog().cols.timestamp[:]
     etime -= etime.min()
     stats = defaultdict(lambda : ones(etime.size) * nan)
-    log.write("Calculating statistics ")
+    log.write("* Calculating statistics ")
     for i,entry in enumerate(arfp):
         for channel in entry._get_catalog():
             cname = channel['name']
@@ -165,6 +165,8 @@ class plotter(object):
                 self.update()
             except:
                 pass
+        elif event.key in ('q','Q','c'):
+            plt.close(self.fig)
 
     def update(self):
         from numpy import linspace
@@ -206,28 +208,37 @@ def main(argv=None):
     opts, args = getopt.getopt(argv[1:], "c:u:e:h",
                                ["chan=","unit=","stats","help","version"])
 
-    for o,a in opts:
-        if o in ('-h','--help'):
-            print __doc__
-            return 0
-        elif o == '--version':
-            print "%s version: %s" % (os.path.basename(argv[0]), __version__)
-            return 0
-        elif o in ('-c','--chan'):
-            options['channels'] = a.split(',')
-        elif o in ('-u','--unit'):
-            if len(a) > 0:
-                options['units'] = a.split(',')
-            else:
-                options['units'] = ''  # try to figure out unit-channel match
-        elif o == '-e':
-            options['entry'] = int(a)
-        elif o == '--stats':
-            options['plot_stats'] = True
+    print "* Program: %s" % os.path.split(argv[0])[-1]
+    print "* Version: %s" % __version__
+
+    try:
+        for o,a in opts:
+            if o in ('-h','--help'):
+                print __doc__
+                return 0
+            elif o == '--version':
+                print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+                return 0
+            elif o in ('-c','--chan'):
+                options['channels'] = a.split(',')
+            elif o in ('-u','--unit'):
+                if len(a) > 0:
+                    options['units'] = a.split(',')
+                else:
+                    options['units'] = ''  # try to figure out unit-channel match
+            elif o == '-e':
+                options['entry'] = int(a)
+            elif o == '--stats':
+                options['plot_stats'] = True
+    except ValueError, e:
+        print "* Error: can't parse %s option (%s): %s" % (o,a,e)
+        return -1
 
     if len(args) < 1:
-        print "Error: no input file specified"
+        print "* Error: no input file specified"
         return -1
+    print "* Input file: %s" % args[0]
+
 
     try:
         with arf.arf(args[0],'r') as arfp:
@@ -237,6 +248,7 @@ def main(argv=None):
                 pltter = plotter(arfp, **options)
                 pltter.update()
             plt.show()
+            print "* Exiting"
         return 0
     except RuntimeError, e:
         print e

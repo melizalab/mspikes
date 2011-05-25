@@ -8,7 +8,7 @@ Free for use under Creative Commons Attribution-Noncommercial-Share
 Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-__version__ = "2.0b4"
+__version__ = "2.0"
 
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 _default_samplerate = 20000
@@ -27,16 +27,16 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     file.
 
     arfp:           input file handle
-    channel:        the channel to extract
+    channel:        the channel to extract (name)
     thresh:         the threshold (in absolute or rms units)
     maxrms:         if defined, the maximum RMS allowed for an epoch;
                     if it exceeds this value it is skipped
     log:            if not None, output some status information here
 
     start:          if not None, exclude episodes starting before this time (in sec)
-    stop:          if not None, exclude episodes starting after this time (in sec)
+    stop:           if not None, exclude episodes starting after this time (in sec)
     abs_thresh:     if True, thresholding is absolute
-    inverted:       if True, or if (channel in inverted), invert signal prior to processing
+    invert:         if True, invert signal prior to processing
     window:         the number of samples per spike (def. 20)
     resamp:         resampling factor (def. 3)
     refrac:         the min. number of samples between peak and
@@ -53,6 +53,12 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 
     If the entry is skipped (due to exceeding maxrms), the last three
     values in the yielded tuple are None
+
+    The log stream is updated as the entries are processed.  Characters mean the following:
+    . - normally processed
+    S - skipped on the basis of time
+    R - skipped on the basis of RMS
+    N - skipped for lack of data
     """
     from spikes import spike_times, extract_spikes, signal_stats
 
@@ -60,11 +66,12 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     resamp = kwargs.get('resamp', _spike_resamp)
     refrac = kwargs.get('refrac',window)
     absthresh = kwargs.get('abs_thresh',False)
-    invert = kwargs.get('inverted',[])
+    invert = kwargs.get('invert',False)
     start, stop = kwargs.get('start',None), kwargs.get('stop',None)
 
-    log.write("Extracting spikes from channel %d at thresh %3.2f (%s) " % \
-              (channel, thresh, "abs" if absthresh else "rms"))
+    log.write("** Channel %s: thresh=%3.2f (%s%s): " % (channel, thresh,
+                                                        "abs" if absthresh else "rms",
+                                                        ",invert" if invert else ""))
     spikecount = 0
     first_episode_time = arfp._get_catalog().cols.timestamp[:].min()
     for entry in arfp:
@@ -72,15 +79,23 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
         etime = entry.record['timestamp'] - first_episode_time
         if (start and etime < start) or (stop and etime > stop):
             log.write("S")
+            yield entry, None, None, None
             continue
-        data,Fs = entry.get_data(channel)
-        if invert or channel in invert:
+
+        try:
+            data,Fs = entry.get_data(channel)
+        except IndexError:
+            log.write("N")
+            yield entry, None, None, None
+            continue
+
+        if invert:
             data *= -1
         if not absthresh or maxrms:
             mean,rms = signal_stats(data)
 
         if maxrms and rms > maxrms:
-            log.write("S")
+            log.write("R")
             yield entry, None, None, None
             continue
 

@@ -10,7 +10,7 @@ $ mspike_view st317_6_2.arf
 
 To extract spikes above the 4.5x RMS threshold,
 excluding the episode with a movement artefact:
-$ mspike_extract -r 4.5 -t 600 st317_6_2.arf
+$ mspike_extract -r 4.5 -t 600 -c st317 st317_6_2.arf
 
 Open the cluster files in klusters; there should be two clusters:
 $ klusters st317_6_2.clu.1

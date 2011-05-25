@@ -13,6 +13,7 @@ can be used for the merged data.  Toelis files are assumed to contain only one u
 
 import os, sys, glob
 from arf.io.toelis import toefile, toelis
+from extractor import __version__
 
 def combine_toelis(*oldcelldirs):
     """
@@ -38,7 +39,10 @@ def main(argv=None):
 
     if len(argv) < 4:
         print __doc__
-        sys.exit(-1)
+        return -1
+
+    print "* Program: %s" % os.path.split(argv[0])[-1]
+    print "* Version: %s" % extractor.__version__
 
     oldcells = [os.path.relpath(p) for p in argv[1:-1]]
     newcell = argv[-1]
@@ -46,17 +50,20 @@ def main(argv=None):
     newtls = combine_toelis(*oldcells)
 
     if len(newtls) == 0:
-        print >> sys.stderr, "No valid toelis files found in any of the supplied directories"
+        print "* Error: no valid toelis files found in any of the supplied directories"
+        return -1
 
     # rename old directories
     for cell in oldcells:
         os.rename(cell, '%s_unmerged' % cell)
-        print 'Moved %s to %s_unmerged' % (cell, cell)
+        print '* Moved %s to %s_unmerged' % (cell, cell)
 
     os.mkdir(newcell)
     for stim,tl in newtls.items():
         toefile(os.path.join(newcell, '%s_%s.toe_lis' % (newcell, stim))).write(tl)
-    print "Wrote %d toelis files to %s" % (len(newtls), newcell)
+    print "* Wrote %d toelis files to %s" % (len(newtls), newcell)
+
+    return 0
 
 if __name__=="__main__":
-    main()
+    sys.exit(main())
