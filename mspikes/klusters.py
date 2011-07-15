@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 # -*- mode: python -*-
 """
@@ -187,7 +186,7 @@ class klustxml(object):
     @property
     def channels(self):
         """ List of tuples, containing the channels defined in each group. """
-        return [tuple(int(channel.text) for channel in group.findall('channel')) \
+        return [tuple(name.text for name in group.findall('name')) \
                 for group in self.tree.findall('spikeDetection/channelGroups/group/channels')]
 
     @property
@@ -215,13 +214,21 @@ class klustxml(object):
             yield (channels[i], times)
 
 
-def check_times(spike_times):
-    """ Assert that the spike times are monotonically increasing """
-    from numpy import diff
+def arrange_spikes(spike_times, spikes):
+    """
+    Reorganize spike times into numpy arrays.  The times are
+    concatenated into a 1D array; the waveforms into a 2D array.
+    Resorts the spikes so that the times are monotonically increasing.
+    """
+    from numpy import diff, concatenate
+    spike_times = concatenate(spike_times)
+    spikes = concatenate(spikes,axis=0)
     dt = diff(spike_times)
     if any(dt < 1):
-        raise ValueError, "Spike times are not monotonic! (%s)" % dt.nonzero()[0]
+        ind = spike_times.argsort()
+        return spike_times[ind], spikes[ind,:]
+    else:
+        return spike_times, spikes
 
 # Variables:
-# indent-tabs-mode: t
 # End:

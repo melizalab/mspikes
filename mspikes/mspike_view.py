@@ -25,7 +25,7 @@ Usage: spike_view [OPTIONS] <sitefile.arf>
 C. Daniel Meliza, 2011
 """
 
-import os, sys, itertools
+import os, sys, posixpath
 import arf
 from extractor import __version__, _default_samplerate, _dummy_writer
 import matplotlib.pyplot as plt
@@ -42,25 +42,25 @@ def entry_stats(arfp, log=_dummy_writer, **options):
     """ Calculate RMS of each entry for each channel """
     from collections import defaultdict
     from spikes import signal_stats
-    from numpy import ones, nan
+    from numpy import ones, zeros, nan
     channels = options.get('channels',None)
 
-    sr = arfp.get_attributes(key='sampling_rate') or _default_samplerate
-    etime = arfp._get_catalog().cols.timestamp[:]
-    etime -= etime.min()
-    stats = defaultdict(lambda : ones(etime.size) * nan)
+    etime = zeros(arfp.nentries, dtype='i8')
+    # we don't know at the start what the channel names are
+    stats = defaultdict(lambda : ones(arfp.nentries) * nan)
     log.write("* Calculating statistics ")
-    for i,entry in enumerate(arfp):
-        for channel in entry._get_catalog():
-            cname = channel['name']
-            if channels is None and channel['datatype'] != arf.DataTypes.EXTRAC_HP: continue
+    for i,(ename,entry) in enumerate(arfp.items()):
+        etime[i] = entry.timestamp
+        for cname,dset in entry.iteritems():
+            if channels is None and dset.attrs['datatype'] != arf.DataTypes.EXTRAC_HP: continue
             if channels is None or cname in channels:
-                data,Fs = entry.get_data(cname)
+                data = entry.get_data(cname)
                 mean,rms = signal_stats(data)
                 stats[cname][i] = rms
         log.write(".")
         log.flush()
     log.write(" done\n")
+    etime -= etime.min()
     return etime, dict(stats)
 
 def plot_stats(arfp, **options):
@@ -98,54 +98,47 @@ class arfcache(object):
         self.channels = options.get('channels',None)
         self.units = options.get('units',None)
         self.arfp = arfp
-        self.cache = {}
+        # need to sort entries by abstime
+        self.entries = [k for k,e in arfp.items('sample_count')]
         self.position = options.get('entry',0) - 1
 
     def next(self):
-        if self.position + 1 >= self.arfp.nentries: raise StopIteration
+        if self.position + 1 >= self.arfp.nentries:
+            self.position = -1
         self.position += 1
-        entry = self.arfp[self.position]
-        if self.position not in self.cache:
-            self._load_data(entry)
-        return entry, self.cache[self.position]
+        entry = self.entries[self.position]
+        return (entry, self.position,) + self._load_data(entry)
 
     def prev(self):
-        if self.position <= 0: raise StopIteration
+        if self.position <= 0:
+            self.position = len(self.entries)
         self.position -= 1
-        entry = self.arfp[self.position]
-        if self.position not in self.cache:
-            self._load_data(entry)
-        return entry, self.cache[self.position]
+        entry = self.entries[self.position]
+        return (entry, self.position,) + self._load_data(entry)
 
-    def _load_data(self, entry):
+    def _load_data(self, entry_name):
         from collections import defaultdict
         out = defaultdict(dict)
-        catalog = entry._get_catalog().read()
-        for channel in catalog:
-            cname = channel['name']
-            if channel['datatype'] == arf.DataTypes.EXTRAC_HP:
+        entry = self.arfp[entry_name]
+        for cname,channel in entry.iteritems():
+            if channel.attrs['datatype'] == arf.DataTypes.EXTRAC_HP:
                 if self.channels is not None and cname not in self.channels: continue
-                data,Fs = entry.get_data(cname)
+                data = entry.get_data(cname)
                 out[cname]['pcm'] = data
-                out[cname]['sampling_rate'] = Fs
-            elif channel['datatype'] == arf.DataTypes.SPIKET:
+                out[cname]['sampling_rate'] = channel.attrs['sampling_rate']
+            elif channel.attrs['datatype'] == arf.DataTypes.SPIKET:
                 if self.units is not None and cname not in self.units: continue
-                node = getattr(entry,channel['node'])
-                try:
-                    for sc in node.attrs.source_channels[channel['column']]:
-                        src_cname = catalog[sc]['name']
-                        if src_cname in out:
-                            out[src_cname][cname] = entry.get_data(cname)
-                except:
-                    pass
-        self.cache[entry.index] = dict(out)
+                if 'source_channels' in channel.attrs:
+                    for sc in channel.attrs['source_channels']:
+                        out[sc][cname] = entry.get_data(cname)[0]
+        return entry.attrs.get('protocol',''), dict(out)
 
 class plotter(object):
 
     def __init__(self, arfp, **options):
         self.cache = arfcache(arfp, **options)
         self.create_figure()
-        self.entry, self.data = self.cache.next()
+        self.entry_data = self.cache.next()
 
     def create_figure(self):
         plt.rcParams['path.simplify'] = False
@@ -154,40 +147,35 @@ class plotter(object):
 
     def keypress(self, event):
         if event.key in ('+', '='):
-            try:
-                self.entry, self.data = self.cache.next()
-                self.update()
-            except:
-                pass
+            self.entry_data = self.cache.next()
+            self.update()
         elif event.key in ('-', '_'):
-            try:
-                self.entry,self.data = self.cache.prev()
-                self.update()
-            except:
-                pass
+            self.entry_data = self.cache.prev()
+            self.update()
         elif event.key in ('q','Q','c'):
             plt.close(self.fig)
 
     def update(self):
         from numpy import linspace
-        if self.entry is None: return
-        nchan = len(self.data)
+        if self.entry_data is None: return
+        entry_name,entry_num,protocol,data = self.entry_data
+        nchan = len(data)
         grid = self.fig.axes
         if len(grid) != nchan:
             self.fig.clf()
             grid = [self.fig.add_subplot(nchan,1,i+1) for i in xrange(nchan)]
             self.fig.subplots_adjust(hspace=0.)
-        if len(self.data) < 1:
+        if len(data) < 1:
             if options.get('channels',None) is not None:
                 raise RuntimeError, "No valid channels specified"
             else:
                 raise RuntimeError, "Data does not have any extracellular highpass type channels -- try specifying manually"
-        for i,k in enumerate(sorted(self.data.keys())):
-            d = self.data[k]['pcm']
-            Fs = self.data[k]['sampling_rate'] / 1000.
+        for i,k in enumerate(sorted(data.keys())):
+            d = data[k]['pcm']
+            Fs = data[k]['sampling_rate'] / 1000.
             t = linspace(0, d.size/Fs, d.size)
             stuff = [t,d,'k']
-            for q,times in self.data[k].items():
+            for q,times in data[k].items():
                 if q not in ('pcm','sampling_rate'):
                     ind = t.searchsorted(times)
                     stuff.extend((times,d[ind],'o'))
@@ -197,7 +185,7 @@ class plotter(object):
             # to do: add RMS scale
 
         plt.setp(grid[:-1], 'xticklabels', '')
-        grid[0].set_title('entry %d: %s (%s)' % (self.entry.index, self.entry._v_name, self.entry.record['protocol']))
+        grid[0].set_title('entry %d: %s (%s)' % (entry_num, entry_name, protocol))
         grid[-1].set_xlabel('Time (ms)')
         self.fig.canvas.draw()
 
@@ -257,3 +245,5 @@ def main(argv=None):
 if __name__=="__main__":
     sys.exit(main())
 
+# Variables:
+# End:

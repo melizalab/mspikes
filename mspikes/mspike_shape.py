@@ -125,7 +125,7 @@ def main(argv=None):
     except ValueError, e:
         print "* Error: can't parse %s option (%s): %s" % (o,a,e)
         return -1
-                
+
     if len(args) < 1:
         print "* Error: no input file specified"
         return -1
@@ -136,7 +136,11 @@ def main(argv=None):
     mean_spikes = dict((k,average_spikes(s, **options)) for k,s in spikes.items())
     options['sampling_rate'] = Fs
     write_spikes(args[0], mean_spikes, **options)
-    
-    
+
+
 if __name__=="__main__":
     sys.exit(main())
+
+# Variables:
+# End:
+

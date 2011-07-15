@@ -50,11 +50,10 @@ Optional arguments:
                    and --kkwik flags
 
 """
-
 # docstring for tetrode grouping
 #If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
 
-import os, sys
+import os, sys, pdb
 import arf
 import extractor, klusters
 
@@ -122,14 +121,14 @@ def simple_extraction(arffile, log=extractor._dummy_writer, **options):
             do_invert = channel in inverted
             attributes = dict(units='ms', datatype=arf.DataTypes.SPIKET,
                               method='threshold', threshold=thresh, window=options['window'],
-                              source_channels=((channel,),),
+                              source_channels=(channel,),
                               inverted=do_invert, resamp=options['resamp'],
                               mspikes_version=extractor.__version__,)
             gen = extractor.extract_spikes(arfp, channel, thresh, maxrms, log, invert=do_invert,**options)
             for entry, times, spikes, Fs in gen:
                 if times is not None and times.size > 0:
                     chan_name = channel + '_thresh'
-                    entry.add_data((times * 1000. / Fs,), chan_name, replace=True, **attributes)
+                    entry.add_data(name=chan_name, data=(times * 1000. / Fs,), replace=True, **attributes)
 
 
 def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
@@ -159,8 +158,7 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
                       (arffile,sr))
         options['sampling_rate'] = sr
         with klusters.klustersite(basename, **options) as ks:
-            tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:]) * options['resamp']
-            #tstamp_offset = min(long(x[1:]) for x in arfp._get_catalog().cols.name[:])
+            tstamp_offset = min(entry.attrs['sample_count'] for k,entry in arfp.items()) * options['resamp']
             for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
                 alltimes = []
                 allspikes = []
@@ -169,11 +167,10 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
                 for entry, times, spikes, Fs in gen:
                     if times is None:
                         # mark unused epochs by their record ID, since this guaranteed to be unique
-                        ks.skipepochs(entry.record["recid"])
+                        ks.skipepochs(entry.attrs["recid"])
                     else:
-                        times += long(entry.record['name'][1:])*options['resamp'] - tstamp_offset
-                        #times /= options['resamp']
-                        #times += long(entry.record['name'][1:]) - tstamp_offset
+                        times += entry.attrs['sample_count']*options['resamp'] - tstamp_offset
+
                         alltimes.append(times)
                         allspikes.append(spikes)
                         lastt = times[-1]
@@ -181,10 +178,9 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
                 if sum(x.size for x in alltimes) == 0:
                     log.write("*** No spikes: skipping channel\n")
                 else:
-                    alltimes = concatenate(alltimes)
-                    klusters.check_times(alltimes)
+                    alltimes, allspikes = klusters.arrange_spikes(alltimes, allspikes)
                     log.write("*** Aligning spikes\n")
-                    spikes_aligned = extractor.align_spikes(concatenate(allspikes,axis=0), **options)
+                    spikes_aligned = extractor.align_spikes(allspikes, **options)
                     log.write("*** Calculating features\n")
                     spike_projections = extractor.projections(spikes_aligned, **options)[0]
                     spike_measurements = extractor.measurements(spikes_aligned, **options)

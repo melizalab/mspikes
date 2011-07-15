@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
 mspikes extracts spike times and waveforms from extracellular data
@@ -16,3 +15,6 @@ spikes      extension module with signal processing and spike extraction code
 """
 from extractor import __version__
 __all__ = ['extractor','klusters']
+
+# Variables:
+# End:

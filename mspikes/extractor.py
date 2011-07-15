@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 """
 Extracts spikes from extracellular data.
@@ -8,7 +7,7 @@ Free for use under Creative Commons Attribution-Noncommercial-Share
 Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
-__version__ = "2.0"
+__version__ = "2.1.0"
 
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
 _default_samplerate = 20000
@@ -61,6 +60,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     N - skipped for lack of data
     """
     from spikes import spike_times, extract_spikes, signal_stats
+    from numpy import fromiter
 
     window = kwargs.get('window',20)
     resamp = kwargs.get('resamp', _spike_resamp)
@@ -73,17 +73,18 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
                                                         "abs" if absthresh else "rms",
                                                         ",invert" if invert else ""))
     spikecount = 0
-    first_episode_time = arfp._get_catalog().cols.timestamp[:].min()
-    for entry in arfp:
+    first_episode_time = min(e.attrs['timestamp'][0] for k,e in arfp.items())
+    for ename,entry in arfp.items():
         log.flush()
-        etime = entry.record['timestamp'] - first_episode_time
+        etime = entry.attrs['timestamp'] - first_episode_time
         if (start and etime < start) or (stop and etime > stop):
             log.write("S")
             yield entry, None, None, None
             continue
 
         try:
-            data,Fs = entry.get_data(channel)
+            data = entry.get_data(channel)
+            Fs = entry[channel].attrs['sampling_rate']
         except IndexError:
             log.write("N")
             yield entry, None, None, None
