@@ -42,7 +42,7 @@ def main(argv=None):
         return -1
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % extractor.__version__
+    print "* Version: %s" % __version__
 
     oldcells = [os.path.relpath(p) for p in argv[1:-1]]
     newcell = argv[-1]

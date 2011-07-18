@@ -196,7 +196,7 @@ class klustxml(object):
                 for group in self.tree.findall('spikeDetection/channelGroups/group/')]
 
     @property
-    def samplingrate(self):
+    def samplerate(self):
         return int(self.tree.find('acquisitionSystem/samplingRate').text)
 
     @property
