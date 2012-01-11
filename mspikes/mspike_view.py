@@ -229,7 +229,7 @@ def main(argv=None):
 
 
     try:
-        with arf.arf(args[0],'r') as arfp:
+        with arf.file(args[0],'r') as arfp:
             if options['plot_stats']:
                 plot_stats(arfp, log=sys.stdout, **options)
             else:

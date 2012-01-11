@@ -116,7 +116,7 @@ def simple_extraction(arffile, log=extractor._dummy_writer, **options):
              about accessing it before this function terminates
     """
     channels,threshs,rmsthreshs,inverted = channel_options(**options)
-    with arf.arf(arffile,'a') as arfp:
+    with arf.file(arffile,'a') as arfp:
         for channel,thresh,maxrms in zip(channels,threshs,rmsthreshs):
             do_invert = channel in inverted
             attributes = dict(units='ms', datatype=arf.DataTypes.SPIKET,
@@ -150,7 +150,7 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
     basename = os.path.splitext(arffile)[0]
 
     kkwik_pool = []
-    with arf.arf(arffile,'r') as arfp:
+    with arf.file(arffile,'r') as arfp:
         sr = arfp.get_attributes(key='sampling_rate')
         if sr is None:
             sr = extractor._default_samplerate

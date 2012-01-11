@@ -52,7 +52,7 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
 
     out = defaultdict(list)
     log.write('* Extracting spike waveforms ')
-    with arf.arf(arffile,'r') as arfp:
+    with arf.file(arffile,'r') as arfp:
         sampling_rate = arfp.get_attributes(key='sampling_rate') or _default_samplerate
         for entry in arfp:
             channels = entry.catalog.read()

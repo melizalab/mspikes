@@ -146,7 +146,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     else:
         arf_mode = 'r'
 
-    with arf.arf(arffile,arf_mode) as arfp:
+    with arf.file(arffile,arf_mode) as arfp:
         sr = arfp.get_attributes(key='sampling_rate')
         if sr is None:
             sr = _default_samplerate

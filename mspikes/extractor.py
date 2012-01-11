@@ -85,7 +85,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
         try:
             data = entry.get_data(channel)
             Fs = entry[channel].attrs['sampling_rate']
-        except IndexError:
+        except (IndexError, KeyError):
             log.write("N")
             yield entry, None, None, None
             continue
