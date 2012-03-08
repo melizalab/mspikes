@@ -171,7 +171,7 @@ def group_events(arffile, log=_dummy_writer, **options):
             etime = eptimes[i] * 1. / sr
             entry = arfp[epnames[i]]
             recid = entry.attrs['recid']
-            stim = entry.attrs['protocol'] or "nostim"
+            stim = entry.attrs.get('protocol',None) or "nostim"
             if (start and etime < start * resampling) or (stop and etime > stop * resampling) \
                     or (stimuli and stim not in stimuli):
                 log.write("S")

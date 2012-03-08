@@ -142,6 +142,7 @@ class plotter(object):
 
     def create_figure(self):
         plt.rcParams['path.simplify'] = False
+        plt.rcParams['axes.hold'] = False
         self.fig = plt.figure()
         self.fig.canvas.mpl_connect('key_press_event',self.keypress)
 
