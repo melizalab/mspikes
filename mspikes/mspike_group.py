@@ -15,6 +15,7 @@ is supplied, the data will be processed but with no output.
  -a:                 add event data to the ARF file. In each entry, a channel
                      is created for each unit (named unit_NNN)
  -t:                 create toelis files, organized by stimulus and unit
+ -T:                 create toelis files, organized by entry
 
 Options:
 
@@ -43,7 +44,8 @@ from .version import version
 
 options = {
     'arf_add' : False,
-    'toe_make' : False,
+    'toe_sorted' : False,
+    'toe_unsorted' : False,
     'stimuli' : None,
     'units' : None,
     'start' : None,
@@ -119,8 +121,10 @@ def group_events(arffile, log=_dummy_writer, **options):
     arffile:  the file to analyze
     log:      if specified, output progress to this handle
     arf_add:  if True, add spike times to arf file
-    toe_make: if True, generate toe_lis files organized by stimulus
-    stimuli:  if not None, restrict toe_make output to stimuli in the list
+    toe_sorted:   if True, generate toe_lis files sorted by stimulus
+    toe_unsorted: if True, generate toe_lis files by episode
+    toe_entry: if True, generate toe_lis files sorted by entry name
+    stimuli:  if not None, restrict toe_sorted output to stimuli in the list
     units:    if not None, restrict analysis to these units
     start:    if not None, only include episodes with times (in sec) after this
     stop:     if not None, only include episodes with times before this
@@ -135,7 +139,8 @@ def group_events(arffile, log=_dummy_writer, **options):
     from numpy import asarray
 
     arf_add = options.get('arf_add',False)
-    toe_make = options.get('toe_make',False)
+    toe_sorted = options.get('toe_sorted',False)
+    toe_unsorted = options.get('toe_unsorted',False)
     basename = options.get('basename',None) or os.path.splitext(arffile)[0]
     start, stop = options.get('start',None), options.get('stop',None)
     stimuli = options.get('stimuli',None)
@@ -175,6 +180,7 @@ def group_events(arffile, log=_dummy_writer, **options):
         log.write("* Extracting data from units: %s\n" % [u+1 for u in units])
         tls = [defaultdict(toelis.toelis) for u in units]
         tlskipped = [[] for u in units]
+        tle = [defaultdict(toelis.toelis) for u in units]
 
         log.write("** Sorting events: ")
         for i,spikes in enumerate(izip(*events)):
@@ -186,14 +192,17 @@ def group_events(arffile, log=_dummy_writer, **options):
                     or (stimuli and stim not in stimuli):
                 log.write("S")
             else:
-                if arf_add:
-                    for j,g in enumerate(groups):
+                for j,g in enumerate(groups):
+                    if arf_add:
                         entry.add_data(data = asarray(spikes[j]), name=uname % j,
                                        replace=True, units='ms',
                                        source_channels=source_channels[g-1],
                                        was_skipped=(recid in skipped_entries[g-1]),
                                        **attributes)
-                if toe_make:
+                    if toe_unsorted:
+                        tle[j][i].append(spikes[j])
+
+                if toe_sorted:
                     # toe spikes are adjusted for stimulus onset -- if there's a stimulus
                     offset = None
                     if 'stimuli' in entry:
@@ -212,19 +221,29 @@ def group_events(arffile, log=_dummy_writer, **options):
             log.flush()
         log.write(" done\n")
 
-    if toe_make:
+    # create directories for toe files
+    if toe_sorted or toe_unsorted:
         log.write("** Writing toe_lis files\n")
         for j,unit in enumerate(tls):
             unum = units[j] + 1
             tdir = "%s_%d" % (basename, unum)
             if not os.path.exists(tdir):
                 os.mkdir(tdir)
-            for stim,tl in unit.items():
-                name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum, stim))
-                toelis.toefile(name).write(tl)
             log.write("*** Unit %s\n" % tdir)
-            log.write("**** Skipped entries: %s\n" % tlskipped[j])
-            log.write("**** Stimuli: %s\n" % (" ".join(unit.keys())))
+
+            if toe_sorted:
+                for stim,tl in unit.items():
+                    name = os.path.join(tdir, "%s_%d_%s.toe_lis" % (basename, unum, stim))
+                    toelis.toefile(name).write(tl)
+                log.write("**** Skipped entries: %s\n" % tlskipped[j])
+                log.write("**** Stimuli: %s\n" % (" ".join(unit.keys())))
+
+            if toe_unsorted:
+                for ep,tl in tle[j].items():
+                    name = os.path.join(tdir, "%s_%d_%04d.toe_lis" % (basename, unum, ep))
+                    toelis.toefile(name).write(tl)
+                log.write("**** Wrote toelis files for individual entries\n")
+
 
 def main(argv=None):
     import getopt
@@ -245,7 +264,9 @@ def main(argv=None):
             elif o == '-a':
                 options['arf_add'] = True
             elif o == '-t':
-                options['toe_make'] = True
+                options['toe_sorted'] = True
+            elif o == '-T':
+                options['toe_unsorted'] = True
             elif o == '--units':
                 options['units'] = list(int(x)-1 for x in a.split(','))
             elif o == '--stimulus':
