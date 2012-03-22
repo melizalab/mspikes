@@ -7,7 +7,7 @@
 #include <math.h>
 
 void
-spike_times(short *out, const short *samples, int nsamples, int thresh, int window, int refrac)
+spike_times(short *out, const short *samples, int nsamples, int thresh, int window)
 {
 	int i,j, peak_ind;
 	short peak_val;
@@ -24,21 +24,22 @@ spike_times(short *out, const short *samples, int nsamples, int thresh, int wind
 			}
 			if (peak_ind > window && peak_ind + window < nsamples)
 				out[peak_ind] = 1;
-			i = peak_ind + refrac - 1;
+			/// search for first sample below threshold
+			for (i = peak_ind; i < nsamples && samples[i] > thresh; ++i) {}
 		}
 	}
-}	
-
+}
 
 void
-extract_spikes(short *out, const short *samples, int nsamples, const int *times, int ntimes,
-	       int window)
+extract_spikes(double *out, const double *samples, int nsamples, const int *times, int ntimes,
+	       int windowstart, int windowstop)
 {
+	const int window = windowstart + windowstop;
 	int i, event;
-	for (i = 0; i < ntimes; i++) {
+	for (i = 0; i < ntimes; ++i) {
 		event = times[i];
-		if ((event - window < 0) || (event + window > nsamples)) continue;
-		memcpy(out+(i*window*2), samples+event-window, window*2*sizeof(short));
+		if ((event - windowstart < 0) || (event + windowstop > nsamples)) continue;
+		memcpy(out+(i*window), samples+event-windowstart, window*sizeof(double));
 	}
 }
 
@@ -46,16 +47,15 @@ extract_spikes(short *out, const short *samples, int nsamples, const int *times,
 void
 signal_stats(double *out, const short *samples, int nsamples)
 {
-         double e = 0;
-         double e2 = 0;
-         double v;
+	 double e = 0;
+	 double e2 = 0;
+	 double v;
 	 int i;
-         for (i = 0; i < nsamples; i++) {
-              v = (double)samples[i];
-              e += v;
-              e2 += v * v;
-         }
-         out[0] = e / nsamples;
-         out[1] = sqrt(e2 / nsamples - out[0] * out[0]);
+	 for (i = 0; i < nsamples; i++) {
+	      v = (double)samples[i];
+	      e += v;
+	      e2 += v * v;
+	 }
+	 out[0] = e / nsamples;
+	 out[1] = sqrt(e2 / nsamples - out[0] * out[0]);
 }
-	

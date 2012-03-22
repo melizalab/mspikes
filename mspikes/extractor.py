@@ -34,10 +34,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     stop:           if not None, exclude episodes starting after this time (in sec)
     abs_thresh:     if True, thresholding is absolute
     invert:         if True, invert signal prior to processing
-    window:         the number of samples per spike (def. 20)
+    window:         the number of samples to extract on either side of the spike peak (def. 20)
     resamp:         resampling factor (def. 3)
-    refrac:         the min. number of samples between peak and
-                    next threshold crossing (def. window)
 
     Yields:
     entry:            the current entry object
@@ -62,7 +60,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 
     window = kwargs.get('window',20)
     resamp = kwargs.get('resamp', _spike_resamp)
-    refrac = kwargs.get('refrac',window)
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('invert',False)
     start, stop = kwargs.get('start',None), kwargs.get('stop',None)
@@ -102,9 +99,9 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
             T = int(thresh * rms)
         else:
             T = thresh
-        spike_t = spike_times(data, T, window, refrac).nonzero()[0]
+        spike_t = spike_times(data, T, window).nonzero()[0]
         if spike_t.size > 0:
-            spike_w = extract_spikes(data, spike_t, window)
+            spike_w = extract_spikes(data, spike_t, window, window)
             if resamp > 1:
                 spike_w,shift = resample_and_align(spike_w, window, resamp)
                 spike_t  = (spike_t * resamp) + shift

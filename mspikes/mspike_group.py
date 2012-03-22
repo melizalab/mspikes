@@ -66,6 +66,14 @@ def count_units(sitename):
     from klustio import getclusters
     return tuple(len(getclusters(f)) for f in iglob("%s.clu.*" % sitename))
 
+def check_isi(events, log):
+    from numpy import diff, concatenate
+    log.write("* Unit autocorrelation statistics:\n")
+    for unit,spikes in enumerate(events):
+        isi = concatenate([diff(s) for s in spikes])
+        nviolations = (isi < 1.0).sum()
+        log.write("** %s: ISI < 1.0 = %d/%d (%.3f%%)\n" % (unit+1, nviolations, isi.size,
+                                                           100. * nviolations/isi.size))
 
 def sort_events(sitename, episode_times, log=_dummy_writer, units=None):
     """
@@ -142,7 +150,7 @@ def group_events(arffile, log=_dummy_writer, **options):
 
     if arf_add:
         attributes = dict(datatype=arf.DataTypes.SPIKET, method='klusters', resamp=_spike_resamp,
-                          mspikes_version=__version__,)
+                          mspikes_version=version,)
         arf_mode = 'a'
     else:
         arf_mode = 'r'
@@ -157,6 +165,7 @@ def group_events(arffile, log=_dummy_writer, **options):
         resampling = 1. * kxml.samplerate / sr
         eptimes,epnames = episode_times(arfp, resampling)
         groups, events = sort_events(basename, eptimes, log, units)
+        check_isi(events, log)
         if len(groups)==0:
             raise RuntimeError, "No valid units specified"
 

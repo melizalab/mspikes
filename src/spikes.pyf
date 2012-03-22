@@ -1,7 +1,7 @@
 !    -*- f90 -*-
 python module spikes
 interface
-   subroutine spike_times(out, samples, nsamples, thresh, window, refrac)
+   subroutine spike_times(out, samples, nsamples, thresh, window)
      intent(c) spike_times
      intent(c)
      integer*2 intent(out) :: out(nsamples)
@@ -9,18 +9,18 @@ interface
      integer intent(hide), depend(samples) :: nsamples = len(samples)
      integer intent(in) :: thresh
      integer intent(in) :: window
-     integer intent(in) :: refrac
    end subroutine spike_times
 
-   subroutine extract_spikes(out, samples, nsamples, times, ntimes, window)
+   subroutine extract_spikes(out, samples, nsamples, times, ntimes, windowstart, windowstop)
      intent(c) extract_spikes
      intent(c)
-     integer*2 intent(out) :: out(ntimes,window*2)
-     integer*2 intent(in) :: samples(nsamples)
+     double precision intent(out) :: out(ntimes,windowstart+windowstop)
+     double precision intent(in) :: samples(nsamples)
      integer intent(hide), depend(samples) :: nsamples = len(samples)
      integer intent(in) :: times(ntimes)
      integer intent(hide), depend(times) :: ntimes = len(times)
-     integer intent(in) :: window
+     integer intent(in) :: windowstart
+     integer intent(in) :: windowstop
    end subroutine extract_spikes
 
    subroutine signal_stats(out, samples, nsamples)
