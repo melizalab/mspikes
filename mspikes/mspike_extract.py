@@ -53,10 +53,10 @@ Optional arguments:
 # docstring for tetrode grouping
 #If recording from tetrodes, grouping can be done with parentheses: e.g. --chan='(1,2,3,4),(5,6,7,8)'
 
-import os, sys, pdb
+import os, sys
 import arf
-import extractor, klusters
-
+from . import extractor, klusters
+from .version import version
 
 options = {
     'thresholds' : [4.5],  # must be a sequence of scalars
@@ -123,7 +123,7 @@ def simple_extraction(arffile, log=extractor._dummy_writer, **options):
                               method='threshold', threshold=thresh, window=options['window'],
                               source_channels=(channel,),
                               inverted=do_invert, resamp=options['resamp'],
-                              mspikes_version=extractor.__version__,)
+                              mspikes_version=version,)
             gen = extractor.extract_spikes(arfp, channel, thresh, maxrms, log, invert=do_invert,**options)
             for entry, times, spikes, Fs in gen:
                 if times is not None and times.size > 0:
@@ -205,19 +205,18 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
 def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
-    opts, args = getopt.gnu_getopt(argv[1:], "c:r:a:t:i:If:Rw:h",
+    opts, args = getopt.gnu_getopt(argv[1:], "c:r:a:t:i:If:Rw:hv",
                                ["chan=","start=","stop=","simple","help","kkwik","version"])
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % extractor.__version__
+    print "* Version: %s" % version
 
     try:
         for o,a in opts:
             if o in ('-h','--help'):
                 print __doc__
                 return 0
-            elif o == '--version':
-                print "%s version: %s" % (os.path.basename(argv[0]), extractor.__version__)
+            elif o in ('-v','--version'):
                 return 0
             elif o in ('-c','--chan'):
                 options['channels'] = a.split(',')

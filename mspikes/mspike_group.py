@@ -38,7 +38,8 @@ Options:
 
 """
 import os, sys, arf
-from extractor import __version__, _spike_resamp, _default_samplerate, _dummy_writer
+from .extractor import _spike_resamp, _default_samplerate, _dummy_writer
+from .version import version
 
 options = {
     'arf_add' : False,
@@ -219,19 +220,18 @@ def group_events(arffile, log=_dummy_writer, **options):
 def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
-    opts, args = getopt.getopt(argv[1:], "atphb:n:",
+    opts, args = getopt.getopt(argv[1:], "atTpb:n:hv",
                                ["stimulus=","units=","start=","stop=","version","help"])
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % __version__
+    print "* Version: %s" % version
 
     try:
         for o,a in opts:
             if o in ('-h','--help'):
                 print __doc__
                 return 0
-            elif o == '--version':
-                print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+            elif o in ('-v','--version'):
                 return 0
             elif o == '-a':
                 options['arf_add'] = True

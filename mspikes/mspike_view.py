@@ -27,7 +27,8 @@ C. Daniel Meliza, 2011
 
 import os, sys, posixpath
 import arf
-from extractor import __version__, _default_samplerate, _dummy_writer
+from .extractor import _default_samplerate, _dummy_writer
+from .version import version
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid.parasite_axes import SubplotHost
 
@@ -194,19 +195,18 @@ class plotter(object):
 def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
-    opts, args = getopt.getopt(argv[1:], "c:u:e:h",
+    opts, args = getopt.getopt(argv[1:], "c:u:e:hv",
                                ["chan=","unit=","stats","help","version"])
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % __version__
+    print "* Version: %s" % version
 
     try:
         for o,a in opts:
             if o in ('-h','--help'):
                 print __doc__
                 return 0
-            elif o == '--version':
-                print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+            elif o in ('-v','--version'):
                 return 0
             elif o in ('-c','--chan'):
                 options['channels'] = a.split(',')

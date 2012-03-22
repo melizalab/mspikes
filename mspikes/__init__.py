@@ -13,7 +13,6 @@ klusters    read and write klusters/klustakwik file formats
 spikes      extension module with signal processing and spike extraction code
 
 """
-from extractor import __version__
 __all__ = ['extractor','klusters']
 
 # Variables:

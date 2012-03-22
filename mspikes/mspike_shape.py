@@ -26,7 +26,8 @@ column is the amplitude of one of the units.
 """
 import os, sys, arf
 from arf.constants import DataTypes
-from extractor import __version__, _dummy_writer, _default_samplerate
+from .extractor import _dummy_writer, _default_samplerate
+from .version import version
 
 options = {
     'window' : 30,
@@ -104,17 +105,16 @@ def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % __version__
+    print "* Version: %s" % version
 
-    opts, args = getopt.getopt(argv[1:], "w:r:u:h",
+    opts, args = getopt.getopt(argv[1:], "w:r:u:hv",
                                ["help","version"])
     try:
         for o,a in opts:
             if o in ('-h','--help'):
                 print __doc__
                 return 0
-            elif o == '--version':
-                print "%s version: %s" % (os.path.basename(argv[0]), __version__)
+            elif o in ('-v','--version'):
                 return 0
             elif o == '-w':
                 options['window'] = int(a)
