@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
+# Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
+# Free for use under Creative Commons Attribution-Noncommercial-Share
+# Alike 3.0 United States License
+# (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 Merges toelis data from one or more cells into a single directory. This may be
 necessary when the same unit gets recorded on multiple channels.
@@ -13,7 +17,7 @@ can be used for the merged data.  Toelis files are assumed to contain only one u
 
 import os, sys, glob
 from arf.io.toelis import toefile, toelis
-from extractor import __version__
+from .version import version
 
 def combine_toelis(*oldcelldirs):
     """
@@ -42,7 +46,7 @@ def main(argv=None):
         return -1
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
-    print "* Version: %s" % __version__
+    print "* Version: %s" % version
 
     oldcells = [os.path.relpath(p) for p in argv[1:-1]]
     newcell = argv[-1]

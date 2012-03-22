@@ -11,7 +11,6 @@ Component modules
 extractor   functions for detecting and processing spike events
 klusters    read and write klusters/klustakwik file formats
 spikes      extension module with signal processing and spike extraction code
-
 """
 __all__ = ['extractor','klusters']
 

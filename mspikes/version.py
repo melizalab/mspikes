@@ -20,8 +20,10 @@ This is mspikes, a program for extracting spikes from extracellular recordings.
 Version information:
 %s
 
-Copyright (C) 2011-2012 Dan Meliza <dan // meliza.org>
-Project site: http://github.com/dmeliza/chirp
+Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
+Free for use under Creative Commons Attribution-Noncommercial-Share
+Alike 3.0 United States License
+(http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """ % ("\n".join("%-15s %s" % (k,v) for k,v in lib_versions().items()))
 
 

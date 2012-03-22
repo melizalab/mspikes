@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
-# Copyright (C) Dan Meliza, 2006-2009 (dmeliza@uchicago.edu)
+# Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
 # (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
@@ -21,8 +21,6 @@ Usage: spike_view [OPTIONS] <sitefile.arf>
  -u UNITS          data (in waveform view only)
 
  -e ENTRY :        specify which entry [index] to start at (waveform view only)
-
-C. Daniel Meliza, 2011
 """
 
 import os, sys, posixpath
