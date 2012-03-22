@@ -179,16 +179,14 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
                     log.write("*** No spikes: skipping channel\n")
                 else:
                     alltimes, allspikes = klusters.arrange_spikes(alltimes, allspikes)
-                    log.write("*** Aligning spikes\n")
-                    spikes_aligned = extractor.align_spikes(allspikes, **options)
                     log.write("*** Calculating features\n")
-                    spike_projections = extractor.projections(spikes_aligned, **options)[0]
-                    spike_measurements = extractor.measurements(spikes_aligned, **options)
+                    spike_projections = extractor.projections(allspikes, **options)[0]
+                    spike_measurements = extractor.measurements(allspikes, **options)
                     if spike_measurements is not None:
                         spike_features = column_stack((spike_projections, spike_measurements, alltimes))
                     else:
-                        spike_features = column_stack((spike_projections, alltimes))
-                    ks.addevents(spikes_aligned, spike_features)
+                        spike_features = column_stack((allspikes, alltimes))
+                    ks.addevents(allspikes, spike_features)
                     log.write("*** Wrote data to klusters group %s.%d\n" % (basename, ks.current_channel+1))
                     if options.get('kkwik',False):
                         log.write("*** Starting KlustaKwik\n")

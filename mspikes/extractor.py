@@ -106,9 +106,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
         if spike_t.size > 0:
             spike_w = extract_spikes(data, spike_t, window)
             if resamp > 1:
-                spike_w  = fftresample(spike_w, window * resamp * 2)
-                spike_t  *= resamp
-                spike_t  += find_peaks(spike_w, window * resamp, resamp)
+                spike_w,shift = resample_and_align(spike_w, window, resamp)
+                spike_t  = (spike_t * resamp) + shift
             log.write(".")
             spikecount += spike_t.size
             yield entry, spike_t, spike_w, Fs * resamp
@@ -116,12 +115,37 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
             log.write("0")
     log.write(" %d events\n" % spikecount)
 
+def resample_and_align(spikes, peak, resamp):
+    """
+    Resamples spike waveforms and aligns to peak values.
+
+    spikes: spike waveforms, dimensions nevents x nsamples
+    peak:   the expected location of the peak in the spikes (in samples)
+    resamp: the resampling factor (integer; downsampling is highly discouraged)
+
+    returns resampled and aligned spike waveforms, dimensions nevents x (nsamples-2)*resamp
+            array of integers indicating how many samples each waveform was shifted (after resampling)
+
+    raises an error if resamp <= 1
+    """
+    from numpy import zeros
+    resamp = int(resamp)
+    if resamp <= 1: raise ValueError, "Resampling factor must be > 1"
+    nevents,nsamples = spikes.shape
+    spikes = fftresample(spikes, nsamples * resamp)
+    shift = find_peaks(spikes, peak * resamp, resamp)
+    start = shift + resamp
+    nshifted = (nsamples-2)*resamp
+    shifted = zeros((nevents, nshifted))
+    for i,spike in enumerate(spikes):
+        shifted[i,:] = spike[start[i]:start[i]+nshifted]
+    return shifted, shift
 
 def find_peaks(spikes, peak, resamp):
     """
     Locate the peaks in an array of spikes.
 
-    spikes: resampled spike waveforms, dimensions nevents x window * 2
+    spikes: resampled spike waveforms, dimensions nevents x nsamples
     peak:   the expected peak location
     resamp: the resampling factor
 
@@ -192,33 +216,6 @@ def measurements(spikes, **kwargs):
         return column_stack(out)
     else:
         return None
-
-
-def align_spikes(spikes, **kwargs):
-    """
-    Realigns spike waveforms based on peak time.
-
-    spikes:     nevents x nsamples array of spike waveforms. should be
-                upsampled prior to calling this function. Peaks are assumed
-                to be in the middle of the window (nsamples / 2)
-    resamp:     the resampling rate. in theory, spikes should not be misaligned
-                more than this amount.
-
-    Returns:
-    array of resampled spikes, dimensions nevents x
-    (nsamples-resamp*2). To ensure consistency, the same number of
-    samples are removed from each end regardless of whether the spike
-    was shifted or not.
-    """
-    from numpy import zeros
-    resamp = kwargs.get('resamp')
-    nevents,nsamples = spikes.shape
-    start = find_peaks(spikes, nsamples / 2, resamp) + resamp
-    nshifted = nsamples - resamp*2
-    shifted = zeros((nevents, nshifted), dtype=spikes.dtype)
-    for i,spike in enumerate(spikes):
-        shifted[i,:] = spike[start[i]:start[i]+nshifted]
-    return shifted
 
 
 def fftresample(S, npoints, axis=1):
