@@ -101,7 +101,7 @@ class klustersite(object):
         """  Generate the xml file for the site """
         total_channels = len(self.channels)
         with open(self.sitename + ".xml", 'wt') as fp:
-            fp.writelines(('<parameters creator="mspikes" version="2.0" >\n',
+            fp.writelines(('<parameters creator="mspikes" version="2.2" >\n',
                            " <acquisitionSystem>\n",
                            "  <nBits>16</nBits>\n",
                            "  <nChannels>%d</nChannels>\n" % total_channels,
