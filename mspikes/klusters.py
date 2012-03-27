@@ -23,12 +23,6 @@ class klustersite(object):
     <base>.spk.<g> - the spike file: 16-bit samples
     <base>.fet.<g> - the feature file
     <base>.clu.<g> - the cluster file (all spikes assigned to one cluster)
-
-    Usage:
-    >>> with klustersite(basename,channels=((0,1),2),thresh=(4.5,4.5,4.5),nfeats=3,window=20) as ks:
-    >>>     ks.addevents(spikes, features)
-    >>>     ks.group += 1
-    >>>     ks.addevents(spikes, features)
     """
     _spktemplate = "%s.spk.%d"
     _clutemplate = "%s.clu.%d"

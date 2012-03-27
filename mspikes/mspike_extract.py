@@ -185,7 +185,7 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
                     if spike_measurements is not None:
                         spike_features = column_stack((spike_projections, spike_measurements, alltimes))
                     else:
-                        spike_features = column_stack((allspikes, alltimes))
+                        spike_features = column_stack((spike_projections, alltimes))
                     ks.addevents(allspikes, spike_features)
                     log.write("*** Wrote data to klusters group %s.%d\n" % (basename, ks.current_channel+1))
                     if options.get('kkwik',False):
