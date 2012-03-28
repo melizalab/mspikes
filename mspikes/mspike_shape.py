@@ -55,7 +55,9 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
     from .extractor import resample_and_align
     from numpy import round, row_stack, asarray
     units = options.get('units',None)
-    window = options.get('window',30)
+    resamp = options.get('resamp',3)
+    window_start = options.get('window_start',0.5)
+    window_stop = options.get('window_stop',1.5)
 
     out = defaultdict(list)
     Fs = dict()
@@ -72,8 +74,8 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
                 data = src_chan[:]
                 # this will produce some undefined results if sampling rate changes
                 Fs[channame] = src_chan.attrs['sampling_rate'] / 1000
-                spiket = round(asarray(entry.get_data(channame)) * Fs[channame]).astype('i')
-                if spiket.size > 0:
+                if entry[channame].shape[0] != 0:
+                    spiket = (entry[channame][:] * Fs[channame]).astype('i')
                     spikes = extract_spikes(data, spiket, window_start * Fs[channame], window_stop * Fs[channame])
                     out[channame].append(spikes)
             log.write('.')

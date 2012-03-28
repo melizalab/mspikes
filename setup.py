@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 from numpy.distutils.core import setup,Extension
 import os,sys
 
-VERSION = '2.2.0b1'
+VERSION = '2.2.0b2'
 cls_txt = \
 """
 Development Status :: 5 - Production/Stable
