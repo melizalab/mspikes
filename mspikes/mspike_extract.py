@@ -128,7 +128,7 @@ def simple_extraction(arffile, log=extractor._dummy_writer, **options):
             for entry, times, spikes, Fs in gen:
                 if times is not None and times.size > 0:
                     chan_name = channel + '_thresh'
-                    entry.add_data(name=chan_name, data=(times * 1000. / Fs,), replace=True, **attributes)
+                    entry.add_data(name=chan_name, data=times * 1000. / Fs, replace=True, **attributes)
 
 
 def klusters_extraction(arffile, log=extractor._dummy_writer, **options):

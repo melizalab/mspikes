@@ -99,7 +99,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 	    T = int(thresh * rms)
 	else:
 	    T = thresh
-	spike_t = spike_times(data, T, window).nonzero()[0]
+	spike_t = spike_times(data, T, search).nonzero()[0]
 	if spike_t.size > 0:
 	    spike_w = extract_spikes(data, spike_t, window, window)
 	    if resamp > 1:
@@ -138,18 +138,18 @@ def resample_and_align(spikes, peak, resamp):
 	shifted[i,:] = spike[start[i]:start[i]+nshifted]
     return shifted, shift
 
-def find_peaks(spikes, peak, resamp):
+def find_peaks(spikes, peak, window):
     """
     Locate the peaks in an array of spikes.
 
     spikes: resampled spike waveforms, dimensions nevents x nsamples
     peak:   the expected peak location
-    resamp: the resampling factor
+    window: the number of samples to either side of the peak to look for the peak
 
     Returns: array of shift values
     """
-    r = slice(peak-resamp,peak+resamp+1)
-    return spikes[:,r].argmax(1) - resamp
+    r = slice(peak-window,peak+window+1)
+    return spikes[:,r].argmax(1) - window
 
 
 def projections(spikes, **kwargs):
