@@ -195,7 +195,7 @@ class klustxml(object):
     def skipped(self):
         """ List of tuples, containing the entries skipped for each group """
         return [tuple(int(skt.text) for skt in group.findall("skipped/time")) \
-                for group in self.tree.findall('spikeDetection/channelGroups/group/')]
+                for group in self.tree.findall('spikeDetection/channelGroups/group')]
 
     @property
     def samplerate(self):
