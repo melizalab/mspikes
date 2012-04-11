@@ -12,6 +12,7 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 from collections import defaultdict
+from .version import version
 
 class klustersite(object):
     """
@@ -95,7 +96,7 @@ class klustersite(object):
         """  Generate the xml file for the site """
         total_channels = len(self.channels)
         with open(self.sitename + ".xml", 'wt') as fp:
-            fp.writelines(('<parameters creator="mspikes" version="2.2" >\n',
+            fp.writelines(('<parameters creator="mspikes" version="%s" >\n' % version,
                            " <acquisitionSystem>\n",
                            "  <nBits>16</nBits>\n",
                            "  <nChannels>%d</nChannels>\n" % total_channels,
