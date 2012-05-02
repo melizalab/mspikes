@@ -24,10 +24,12 @@ def rate(tl, time_range):
     T  = 1. / (time_range[1] - time_range[0])
     return [T * len(x) for x in tl]
 
+
 def intervals(tl):
     """ Calculate inter-event intervals. Returns a list of numpy arrays """
     from numpy import diff
     return [diff(x) for x in tl]
+
 
 def histogram(tl, bins=20., time_range=None, **kwargs):
     """
@@ -56,6 +58,37 @@ def histogram(tl, bins=20., time_range=None, **kwargs):
     for i,trial in enumerate(tl):
         out[:,i] = histogram(trial, bins=bins, **kwargs)[0]
     return out,bins
+
+
+def phasic_index(tl, time_range=None):
+    """
+    Calculate phasic response index as reported by Gentner and Margoliash 2003.
+    PR = \frac{D - \sum_i min(x_i,x_{i+1})}{D}
+
+    where D is the duration of the analysis interval (typically
+    defined by the start and stop of the stimulus) times the number of
+    repetitions.
+
+    time_range:  the time interval to do the analysis over. Default
+                 is to use the min and max of tl
+    """
+    if time_range is None:
+        time_range = tl.range
+    else:
+        tl = tl.subrange(*time_range)
+    intervals = nx.concatenate([nx.diff(events) for events in tl])
+    minsum = sum(nx.minimum(intervals[:-1],intervals[1:]))
+    stimdur = len(tl) * (time_range[1]-time_range[0])
+    return (stimdur-minsum)/stimdur
+
+
+def respstrength_var(tl, time_range=None):
+    """
+    Calculate variance of the firing rate using ISI distributions
+    (i.e. the instantaneous firing rate).  This
+    """
+    pass
+
 
 def plot_rasters(*tls, **kwargs):
     """
