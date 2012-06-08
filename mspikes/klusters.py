@@ -177,12 +177,19 @@ class klustxml(object):
     def __init__(self, xmlfile):
         from xml.etree import ElementTree
         self.tree = ElementTree.parse(xmlfile)
+        self.version = self.tree.getroot().attrib['version']  # may not be correct
+        self.chanbase = os.path.basename(xmlfile).split('_')[0]  # try to infer channel base
 
     @property
     def channels(self):
         """ List of tuples, containing the channels defined in each group. """
-        return [tuple(name.text for name in group.findall('name')) \
-                for group in self.tree.findall('spikeDetection/channelGroups/group/channels')]
+        # mspikes 2.0 backwards compatibility: channels don't have names but indices
+        out = []
+        for group in self.tree.iterfind('spikeDetection/channelGroups/group/channels'):
+            names = tuple(name.text for name in group.findall('name')) or \
+                tuple("%s_%d" % (self.chanbase, int(chan.text)+1) for chan in group.findall('channel'))
+            out.append(names)
+        return out
 
     @property
     def skipped(self):
