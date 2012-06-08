@@ -22,11 +22,8 @@ with the units in each entry.  Specific units can be extracted using
 the -u flag.  The waveforms are extracted from the first channel
 associated with a spike.
 
-Output:
-
-<sitename>.spikes: An ASCII-encoded file with the mean spikes in
-tabular format.  The first column is the time, and each additional
-column is the amplitude of one of the units.
+Output (to stdout): mean spikes in long tabular format, with columns unit, time,
+and value
 """
 import os, sys, arf
 from arf.constants import DataTypes
@@ -34,7 +31,8 @@ from .extractor import _dummy_writer
 from .version import version
 
 options = {
-    'window' : 30,
+    'window_start' : 0.5,
+    'window_stop' : 1.5,
     'units' : None,
     'resamp' : 3
     }
@@ -60,6 +58,7 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
     window_stop = options.get('window_stop',1.5)
 
     out = defaultdict(list)
+    src_chans = dict()
     Fs = dict()
     log.write('* Extracting spike waveforms from %s: ' % arffile)
     with arf.file(arffile,'r') as arfp:
@@ -69,8 +68,8 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
                 if units is not None and channame not in units: continue
                 chan = entry[channame]
                 if chan.attrs['datatype'] != DataTypes.SPIKET: continue
-                src_chans = chan.attrs['source_channels']
-                src_chan = entry[src_chans[0]]
+                src_chans[channame] = chan.attrs['source_channels'][0]
+                src_chan = entry[src_chans[channame]]
                 data = src_chan[:]
                 # this will produce some undefined results if sampling rate changes
                 Fs[channame] = src_chan.attrs['sampling_rate'] / 1000
@@ -82,9 +81,10 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
             log.flush()
     log.write(' done\n')
     log.write('* Resampling and aligning spikes:\n')
-    for k,v in out.items():
+    for k in sorted(out.keys()):
+        v = out[k]
         spikes = row_stack(v)
-        log.write('** %s: %d spikes @ %.1f kHz' % (k, spikes.shape[0], Fs[k]))
+        log.write('** %s -> %s: %d spikes @ %.1f kHz' % (src_chans[k], k, spikes.shape[0], Fs[k]))
         log.flush()
         out[k] = resample_and_align(spikes, window_start * Fs[k], resamp)[0]
         Fs[k] *= resamp
@@ -144,7 +144,7 @@ def main(argv=None):
         return -1
 
     spikes,Fs = extract_spikes(args[0], log=sys.stdout, **options)
-    write_spikes(args[0], spikes, Fs)
+    write_spikes(args[0], spikes, **options)
 
 
 if __name__=="__main__":

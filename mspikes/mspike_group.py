@@ -36,9 +36,11 @@ Options:
 
  -n UNITNAME:        when adding spikes to the ARF file, use UNITNAME as the
                      base name (default 'unit')
+ --clear-arf:        remove all spike time data from the arf file first
 
 """
 import os, sys, arf
+from arf.constants import DataTypes
 from .extractor import _spike_resamp, _default_samplerate, _dummy_writer
 from .version import version
 
@@ -52,6 +54,7 @@ options = {
     'stop' : None,
     'basename' : None,
     'unitname': 'unit',
+    'arf_clear': False,
     }
 
 def episode_times(arfp, resampling):
@@ -145,7 +148,9 @@ def group_events(arffile, log=_dummy_writer, **options):
     start, stop = options.get('start',None), options.get('stop',None)
     stimuli = options.get('stimuli',None)
     units = options.get('units',None)
-    uname = options.get('unitname','unit') + '_%03d'
+    uname_base = options.get('unitname','unit')
+    uname = uname_base + '_%03d'
+    arf_clear = options.get('arf_clear',False)
 
     if len(count_units(basename))==0:
         raise RuntimeError, "No klusters data defined for %s" % basename
@@ -153,7 +158,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     source_channels = kxml.channels
     skipped_entries = kxml.skipped
 
-    if arf_add:
+    if arf_add or arf_clear:
         attributes = dict(datatype=arf.DataTypes.SPIKET, method='klusters', resamp=_spike_resamp,
                           mspikes_version=version,)
         arf_mode = 'a'
@@ -186,6 +191,11 @@ def group_events(arffile, log=_dummy_writer, **options):
         for i,spikes in enumerate(izip(*events)):
             etime = eptimes[i] * 1. / sr
             entry = arfp[epnames[i]]
+            if arf_clear:
+                for chan in entry.channels:
+                    if chan.startswith(uname_base) and entry[chan].attrs['datatype'] == DataTypes.SPIKET:
+                        del entry[chan]
+
             recid = entry.attrs['recid']
             stim = entry.attrs.get('protocol',None) or "nostim"
             if (start and etime < start * resampling) or (stop and etime > stop * resampling) \
@@ -194,7 +204,7 @@ def group_events(arffile, log=_dummy_writer, **options):
             else:
                 for j,g in enumerate(groups):
                     if arf_add:
-                        entry.add_data(data = asarray(spikes[j]), name=uname % j,
+                        entry.add_data(data = asarray(spikes[j]), name=uname % (units[j] + 1),
                                        replace=True, units='ms',
                                        source_channels=source_channels[g-1],
                                        was_skipped=(recid in skipped_entries[g-1]),
@@ -249,7 +259,7 @@ def main(argv=None):
     import getopt
     if argv==None: argv = sys.argv
     opts, args = getopt.getopt(argv[1:], "atTpb:n:hv",
-                               ["stimulus=","units=","start=","stop=","version","help"])
+                               ["stimulus=","units=","start=","stop=","clear-arf","version","help"])
 
     print "* Program: %s" % os.path.split(argv[0])[-1]
     print "* Version: %s" % version
@@ -279,6 +289,8 @@ def main(argv=None):
                 options['basename'] = a
             elif o == '-n':
                 options['unitname'] = a
+            elif o == '--clear-arf':
+                options['arf_clear'] = True
     except ValueError, e:
         print "* Error: can't parse %s option (%s): %s" % (o,a,e)
         return -1
