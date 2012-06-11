@@ -175,9 +175,11 @@ class klustxml(object):
     Class to retrieve metadata from klusters xml file
     """
     def __init__(self, xmlfile):
+        import os
         from xml.etree import ElementTree
+        from distutils.version import LooseVersion
         self.tree = ElementTree.parse(xmlfile)
-        self.version = self.tree.getroot().attrib['version']  # may not be correct
+        self.version = LooseVersion(self.tree.getroot().attrib['version'])  # may not be correct
         self.chanbase = os.path.basename(xmlfile).split('_')[0]  # try to infer channel base
 
     @property
