@@ -234,7 +234,8 @@ def main(argv=None):
             if options['plot_stats']:
                 plot_stats(arfp, log=sys.stdout, **options)
             else:
-                plotter(arfp, **options)
+                # retain instance or event bindings are lost
+                x = plotter(arfp, **options)
             plt.show()
             print "* Exiting"
         return 0
