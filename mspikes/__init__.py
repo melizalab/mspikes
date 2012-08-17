@@ -1,4 +1,4 @@
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 """
 mspikes extracts spike times and waveforms from extracellular data
 stored in ARF files.  The main entry points are in spike_extract,

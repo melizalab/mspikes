@@ -1,4 +1,4 @@
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # -*- mode: python -*-
 """
 Functions for simple calculations with point process (i.e. time of
@@ -72,12 +72,13 @@ def phasic_index(tl, time_range=None):
     time_range:  the time interval to do the analysis over. Default
                  is to use the min and max of tl
     """
+    from numpy import diff, minimum, concatenate
     if time_range is None:
         time_range = tl.range
     else:
         tl = tl.subrange(*time_range)
-    intervals = nx.concatenate([nx.diff(events) for events in tl])
-    minsum = sum(nx.minimum(intervals[:-1],intervals[1:]))
+    intervals = concatenate([diff(events) for events in tl])
+    minsum = sum(minimum(intervals[:-1],intervals[1:]))
     stimdur = len(tl) * (time_range[1]-time_range[0])
     return (stimdur-minsum)/stimdur
 

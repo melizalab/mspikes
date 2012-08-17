@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
@@ -37,6 +37,8 @@ options = {
     }
 
 plot_options = {
+    'path.simplify' : False,
+    'axes.hold' : False,
     'ytick.direction' : 'in',
     'xtick.direction' : 'in',
 }
@@ -126,8 +128,6 @@ class plotter(object):
         self.create_figure()
 
     def create_figure(self):
-        plt.rcParams['path.simplify'] = False
-        plt.rcParams['axes.hold'] = False
         self.fig = plt.figure()
         self.fig.canvas.mpl_connect('key_press_event',self.keypress)
         self.plot()

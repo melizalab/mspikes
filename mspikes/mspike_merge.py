@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
@@ -16,7 +16,7 @@ can be used for the merged data.  Toelis files are assumed to contain only one u
 """
 
 import os, sys, glob
-from arf.io.toelis import toefile, toelis
+from arf.io.toelis import toefile
 from .version import version
 
 def combine_toelis(*oldcelldirs):

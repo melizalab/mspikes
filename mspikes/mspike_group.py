@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
@@ -59,7 +59,7 @@ options = {
 
 def episode_times(arfp, resampling, start_adjust=True):
     """ Get episode times from arf file, adjusted for resampling """
-    from numpy import asarray, argsort
+    from numpy import asarray
     names,times = zip(*((n,entry.attrs['sample_count']) for n,entry in arfp.items()))
     times = asarray(times) * resampling
     sortind = times.argsort()

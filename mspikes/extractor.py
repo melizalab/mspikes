@@ -1,4 +1,4 @@
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 """
 Extracts spikes from extracellular data.
 
@@ -56,7 +56,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     N - skipped for lack of data
     """
     from spikes import spike_times, extract_spikes, signal_stats
-    from numpy import fromiter
 
     window = kwargs.get('window',20)
     resamp = kwargs.get('resamp', _spike_resamp)
@@ -99,7 +98,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 	    T = int(thresh * rms)
 	else:
 	    T = thresh
-	spike_t = spike_times(data, T, search).nonzero()[0]
+
+        spike_t = spike_times(data, T, window).nonzero()[0]
 	if spike_t.size > 0:
 	    spike_w = extract_spikes(data, spike_t, window, window)
 	    if resamp > 1:

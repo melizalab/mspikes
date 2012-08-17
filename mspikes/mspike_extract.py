@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
@@ -144,7 +144,7 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
     # the original sampling rate. This fixes an issue with klusters
     # where certain sampling rates cause horrible crashes, but throws
     # away the sub-sampling-interval precision of spike times.
-    from numpy import concatenate, column_stack
+    from numpy import column_stack
     channels,threshs,rmsthreshs,inverted = channel_options(**options)
     options['thresholds'] = threshs
     basename = os.path.splitext(arffile)[0]
@@ -173,7 +173,6 @@ def klusters_extraction(arffile, log=extractor._dummy_writer, **options):
 
                         alltimes.append(times)
                         allspikes.append(spikes)
-                        lastt = times[-1]
 
                 if sum(x.size for x in alltimes) == 0:
                     log.write("*** No spikes: skipping channel\n")

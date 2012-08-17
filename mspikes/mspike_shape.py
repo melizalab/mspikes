@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 # Copyright (C) Dan Meliza, 2006-2012 (dmeliza@uchicago.edu)
 # Free for use under Creative Commons Attribution-Noncommercial-Share
 # Alike 3.0 United States License
@@ -51,7 +51,7 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
     from collections import defaultdict
     from .spikes import extract_spikes
     from .extractor import resample_and_align
-    from numpy import round, row_stack, asarray
+    from numpy import row_stack
     units = options.get('units',None)
     resamp = options.get('resamp',3)
     window_start = options.get('window_start',0.5)
@@ -92,7 +92,7 @@ def extract_spikes(arffile, log=_dummy_writer, **options):
     return out, Fs
 
 def write_spikes(sitename, spikes, **options):
-    from numpy import savetxt, rec, linspace
+    from numpy import linspace
     from itertools import izip
     fname = os.path.splitext(sitename)[0] + '.spikes'
 
