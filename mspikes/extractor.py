@@ -33,6 +33,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     start:          if not None, exclude episodes starting before this time (in sec)
     stop:           if not None, exclude episodes starting after this time (in sec)
     abs_thresh:     if True, thresholding is absolute
+    exclude:        indicates an attribute to check on each entry, which if present and truthy,
+                    will cause the entry to be skipped (default 'exclude.mspikes')
     invert:         if True, invert signal prior to processing
     window:         the number of samples to extract on either side of the spike peak (def. 20)
     resamp:         resampling factor (def. 3)
@@ -46,12 +48,13 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 		      nevents x window * resamp
     sampling rate:    sampling rate of waveform (and time units)
 
-    If the entry is skipped (due to exceeding maxrms), the last three
-    values in the yielded tuple are None
+    Entries may be skipped for a number of reasons, in which case the last three
+    values in the yielded tuple are None. The reason why the entry was skipped
+    is indicated in the log.
 
     The log stream is updated as the entries are processed.  Characters mean the following:
     . - normally processed
-    S - skipped on the basis of time
+    S - skipped on the basis of time or because the entry was marked
     R - skipped on the basis of RMS
     N - skipped for lack of data
     """
@@ -62,6 +65,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     absthresh = kwargs.get('abs_thresh',False)
     invert = kwargs.get('invert',False)
     start, stop = kwargs.get('start',None), kwargs.get('stop',None)
+    skipattr = kwargs.get('exclude','exclude.mspikes')
 
     log.write("** Channel %s: thresh=%3.2f (%s%s): " % (channel, thresh,
 							"abs" if absthresh else "rms",
@@ -71,7 +75,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
     for ename,entry in arfp.items():
 	log.flush()
 	etime = entry.attrs['timestamp'] - first_episode_time
-	if (start and etime < start) or (stop and etime > stop):
+	if (start and etime < start) or (stop and etime > stop) or \
+                (skipattr is not None and entry.attrs.get(skipattr,False)):
 	    log.write("S")
 	    yield entry, None, None, None
 	    continue
