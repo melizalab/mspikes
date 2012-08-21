@@ -164,9 +164,11 @@ class plotter(object):
             grid[i].plot(t, dset, 'k', label="_nolegend_")
             grid[i].set_ylabel(chan)
 
-        for j,(name,dset) in enumerate(entry.iteritems()):
-            if self.units is not None and name not in self.units: continue
-            if dset.attrs.get('datatype',None) != arf.DataTypes.SPIKET: continue
+        spk_chans = [name for name,dset in entry.iteritems() if \
+                         (self.units is None or name in self.units) and \
+                         dset.attrs.get('datatype',None) == arf.DataTypes.SPIKET]
+        for j,chan in enumerate(spk_chans):
+            dset = entry[chan]
             spiket = dset.value if dset.shape[0] > 0 else []
             for src_chan in dset.attrs.get('source_channels',[]):
                 chan_ind = osc_chans.index(src_chan)
@@ -175,7 +177,7 @@ class plotter(object):
                 ax = grid[chan_ind]
                 t,d = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
                 ind = t.searchsorted(spiket)
-                p = Line2D(spiket, d[ind], ls='None', marker='o', c=spike_colors[j], label=name)
+                p = Line2D(spiket, d[ind], ls='None', marker='o', c=spike_colors[j], label=chan)
                 ax.add_line(p)
 
         for i,ax in enumerate(grid):
