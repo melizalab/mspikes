@@ -167,12 +167,12 @@ class plotter(object):
         for j,(name,dset) in enumerate(entry.iteritems()):
             if self.units is not None and name not in self.units: continue
             if dset.attrs.get('datatype',None) != arf.DataTypes.SPIKET: continue
+            spiket = dset.value if dset.shape[0] > 0 else []
             for src_chan in dset.attrs.get('source_channels',[]):
-                ind = osc_chans.index(src_chan)
-                if ind < 0: continue
-                spiket = dset.value if dset.shape[0] > 0 else []
+                chan_ind = osc_chans.index(src_chan)
+                if chan_ind < 0: continue
                 # get osc data from plot
-                ax = grid[i]
+                ax = grid[chan_ind]
                 t,d = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
                 ind = t.searchsorted(spiket)
                 p = Line2D(spiket, d[ind], ls='None', marker='o', c=spike_colors[j], label=name)

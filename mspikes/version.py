@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
 
-version = "2.2.1"
+version = "2.2.1b2"
 
 def lib_versions():
     import sys
