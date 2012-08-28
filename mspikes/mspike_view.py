@@ -97,11 +97,22 @@ def plot_stats(arfp, **options):
     grid[0].set_title("RMS")
     grid[-1].set_xlabel("Time (s)")
 
+    def kp(event):
+        if event.key in ('m','M'):
+            mgr = fig.get_current_fig_manager()
+            if hasattr(mgr,'frame') and hasattr(mgr.frame,'Maximixe'):
+                mgr.frame.Maximize(not mgr.frame.IsMaximized())
+        elif event.key in ('q','Q','c'):
+            plt.close(fig)
+
+    fig.canvas.mpl_connect('key_press_event',kp)
+
     return fig
 
 class arfcache(object):
     """ Provides backwards/forwards iteration through arf file, with wraparound """
 
+    # TODO? provide cache ahead
     def __init__(self, arfp, **options):
         self.entries = [(k,e) for k,e in arfp.items('sample_count')]
         self.arfp = arfp
@@ -139,6 +150,13 @@ class plotter(object):
         elif event.key in ('-', '_'):
             self.cache.prev()
             self.plot()
+        elif event.key in ('m','M'):
+            mgr = self.fig.get_current_fig_manager()
+            # wx
+            if hasattr(mgr,'frame') and hasattr(mgr.frame,'Maximixe'):
+                mgr.frame.Maximize(not mgr.frame.IsMaximized())
+            # macosx no equivalent?
+
         elif event.key in ('q','Q','c'):
             plt.close(self.fig)
 
