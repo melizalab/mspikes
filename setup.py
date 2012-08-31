@@ -3,9 +3,9 @@ use_setuptools()
 from setuptools import setup, find_packages
 
 from numpy.distutils.core import setup,Extension
-import os
 
-VERSION = '2.2.1b2'
+
+VERSION = '2.2.1b3'
 cls_txt = \
 """
 Development Status :: 5 - Production/Stable
@@ -46,6 +46,7 @@ setup(name = "mspikes",
       entry_points = {'console_scripts': ['mspike_extract = mspikes.mspike_extract:main',
                                           'mspike_group = mspikes.mspike_group:main',
                                           'mspike_view = mspikes.mspike_view:main',
+                                          'mspike_rasters = mspikes.mspike_rasters:main',
                                           'mspike_shape = mspikes.mspike_shape:main',
                                           'mspike_merge = mspikes.mspike_merge:main']},
 
