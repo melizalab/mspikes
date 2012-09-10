@@ -8,7 +8,6 @@ Alike 3.0 United States License
 (http://creativecommons.org/licenses/by-nc-sa/3.0/us/)
 """
 _spike_resamp = 2 # NB: some values (e.g. 3) cause Klusters to crash horribly
-_default_samplerate = 20000
 
 class _dummy_writer(object):
     @staticmethod
@@ -46,7 +45,6 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 		      occurring at 1 ms would have a time of 60.
     spike waveforms:  the waveforms for each spike, with dimension
 		      nevents x window * resamp
-    sampling rate:    sampling rate of waveform (and time units)
 
     Entries may be skipped for a number of reasons, in which case the last three
     values in the yielded tuple are None. The reason why the entry was skipped
