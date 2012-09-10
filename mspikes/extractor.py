@@ -82,7 +82,8 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 	    continue
 
 	try:
-	    data = entry.get_data(channel)
+            # upcast data to doubles for subsequent ops
+            data = entry[channel].value.astype('d')
 	    Fs = entry[channel].attrs['sampling_rate']
 	except (IndexError, KeyError):
 	    log.write("N")
@@ -99,10 +100,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 	    yield entry, None, None, None
 	    continue
 
-	if not absthresh:
-	    T = int(thresh * rms)
-	else:
-	    T = thresh
+        T = float(thresh if absthresh else thresh * rms)
 
         spike_t = spike_times(data, T, window).nonzero()[0]
 	if spike_t.size > 0:
@@ -112,6 +110,9 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 		spike_t  = (spike_t * resamp) + shift
 	    log.write(".")
 	    spikecount += spike_t.size
+            if entry[channel].dtype.kind == 'f':
+                # rescale floats from +/- 1 to +/-2**15 to minimize quantization in later representations
+                spike_w *= 2**15
 	    yield entry, spike_t, spike_w, Fs * resamp
 	else:
 	    log.write("0")
