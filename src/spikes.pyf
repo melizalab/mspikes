@@ -5,9 +5,9 @@ interface
      intent(c) spike_times
      intent(c)
      integer*2 intent(out) :: out(nsamples)
-     integer*2 intent(in) :: samples(nsamples)
+     double precision intent(in) :: samples(nsamples)
      integer intent(hide), depend(samples) :: nsamples = len(samples)
-     integer intent(in) :: thresh
+     double precision intent(in) :: thresh
      integer intent(in) :: window
    end subroutine spike_times
 
@@ -27,7 +27,7 @@ interface
      intent(c) signal_stats
      intent(c)
      double precision intent(out) :: out(2)
-     integer*2 intent(in) :: samples(nsamples)
+     double precision intent(in) :: samples(nsamples)
      integer intent(hide), depend(samples) :: nsamples = len(samples)
    end subroutine signal_stats
 

@@ -12,6 +12,7 @@ from mspikes import spikes
 # times. This is useful for ensuring that the code is agnostic to data type
 test_dir = "data"
 test_file = os.path.join(test_dir,"ex_spikes.npz")
+test_times = 'times'
 
 def compare_times(data, times):
     thresh = 0.122
@@ -21,12 +22,24 @@ def compare_times(data, times):
     assert tt.shape==data.shape, "%s: time array shape unequal to data shape" % data.dtype
     assert all(tt==times), "%s: times unequal" % data.dtype
 
+def compare_stats(data):
+    smean,sstd = spikes.signal_stats(data)
+    assert_almost_equal(smean,data.mean(),5,"%s: means not equal (%f, %f)" % (data.dtype, smean, data.mean()))
+    assert_almost_equal(sstd,data.std(),5,"%s: stdev not equal (%f, %f)" % (data.dtype, sstd, data.std()))
+
 def test01_times():
     data = nx.load(test_file)
-    times = data['times']
+    times = data[test_times]
     for k,d in data.items():
-        if k == 'times': continue
+        if k == test_times: continue
         yield compare_times, d, times
+
+def test03_stats():
+    data = nx.load(test_file)
+    for k,d in data.items():
+        if k == test_times: continue
+        yield compare_stats, d
+
 
 # Variables:
 # End:

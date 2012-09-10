@@ -12,10 +12,10 @@
 #include <math.h>
 
 void
-spike_times(short *out, const short *samples, int nsamples, int thresh, int window)
+spike_times(short *out, const double *samples, int nsamples, double thresh, int window)
 {
 	int i,j, peak_ind;
-	short peak_val;
+	double peak_val;
 	memset(out, 0, nsamples * sizeof(short));
 	for (i = 0; i < nsamples; i++) {
 		if (samples[i] > thresh) {
@@ -50,14 +50,14 @@ extract_spikes(double *out, const double *samples, int nsamples, const int *time
 
 
 void
-signal_stats(double *out, const short *samples, int nsamples)
+signal_stats(double *out, const double *samples, int nsamples)
 {
 	 double e = 0;
 	 double e2 = 0;
 	 double v;
 	 int i;
 	 for (i = 0; i < nsamples; i++) {
-	      v = (double)samples[i];
+	      v = samples[i];
 	      e += v;
 	      e2 += v * v;
 	 }
