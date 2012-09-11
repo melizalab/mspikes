@@ -10,7 +10,7 @@ Created 2012-03-27
 import os, sys
 
 figwidth = 5
-figdpi = 72
+figdpi = 80
 tickspacing = 1
 yskip = 1
 
@@ -22,7 +22,6 @@ def plot_rasters(toefiles, **kwargs):
     from .events import plot_rasters as plotrast
     from arf.io.toelis import toefile
     from matplotlib.pyplot import figure
-    from dlab.plotutils import adjust_spines
 
     tls = [toefile(fname).read()[0] for fname in toefiles if os.path.exists(fname)]
 
@@ -32,14 +31,18 @@ def plot_rasters(toefiles, **kwargs):
     plot_height = nlines * ticksize + tickspacing
     # need padding for tops and bottoms of plot
 
-    fig = figure(figsize=(figwidth,plot_height*figdpi), dpi=figdpi)
+    fig = figure(figsize=(figwidth,plot_height/figdpi), dpi=figdpi)
     ax = fig.add_subplot(111)
 
     plotrast(*tls, ax=ax, labels=toefiles, yskip=yskip, markersize=ticksize)
 
     if 'xlim' in kwargs and kwargs['xlim'] is not None:
         ax.set_xlim(*kwargs['xlim'])
-    adjust_spines(ax,['left','bottom'])
+    else:
+        ax.set_xlim(ax.xaxis.get_data_interval())
+
+    ax.yaxis.set_ticks_position('left')
+    ax.xaxis.set_ticks_position('bottom')
     return fig
 
 def main(argv=None):

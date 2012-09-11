@@ -100,7 +100,7 @@ def plot_rasters(*tls, **kwargs):
     tls:        the toelis objects to plot. Need to have .rasterize() method.
     ax:         axis to plot to. Default is to use gca()
     yoffset:    the starting y value for the first raster
-    yskip:      the number of rows to skip between toelis objects
+    yskip:      the number of rows to skip between toelis objects (default 2)
     labels:     text to insert above each set of rasters
     markersize: tick height (default 6)
     spacing:    tick spacing (overrides markersize if set)
@@ -116,7 +116,7 @@ def plot_rasters(*tls, **kwargs):
     marker:     the marker to use (default is '|')
     markeredgewidth (or mew): width of the tick (default 0.5)
 
-    Returns the axis object
+    Returns the plot objects
     """
     from matplotlib.pyplot import gca, setp
     from itertools import izip
@@ -149,10 +149,6 @@ def plot_rasters(*tls, **kwargs):
     # adjust plot ylim to include tops and
     # bottoms of points; may be undefined behavior if there's
     # already stuff on the plot.
-    corners_pix = ax.transAxes.transform([(0,0),(1,1)])
-    corners_pix[:,1] += (-markersize, markersize)
-    ylim = ax.transData.inverted().transform(corners_pix)[:,1]
-    ax.set_ylim(*ylim)
 
     if labels:
         # not sure how b/c this fxn is
@@ -160,6 +156,13 @@ def plot_rasters(*tls, **kwargs):
         for lbl,y in izip(labels,labely):
             ax.text(0.01, y, lbl, transform=trans, fontsize=markersize, va='bottom')
 
-    return ax
+    ax.set_ylim(ax.yaxis.get_data_interval())
+    corners_pix = ax.transAxes.transform([(0,0),(1,1)])
+    corners_pix[:,1] += (-markersize, markersize)
+    ylim = ax.transData.inverted().transform(corners_pix)[:,1]
+    ax.set_ylim(*ylim)
+
+
+    return plots
 # Variables:
 # End:
