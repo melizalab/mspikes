@@ -246,6 +246,9 @@ def main(argv=None):
     if len(args) < 1:
         print "* Error: no input file specified"
         return -1
+    elif not os.path.exists(args[0]):
+        print "* Error: %s does not exist" % args[0]
+        return -1
     print "* Input file: %s" % args[0]
 
     try:
