@@ -13,7 +13,6 @@ Alike 3.0 United States License
 """
 from collections import defaultdict
 from .version import version
-_default_samplerate = 40000     # assume standard saber sampling + 2x upsampling
 
 class klustersite(object):
     """
@@ -39,10 +38,9 @@ class klustersite(object):
         thresh:     the threshold used to extract spikes (same length as channels)
         nfeats:     the number of PCA features per channel
         measurements:  the raw feature measurements
-        window:        the number of samples per spike (automatically adjusted for resampling)
-        resamp:        resampling factor for the spikes
-
-        NB: set samplerate attribute property to ensure correct value in the xml file
+        window:     the number of samples per spike (automatically adjusted for resampling)
+        sampling_rate:  the base sampling rate of the data (default 20000)
+        resamp:         resampling factor for the spikes
         """
         self.sitename = sitename
         self.channels = tuple(kwargs['channels'])
@@ -50,6 +48,7 @@ class klustersite(object):
         self.nfeatures = kwargs['nfeats'] + len(kwargs['measurements']) + 1
         self.nkfeats = kwargs['nfeats']
         self.thresh = kwargs['thresholds']
+        self.samplerate = kwargs['sampling_rate'] * kwargs['resamp']
         self.skipped = [[] for x in self.channels]
 
         self.spk = defaultdict(self._openspikefile)
@@ -101,7 +100,7 @@ class klustersite(object):
                            " <acquisitionSystem>\n",
                            "  <nBits>16</nBits>\n",
                            "  <nChannels>%d</nChannels>\n" % total_channels,
-                           "  <samplingRate>%d</samplingRate>\n" % getattr(self,'samplerate',_default_samplerate),
+                           "  <samplingRate>%d</samplingRate>\n" % self.samplerate,
                            "  <voltageRange>20</voltageRange>\n",
                            "  <amplification>100</amplification>\n",
                            "  <offset>0</offset>\n",
