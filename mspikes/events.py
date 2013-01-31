@@ -133,7 +133,7 @@ def plot_rasters(*tls, **kwargs):
     for i,tl in enumerate(tls):
         x,y = tl.rasterize()
         plots.append(ax.plot(x,y + yoffset,'k|',**kwargs)[0])
-        yoffset += y.max() + 1 + yskip
+        yoffset += len(tl) + 1 + yskip
         labely.append(yoffset - yskip)
         ax.hold(True)
     ax.hold(hold)
