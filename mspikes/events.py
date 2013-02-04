@@ -116,7 +116,7 @@ def plot_rasters(*tls, **kwargs):
     marker:     the marker to use (default is '|')
     markeredgewidth (or mew): width of the tick (default 0.5)
 
-    Returns the plot objects
+    Returns (plot objects, y offsets of gaps)
     """
     from matplotlib.pyplot import gca, setp
     from itertools import izip
@@ -162,7 +162,6 @@ def plot_rasters(*tls, **kwargs):
     ylim = ax.transData.inverted().transform(corners_pix)[:,1]
     ax.set_ylim(*ylim)
 
-
-    return plots
+    return plots,labely
 # Variables:
 # End:
