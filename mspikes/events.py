@@ -104,6 +104,8 @@ def plot_rasters(*tls, **kwargs):
     labels:     text to insert above each set of rasters
     markersize: tick height (default 6)
     spacing:    tick spacing (overrides markersize if set)
+    labelsize:  size of label font (default 6)
+    labelpos:   horizontal position of label relative to left axis (default 0.01)
 
     Tick size and spacing is controlled by two arguments, markersize
     (or ms) and spacing.  If spacing is not set, the markers have a
@@ -126,6 +128,8 @@ def plot_rasters(*tls, **kwargs):
     yskip = kwargs.pop('yskip',2)
     labels = kwargs.pop('labels',None)
     spacing = kwargs.pop('spacing',None)
+    labelsize = kwargs.pop('labelsize',6)
+    labelpos = kwargs.pop('labelpos',0.01)
 
     labely = []
     plots  = []
@@ -133,8 +137,8 @@ def plot_rasters(*tls, **kwargs):
     for i,tl in enumerate(tls):
         x,y = tl.rasterize()
         plots.append(ax.plot(x,y + yoffset,'k|',**kwargs)[0])
+        labely.append(yoffset)
         yoffset += len(tl) + 1 + yskip
-        labely.append(yoffset - yskip)
         ax.hold(True)
     ax.hold(hold)
 
@@ -146,16 +150,19 @@ def plot_rasters(*tls, **kwargs):
         setp(plots,markersize=markersize)
     else:
         markersize = plots[0].get_markersize()
-    # adjust plot ylim to include tops and
-    # bottoms of points; may be undefined behavior if there's
-    # already stuff on the plot.
+
+    # adjust label positions to align with bottoms of markers
+    labely = [y - markersize/2 for y in labely]
 
     if labels:
         # not sure how b/c this fxn is
         trans = ax.get_yaxis_transform()
         for lbl,y in izip(labels,labely):
-            ax.text(0.01, y, lbl, transform=trans, fontsize=markersize, va='bottom')
+            ax.text(labelpos, y, lbl, transform=trans, fontsize=labelsize, va='bottom')
 
+    # adjust plot ylim to include tops and
+    # bottoms of points; may be undefined behavior if there's
+    # already stuff on the plot.
     ax.set_ylim(ax.yaxis.get_data_interval())
     corners_pix = ax.transAxes.transform([(0,0),(1,1)])
     corners_pix[:,1] += (-markersize, markersize)
