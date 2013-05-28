@@ -101,7 +101,7 @@ def plot_rasters(*tls, **kwargs):
     ax:         axis to plot to. Default is to use gca()
     yoffset:    the starting y value for the first raster
     yskip:      the number of rows to skip between toelis objects (default 2)
-    labels:     text to insert above each set of rasters
+    labels:     sequence of strings to insert above each set of rasters
     markersize: tick height (default 6)
     spacing:    tick spacing (overrides markersize if set)
     labelsize:  size of label font (default 6)
@@ -137,7 +137,7 @@ def plot_rasters(*tls, **kwargs):
     for i,tl in enumerate(tls):
         x,y = tl.rasterize()
         plots.append(ax.plot(x,y + yoffset,'k|',**kwargs)[0])
-        labely.append(yoffset)
+        labely.append(max(yoffset - yskip/2, 0))
         yoffset += len(tl) + 1 + yskip
         ax.hold(True)
     ax.hold(hold)
@@ -154,7 +154,7 @@ def plot_rasters(*tls, **kwargs):
     # adjust label positions to align with bottoms of markers
     labely = [y - markersize/2 for y in labely]
 
-    if labels:
+    if labels is not None:
         # not sure how b/c this fxn is
         trans = ax.get_yaxis_transform()
         for lbl,y in izip(labels,labely):
