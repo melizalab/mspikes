@@ -6,14 +6,39 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 15:44:00 2013
 
 """
+import ast
 
-def node_regex():
-    """Returns a regular expression for parsing node specifications"""
-    import re
-    symbol = r"[a-zA-Z_]\w*"
-    value = r"\w+"
-    str_value = r'".*?"'
-    return re.compile(r"^" symbol r"\s+" symbol)
+def parse_node(stmt):
+    """Parse a node definition.
+
+    stmt -- an ast node corresponding to a statement in the graphspec
+
+    """
+    if not isinstance(stmt, ast.Assign):
+        continue
+    if not len(stmt.targets) == 1:
+        raise SyntaxError("only one node name allowed: %s" % ast.dump(stmt))
+    if not isinstance(stmt.value, ast.Call):
+        raise SyntaxError("invalid format for node specification: %s" % ast.dump(stmt.value))
+
+    node_name = stmt.targets[0].id
+    node_type = stmt.value.func.id
+
+    node_sources = []
+    for arg in stmt.value.args:
+        if isinstance(arg, (ast.Tuple, ast.List)):
+            if not len(arg.elts) == 2:
+                raise SyntaxError("source tuple must have two elements: %s" % ast.dump(arg))
+            if not isinstance(arg.elts[0], ast.Name):
+                raise SyntaxError("first source element must be a symbol: %s" % ast.dump(arg))
+            node_sources.append(arg.elts)
+        elif isinstance(arg, ast.Name):
+            node_sources.apend((arg,))
+        else:
+            raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
+
+    node_params = dict((k.arg, ast.literal_eval(k.value)) for k in stmt.value.keywords)
+
 
 
 def parse_graph(graphspec):
@@ -33,35 +58,15 @@ def parse_graph(graphspec):
     constructor.
 
     """
-    import ast
 
+    # parse the tree
     tree = ast.parse(graphspec)
     for stmt in tree.body:
-        if not isinstance(stmt, ast.Assign):
-            continue
-        if not len(stmt.targets) == 1:
-            raise SyntaxError("only one node name allowed: %s" % ast.dump(stmt))
-        if not isinstance(stmt.value, ast.Call):
-            raise SyntaxError("invalid format for node specification: %s" % ast.dump(stmt.value))
+        parse_node(stmt)
 
-        node_name = stmt.targets[0].id
-        node_type = stmt.value.func.id
+    # instantiate the nodes
 
-        node_sources = []
-        for arg in stmt.value.args:
-            if isinstance(arg, (ast.Tuple, ast.List)):
-                if not len(arg.elts) == 2:
-                    raise SyntaxError("source tuple must have two elements: %s" % ast.dump(arg))
-                if not isinstance(arg.elts[0], ast.Name):
-                    raise SyntaxError("first source element must be a symbol: %s" % ast.dump(arg))
-                node_sources.append(arg.elts)
-            elif isinstance(arg, ast.Name):
-                node_sources.apend((arg,))
-            else:
-                raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
-
-        node_params = dict((k.arg, ast.literal_eval(k.value)) for k in stmt.value.keywords)
-
+    # build the graph
 
 
 
