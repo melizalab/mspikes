@@ -8,7 +8,7 @@ from collections import namedtuple
 
 # simple immutable struct for passing data
 data_chunk = namedtuple("data_chunk",
-                        ("channel", "offset", "sampling_rate", "data"))
+                        ("channel", "time", "sampling_rate", "data"))
 
 
 class Node:
@@ -32,11 +32,12 @@ class Node:
 
 class Source(Node):
     """A Node that produces data."""
+    _targets = []
 
     @abc.abstractproperty
     def targets(self):
         """Return a (mutable) sequence of (Sink,data_filter) links for this node."""
-        return getattr(self, "_targets", ())
+        return self._targets
 
 
 class Sink(Node):

@@ -24,14 +24,16 @@ class stream_sink(Sink):
     @classmethod
     def options(cls, arggroup, prefix, **defaults):
         from argparse import FileType
-        arggroup.add_argument("{}-stream".format(prefix),
+        arggroup.add_argument("{}-file".format(prefix),
                               help="file for output (default stdout)",
+                              nargs='?',
                               type=FileType('w'),
                               default=defaults.get('stream',cls.stream))
 
     def __call__(self, chunk):
         # TODO better formatting
         print >> self.stream, chunk
+        return chunk.time
 
 # Variables:
 # End:
