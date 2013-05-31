@@ -10,12 +10,16 @@ from mspikes.types import data_chunk, IterableSource
 
 class random_source(IterableSource):
 
-    def __init__(self, options):
+    seed = 1
+    nsamples = 4096
+
+    def __init__(self, **options):
+        # boilerplate
+        for opt in ("seed","nsamples"):
+            if options.has_key(opt): setattr(self, opt, options[opt])
         self.chunk_size = 1024
         self.channel = "random"
         self.sampling_rate = 1
-        self.seed = options.seed
-        self.nsamples = options.nsamples
         self._targets = []
 
     @classmethod
@@ -23,17 +27,17 @@ class random_source(IterableSource):
         return "Generate random values from N(0,1)"
 
     @classmethod
-    def options(cls, arggroup, prefix):
+    def options(cls, arggroup, prefix, **defaults):
         arggroup.add_argument("--{}-seed".format(prefix),
                               help="seed for random number generator",
                               type=int,
                               metavar='INT',
-                              default=1)
+                              default=defaults.get('seed',cls.seed))
         arggroup.add_argument("--{}-nsamples".format(prefix),
                               help="number of samples to generate",
                               type=int,
                               metavar='INT',
-                              default=4096)
+                              default=defaults.get('nsamples',cls.nsamples))
 
 
     def __iter__(self):

@@ -33,9 +33,6 @@ class Node:
 class Source(Node):
     """A Node that produces data."""
 
-    # not sure this should be here - it's only for root nodes
-
-
     @abc.abstractproperty
     def targets(self):
         """Return a (mutable) sequence of (Sink,data_filter) links for this node."""
@@ -54,6 +51,7 @@ class Sink(Node):
         """
         raise NotImplementedError
 
+
 class IterableSource(Source):
     """Represents a Source that can be iterated to read data from an external source"""
 
@@ -67,8 +65,8 @@ class IterableSource(Source):
         """
         return iter([])
 
-class RandomAccessSource(Source):
-    """Represents a Source that can be accessed using a mapping.
+class RandomAccessSource(IterableSource):
+    """Represents a Source that can be accessed using a time or channel mapping.
 
     Classes implementing this interface allow specific chunks to be requested
     using key-based access. The semantics for the key are as follows:

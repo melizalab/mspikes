@@ -37,6 +37,7 @@ def get_node_type(node_type_name):
     """Look up a node class by name"""
     import mspikes.modules
     # TODO scan entry points
+    # TODO throw more useful error type
     return getattr(mspikes.modules, node_type_name)
 
 
@@ -44,6 +45,7 @@ def get_data_filter(data_filter_name):
     """Look up a data filter function by name"""
     import mspikes.data_filters
     # TODO scan entry points
+    # TODO throw more useful error type
     return getattr(mspikes.data_filters, data_filter_name)
 
 
@@ -56,7 +58,7 @@ def parse_node(stmt):
     returns a tuple (node_name, node_type, sources, parameters), with symbol
     names represented as strings (i.e. the classes are not instantiated)
 
-    Nodes are defined with the following syntax:
+    Nodes are defined with the following python-based syntax:
 
     node_name = node_type(*sources, **parameters)
 
@@ -82,14 +84,10 @@ def parse_node(stmt):
     if isinstance(stmt, basestring):
         stmt = ast.parse(stmt, "single").body[0]
 
-    if not isinstance(stmt, ast.Assign):
-        raise SyntaxError("definition is not an assignment: %s" % ast.dump(stmt))
-    if not len(stmt.targets) == 1:
-        raise SyntaxError("only one assignment allowed: %s" % ast.dump(stmt))
-    if not isinstance(stmt.targets[0], ast.Name):
-        raise SyntaxError("only one assignment allowed: %s" % ast.dump(stmt))
-    if not isinstance(stmt.value, ast.Call):
-        raise SyntaxError("invalid format for node specification: %s" % ast.dump(stmt.value))
+    if not isinstance(stmt, ast.Assign) or not isinstance(stmt.value, ast.Call):
+        raise SyntaxError("definition syntax: name = type(*sources, **params) \n%s" % ast.dump(stmt))
+    if not len(stmt.targets) == 1 or not isinstance(stmt.targets[0], ast.Name):
+        raise SyntaxError("only one symbol allowed on lhs \n%s" % ast.dump(stmt))
 
     node_sources = []
     for arg in stmt.value.args:
@@ -114,43 +112,46 @@ def add_node_to_parser(node_def, parser):
     """Add a group to an argparse.ArgumentParser for setting options of nodes"""
     cls = get_node_type(node_def.type)
     group = parser.add_argument_group(node_def.name, cls.descr())
-    cls.options(group, node_def.name)
+    cls.options(group, node_def.name, **node_def.params)
 
 
-# class node_graph(object):
-#     """Represents a processing graph.
-#     """
+def build_node_graph(node_defs, **options):
+    """Instantiate nodes and assemble into a graph
 
-#     def __init__(self,):
-#         self._nodes = {}        # nodes by name
-#         self._head = []         # nodes with no source
+    node_defs -- sequence of node definitions (as returned by parse_node())
 
-#     def add_node(self, node):
-#         """Add a node to the tree.
+    options -- mapping with qualified construction parameters (e.g. nodename_paramname) as keys
 
-#         node -- a node definition, with attributes ("name", "type") and
-#                 optional ("sources", "params"). The node defined by this
-#                 argument will be instantiated and linked to its parent nodes.
+    Returns a list of the head nodes (i.e., leaf Sources) in the graph, with
+    downstream nodes linked.
 
-#         raises KeyError if the parent node doesn't exist
+    """
 
-#         """
-#         # look up type by name
+    # instantiate the nodes
+    nodes = dict()
+    sources = dict()
+    for n in node_defs:
+        cls = get_node_type(n.type)
+        opts = dict((k[len(n.name)+1:],v) for k,v in options.iteritems() if k.startswith(n.name))
+        nodes[n.name] = cls(**opts)
+        if len(n.sources) > 0: sources[n.name] = n.sources
 
-#         # instantiate
-#         params = getattr(node, "params", dict())
-#         obj = cls(**params)
-#         self._nodes[node.name] = obj
+    # assemble the graph
+    head = []
+    for name,node in nodes.iteritems():
+        if name not in sources:
+            head.append(node)
+            continue
 
-#         if hasattr(node, "sources") and node.sources is not None:
-#             for source, filt in node.sources:
-#                 # look up filter function
-#                 parent = self._nodes[source]
-#                 if not hasattr(parent, "targets"):
-#                     parent.targets = []
-#                 parent.targets.append((obj, filt))
-#         else:
-#             self._head.append(obj)
+        for source_name,source_filter in sources[name]:
+            if source_name not in nodes:
+                raise NameError("{} attempts to reference non-existent node {}".format(name, source_name))
+            if source_filter is not None:
+                source_filter = get_data_filter(source_filter)
+            nodes[source_name].targets.append((node, source_filter))
+
+    return head
+
 
 
 # Variables:
