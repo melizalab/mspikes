@@ -56,7 +56,7 @@ def test_chain_doc():
 
     parser.print_help()
 
-toolchains = [("rng = random_source(seed=10)",
+toolchains = [("rng = random_samples(seed=10)",
                "out = stream_sink((rng,sampled))")]
 
 def create_graph(definitions):
@@ -64,8 +64,18 @@ def create_graph(definitions):
     node_graph = graph.build_node_graph(node_defs)
 
     assert len(node_graph) == sum(1 for d in node_defs if len(d.sources))
+    return node_graph
 
+def run_graph(graph):
+    from itertools import chain
+    for x in chain(*graph):
+        pass
 
 def test_graph_creation():
-    for chain in toolchains:
-        yield create_graph, chain
+    for defs in toolchains:
+        yield create_graph, defs
+
+def test_graph_run():
+    for defs in toolchains:
+        chain = create_graph(defs)
+        yield run_graph, chain

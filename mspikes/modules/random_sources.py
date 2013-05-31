@@ -8,7 +8,7 @@ Created Wed May 29 14:50:02 2013
 
 from mspikes.types import data_chunk, IterableSource
 
-class random_source(IterableSource):
+class random_samples(IterableSource):
 
     seed = 1
     nsamples = 4096
@@ -46,12 +46,14 @@ class random_source(IterableSource):
         t = 0
         while t < self.nsamples:
             data = data_chunk(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
-            yield (tgt(data) for tgt,filt in self.targets if filt(data))
+            yield [tgt(data) for tgt,filt in self.targets if filt(data)]
             t += self.chunk_size
 
     @property
     def targets(self):
-        return super(random_source,self).targets
+        return super(random_samples,self).targets
+
+## TODO random_events
 
 # Variables:
 # End:
