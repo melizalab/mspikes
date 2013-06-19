@@ -10,16 +10,13 @@ from mspikes.types import Sink
 
 
 class stream_sink(Sink):
+    """Output data information to a stream"""
 
     stream = sys.stdout
 
     def __init__(self, **options):
         for opt in ("stream"):
             if options.has_key(opt): setattr(self, opt, options[opt])
-
-    @classmethod
-    def descr(cls):
-        return "Output data information to a stream"
 
     @classmethod
     def options(cls, arggroup, prefix, **defaults):

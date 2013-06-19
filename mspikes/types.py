@@ -15,11 +15,6 @@ class Node:
     __metaclass__ = abc.ABCMeta
 
     @classmethod
-    def descr(cls):
-        """Return a brief description of the module"""
-        raise NotImplementedError
-
-    @classmethod
     def options(cls, arggroup, prefix=None):
         """Add options for the module to arggroup.
 

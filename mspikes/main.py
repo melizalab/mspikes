@@ -5,23 +5,69 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Wed Jun 19 09:29:44 2013
 """
-import ast
 from mspikes import toolchains
 from mspikes import graph
+from mspikes import modules
+from mspikes import filters
+
+
+def print_descriptions(namespace, predicate, descr):
+    import inspect
+    objs = inspect.getmembers(namespace, predicate)
+    fmt = "{:<%d}   {}" % max(len(n) for n,_ in objs)
+    for n,obj in objs:
+        print fmt.format(n, descr(obj))
+
+
+def getshortdoc(arg):
+    from inspect import getdoc
+    return getdoc(arg).split("\n")[0]
 
 
 def print_toolchains():
     """print list of predefined toolchains"""
-    names = [n for n in dir(toolchains) if not n.startswith("__")]
-    fmt = "{:<%d}   {}" % max(map(len, names))
-
-    for n in names:
-        print fmt.format(n, getattr(toolchains, n)[0])
+    from operator import itemgetter
+    print_descriptions(toolchains, lambda x : isinstance(x, tuple), itemgetter(0))
 
 
-def parse_toolchain_defn(defn):
-    """parse toolchain definition"""
-    return tuple(graph.parse_node(d) for d in ast.parse(defn).body)
+def print_modules():
+    """print list of available modules"""
+    from inspect import isclass
+    print_descriptions(modules, isclass, getshortdoc)
+
+
+def print_filters():
+    """print list of available filters"""
+    from inspect import isfunction
+    print_descriptions(filters, isfunction, getshortdoc)
+
+
+def print_doc(arg):
+    """print full documentation for a toolchain, module, or filter"""
+    from inspect import getdoc
+    if arg == "":
+        print "To process data in mspikes, pick a predefined toolchain:"
+        print_toolchains()
+
+        print "\nDefine or extended toolchains with modules and filters:"
+        print "\nmodules:"
+        print_modules()
+        print "\nfilters:"
+        print_filters()
+        print "\nFor more information on a toolchain, module, or filter,\n" \
+            "run 'mspikes --doc <entity>'"
+
+    elif hasattr(toolchains, arg):
+        sdoc,defs = getattr(toolchains, arg)
+        print "{}:  {}\n\n{}".format(arg, sdoc, defs)
+    elif hasattr(modules, arg):
+        doc = getdoc(getattr(modules, arg))
+        print "{}:  {}".format(arg, doc)
+    elif hasattr(filters, arg):
+        doc = getdoc(getattr(filters, arg))
+        print "{}:  {}".format(arg, doc)
+    else:
+        print "E: no such toolchain, module, or filter '{}'".format(arg)
 
 
 def mspikes(argv=None):
@@ -29,8 +75,9 @@ def mspikes(argv=None):
 
     p = argparse.ArgumentParser(prog="mspikes",
                                 add_help=False,
-                                description="Process time-varying data.")
+                                description="Process time-varying data using configurable toolchains")
     p.add_argument("-h","--help", help="show this message, or options for a toolchain", action='store_true')
+    p.add_argument("--doc", help="print extended help information", nargs='?', const="")
 
     p.add_argument("-t", help="use a predefined toolchain", metavar='NAME', dest="tchain_name")
     p.add_argument("-T", help="define or extend toolchain", action='append', default=[],
@@ -38,6 +85,10 @@ def mspikes(argv=None):
 
     opts,args = p.parse_known_args(argv)
     print opts
+
+    if opts.doc is not None:
+        print_doc(opts.doc)
+        return 0
 
     # TODO: parse an rc file with user-defined toolchains?
     toolchain = []
@@ -57,13 +108,14 @@ def mspikes(argv=None):
     for node_def in toolchain:
         graph.add_node_to_parser(node_def, p)
 
-    # TODO pretty-print toolchain
-
     if opts.help or len(args)==0:
         p.print_help()
         if len(toolchain) == 0:
             print "\npredefined toolchains:"
             print_toolchains()
+        return 0
+
+
 
 # Variables:
 # End:

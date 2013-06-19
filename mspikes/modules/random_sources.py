@@ -8,7 +8,12 @@ Created Wed May 29 14:50:02 2013
 
 from mspikes.types import DataBlock, IterableSource
 
-class random_samples(IterableSource):
+class rand_samples(IterableSource):
+    """Generates random values from N(0,1)
+
+    This Source is useful for testing and not much else.
+
+    """
 
     seed = 1
     nsamples = 4096
@@ -21,10 +26,6 @@ class random_samples(IterableSource):
         self.channel = "random"
         self.sampling_rate = 1
         self._targets = []
-
-    @classmethod
-    def descr(cls):
-        return "Generate random values from N(0,1)"
 
     @classmethod
     def options(cls, arggroup, prefix, **defaults):

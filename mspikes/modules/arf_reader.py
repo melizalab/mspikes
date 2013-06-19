@@ -9,6 +9,7 @@ import h5py
 from mspikes.types import DataBlock, RandomAccessSource
 
 class arf_reader(RandomAccessSource):
+    """Read data from an ARF/HDF5 file"""
 
     def __init__(self, filename, channels, **options):
         """Open an ARF file for reading.
@@ -24,10 +25,6 @@ class arf_reader(RandomAccessSource):
         self.channels = channels
         self.times = options.get("times", None)
         self.entries = options.get("entries", None)
-
-    @classmethod
-    def descr(cls):
-        return "Read data from an ARF/HDF5 file"
 
     @classmethod
     def options(cls, arggroup, prefix, **defaults):
