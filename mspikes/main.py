@@ -5,6 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Wed Jun 19 09:29:44 2013
 """
+import ast
 from mspikes import toolchains
 from mspikes import graph
 
@@ -20,7 +21,6 @@ def print_toolchains():
 
 def parse_toolchain_defn(defn):
     """parse toolchain definition"""
-    import ast
     return tuple(graph.parse_node(d) for d in ast.parse(defn).body)
 
 
@@ -31,40 +31,39 @@ def mspikes(argv=None):
                                 add_help=False,
                                 description="Process time-varying data.")
     p.add_argument("-h","--help", help="show this message, or options for a toolchain", action='store_true')
-    p.add_argument("--toolchain-help", help="show help on defining toolchains", action='store_true')
 
-    g = p.add_mutually_exclusive_group()
-    g.add_argument("-t", help="use a predefined toolchain", metavar='NAME', dest="tchain_name")
-    g.add_argument("-T", help="define a toolchain", metavar='DEF', dest="tchain_def")
+    p.add_argument("-t", help="use a predefined toolchain", metavar='NAME', dest="tchain_name")
+    p.add_argument("-T", help="define or extend toolchain", action='append', default=[],
+                   metavar='DEF', dest="tchain_def")
 
-    args = p.parse_args(argv)
-    print args
+    opts,args = p.parse_known_args(argv)
+    print opts
 
+    # TODO: parse an rc file with user-defined toolchains?
+    toolchain = []
     try:
-        if args.tchain_name:
-            defn = getattr(toolchains, args.tchain_name)[1]
-        elif args.tchain_def:
-            defn = args.tchain_def
-        else:
-            defn = None
-        toolchain = defn and parse_toolchain_defn(defn)
-        for node_def in toolchain:
-            graph.add_node_to_parser(node_def, p)
+        if opts.tchain_name:
+            toolchain = graph.parse_graph_descr(getattr(toolchains, opts.tchain_name)[1])
+        for expr in opts.tchain_def:
+            toolchain.extend(graph.parse_graph_descr(expr))
 
     except AttributeError,e:
-        print "E: no such toolchain {}".format(args.tchain_name)
+        print "E: no such toolchain {}".format(opts.tchain_name)
         raise
     except SyntaxError,e:
         print "E: couldn't parse definition: {}".format(e)
         raise
 
-    if args.help:
-        if toolchain is None:
-            p.print_help()
+    for node_def in toolchain:
+        graph.add_node_to_parser(node_def, p)
+
+    # TODO pretty-print toolchain
+
+    if opts.help or len(args)==0:
+        p.print_help()
+        if len(toolchain) == 0:
             print "\npredefined toolchains:"
             print_toolchains()
-        else:
-            pass
 
 # Variables:
 # End:
