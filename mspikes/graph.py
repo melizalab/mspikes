@@ -117,12 +117,37 @@ def node_descr(cls):
     return getdoc(cls).split("\n")[0]
 
 
+def argparse_prefixer(prefix, group):
+    """Returns closure for adding prefixed options to an argparser"""
+    import re
+    rx = re.compile(r"^(--|)(\w)")
+    def f(*args, **kwargs):
+        # adds prefix to options
+        args = map(lambda x : rx.sub(r"\1%s-\2" % prefix, x), args)
+        return group.add_argument(*args, **kwargs)
+    return f
+
+
+def argparse_extracter(namespace, prefix):
+    """Returns a dict of the attributes in namespace starting with prefix.
+
+    Reverses the operation of argparse_prefixer
+    """
+    from itertools import imap, izip
+    import re
+    rx = re.compile(r"^%s(?:-|_)(.*)" % prefix)
+    keys = dir(namespace)
+    return dict((m.group(1),getattr(namespace,s))
+                for m,s in izip(imap(rx.match, keys), keys) if m)
+
+
 def add_node_to_parser(name, defn, parser):
     """Add a group to an argparse.ArgumentParser for setting options of nodes"""
     from mspikes import modules
     cls = getattr(modules, defn.type)
     group = parser.add_argument_group(name, node_descr(cls))
-    cls.options(group, name, **defn.params)
+    cls.options(argparse_prefixer(name, group), **defn.params)
+    return group
 
 
 def build_node_graph(node_defs, **options):

@@ -15,13 +15,14 @@ class Node:
     __metaclass__ = abc.ABCMeta
 
     @classmethod
-    def options(cls, arggroup, prefix=None):
+    def options(cls, arggroup, **defaults):
         """Add options for the module to arggroup.
 
         arggroup -- an instance of argparse.ArgumentParser
-        prefix   -- if not None, prefix arguments with this string
+
+        Must return sequence of the objects added to arggroup
         """
-        raise NotImplementedError
+        return ()
 
 
 class Source(Node):

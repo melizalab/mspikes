@@ -19,13 +19,13 @@ class stream_sink(Sink):
             if options.has_key(opt): setattr(self, opt, options[opt])
 
     @classmethod
-    def options(cls, arggroup, prefix, **defaults):
+    def options(cls, addopt_f, **defaults):
         from argparse import FileType
-        arggroup.add_argument("{}-file".format(prefix),
-                              help="file for output (default stdout)",
-                              nargs='?',
-                              type=FileType('w'),
-                              default=defaults.get('stream',cls.stream))
+        addopt_f("file",
+                 help="file for output (default stdout)",
+                 nargs='?',
+                 type=FileType('w'),
+                 default=defaults.get('stream',cls.stream))
 
     def __call__(self, chunk):
         # TODO better formatting

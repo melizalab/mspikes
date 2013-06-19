@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
-"""A Source that generates random data
+"""Sources of random data
 
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
@@ -14,7 +14,6 @@ class rand_samples(IterableSource):
     This Source is useful for testing and not much else.
 
     """
-
     seed = 1
     nsamples = 4096
 
@@ -28,17 +27,17 @@ class rand_samples(IterableSource):
         self._targets = []
 
     @classmethod
-    def options(cls, arggroup, prefix, **defaults):
-        arggroup.add_argument("--{}-seed".format(prefix),
-                              help="seed for random number generator",
-                              type=int,
-                              metavar='INT',
-                              default=defaults.get('seed',cls.seed))
-        arggroup.add_argument("--{}-nsamples".format(prefix),
-                              help="number of samples to generate",
-                              type=int,
-                              metavar='INT',
-                              default=defaults.get('nsamples',cls.nsamples))
+    def options(cls, addopt_f, **defaults):
+        addopt_f("--seed",
+               help="seed for random number generator",
+               type=int,
+               metavar='INT',
+               default=defaults.get('seed',cls.seed))
+        addopt_f("--nsamples",
+               help="number of samples to generate",
+               type=int,
+               metavar='INT',
+               default=defaults.get('nsamples',cls.nsamples))
 
     def __iter__(self):
         from numpy.random import RandomState

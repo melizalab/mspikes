@@ -10,6 +10,20 @@ from mspikes import graph
 from mspikes import modules
 
 
+def test_argparse_prefixer():
+    import argparse
+    pfx = "prx"
+    keys = ("--badger","bacon")
+    parser = argparse.ArgumentParser()
+
+    fn = graph.argparse_prefixer(pfx, parser)
+    assert_equal(fn("-b",default="").dest, 'b')
+    for k in keys: fn(k, default="")
+
+    n = parser.parse_args(["blah"])
+    assert_set_equal(set(graph.argparse_extracter(n, pfx).keys()),
+                     set(k.replace('-','') for k in keys))
+
 # test syntax of graph parser
 test_defs = [("node1 = node_type()", "node1", ("node_type",(),{})),
              ("node2 = node_type(param1=1234)", "node2", ("node_type",(),{"param1":1234})),

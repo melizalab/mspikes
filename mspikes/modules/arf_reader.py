@@ -27,23 +27,23 @@ class arf_reader(RandomAccessSource):
         self.entries = options.get("entries", None)
 
     @classmethod
-    def options(cls, arggroup, prefix, **defaults):
-        arggroup.add_argument("{}-filename".format(prefix),
-                              help="the file to read")
-        arggroup.add_argument("--{}-channels".format(prefix),
-                              help="list of channels",
-                              metavar='CH',
-                              required=True,
-                              nargs='+')
-        arggroup.add_argument("--{}-times".format(prefix),
-                              help="range of times (in s) to analyze (default all)",
-                              type=float,
-                              metavar='FLOAT',
-                              nargs=2)
-        arggroup.add_argument("--{}-entries".format(prefix),
-                              help="list of entries to analyze (default all)",
-                              metavar='E',
-                              nargs="*")
+    def options(cls, addopt_f, **defaults):
+        addopt_f("filename",
+                 help="the file to read")
+        addopt_f("--channels",
+                 help="list of channels",
+                 metavar='CH',
+                 required=True,
+                 nargs='+')
+        addopt_f("--times",
+                 help="range of times (in s) to analyze (default all)",
+                 type=float,
+                 metavar='FLOAT',
+                 nargs=2)
+        addopt_f("--entries",
+                 help="list of entries to analyze (default all)",
+                 metavar='E',
+                 nargs="*")
 
     def __iter__(self):
         from numpy.random import RandomState
