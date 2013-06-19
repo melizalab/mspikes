@@ -3,11 +3,11 @@
 #+EMAIL:     dan||meliza.org
 #+DATE: [2013-05-28 Tue]
 
-*mspikes* is a general-purpose middleware tool for processing neural recordings.
-It can read and write data in various formats and perform a range of filtering
-and detection operations. You can use it to extract data from raw recordings for
-spike sorting, and convert the results back into more generic formats. Support
-for additional formats and signal processing algorithms can be supplied through
+*mspikes* is a general-purpose tool for processing time-varying data. It can
+read and write various formats and perform a range of filtering and detection
+operations. You can use it to extract data from raw recordings for spike
+sorting, and convert the results back into more generic formats. Support for
+additional formats and signal processing algorithms can be supplied through
 plugins.
 
 *mspikes* uses a graph-based pipeline model.  Data is moved through the graph
@@ -18,15 +18,15 @@ multi-node environments.
 
 ** Data model
 
-Data in *mspikes* can either be sampled or event-based. Sampled data consist of
-discrete measurements taken at fixed intervals (for example, a sound pressure
-waveform or raw neural recording). Event-based data occur at discrete points in
-time, but the intervals are not fixed. Examples of event-based data include
-spike times and the associated waveforms, or the start and stop times of
-stimulus presentation.  Data may be univariate or multivariate.  Sampled data
-are represented by multi-dimensional arrays, with time along the first axis.
-Event data are represented by by one-dimensional arrays of records, with the
-time of the event stored in one of the fields.
+Data in *mspikes* can either be sampled (time-series) or event-based (point
+process). Sampled data consist of discrete measurements taken at fixed intervals
+(for example, a sound pressure waveform or raw neural recording). Event-based
+data occur at discrete points in time, but the intervals are not fixed. Examples
+of event-based data include spike times and the associated waveforms, or the
+start and stop times of stimulus presentation. Data may be univariate or
+multivariate. Sampled data are represented by multi-dimensional arrays, with
+time along the first axis. Event data are represented by by one-dimensional
+arrays of records, with the time of the event stored in one of the fields.
 
 Data are moved within *mspikes* in chunks. Chunks consist of a data array and
 several fields that identify the source channel and the timebase. A timebase may
@@ -35,14 +35,14 @@ chunk are real values and have units of seconds.  In a discrete timebase, all
 values are integers, and a sampling_rate attribute, with units of
 samples/second is required.
 
-+ channel :: the name of the channel
-+ time :: the temporal offset of the data. Typically this value is referenced to
-          the start of the experiment, but the only requirement is that all time
-          values are internally consistent.
-+ sampling_rate :: for discrete timebases, a positive real number indicating
-                   the number of samples per second. For continuous timebases,
-                   this property must be None.
-+ data :: an array
++ id :: the name of the channel
++ offset :: the temporal offset of the data. Typically this value is referenced
+            to the start of the experiment, but the only requirement is that all
+            time values are internally consistent.
++ dt :: for discrete timebases, a positive real number indicating the number of
+        samples per second. For continuous timebases, this property must be
+        None.
++ data :: an array (atomic for time series; compound for point process)
 
 ** Graph model
 

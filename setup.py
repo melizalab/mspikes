@@ -24,7 +24,7 @@ Operating System :: POSIX :: Linux
 Operating System :: MacOS :: MacOS X
 Natural Language :: English
 """
-short_desc = "Neural data processing"
+short_desc = "Processing framework for time series and point process data"
 long_desc = """
 FIXME
 """
@@ -42,15 +42,15 @@ setup(name="mspikes",
       maintainer='C Daniel Meliza',
       maintainer_email='"dan" at the domain "meliza.org"',
       packages=find_packages(),
-      entry_points={'console_scripts':
-                    ['mspike_extract=mspikes.mspike_extract:main',
-                     'mspike_group=mspikes.mspike_group:main',
-                     'mspike_view=mspikes.mspike_view:main',
-                     'mspike_rasters=mspikes.mspike_rasters:main',
-                     'mspike_shape=mspikes.mspike_shape:main',
-                     'mspike_merge=mspikes.mspike_merge:main']},
+      # entry_points={'console_scripts':
+      #               ['mspike_extract=mspikes.mspike_extract:main',
+      #                'mspike_group=mspikes.mspike_group:main',
+      #                'mspike_view=mspikes.mspike_view:main',
+      #                'mspike_rasters=mspikes.mspike_rasters:main',
+      #                'mspike_shape=mspikes.mspike_shape:main',
+      #                'mspike_merge=mspikes.mspike_merge:main']},
 
-      install_requires=["numpy>=1.3", "scipy>=0.7", "arf>=1.1.0"],
+      # install_requires=["numpy>=1.3", "scipy>=0.7", "arf>=1.1.0"],
 
       ext_package='mspikes',
       # ext_modules=[_readklu, _spikes]

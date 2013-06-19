@@ -8,7 +8,7 @@ from collections import namedtuple
 
 # simple immutable struct for passing data
 data_chunk = namedtuple("data_chunk",
-                        ("channel", "time", "sampling_rate", "data"))
+                        ("id", "offset", "dt", "data"))
 
 
 class Node:
@@ -36,7 +36,7 @@ class Source(Node):
 
     @abc.abstractproperty
     def targets(self):
-        """Return a (mutable) sequence of (Sink,data_filter) links for this node."""
+        """The (mutable) sequence of (Sink,data_filter) links for this node."""
         return self._targets
 
 
@@ -54,7 +54,7 @@ class Sink(Node):
 
 
 class IterableSource(Source):
-    """Represents a Source that can be iterated to read data from an external source"""
+    """A Source that can be iterated to read data from an external source"""
 
     @abc.abstractmethod
     def __iter__(self):
@@ -66,8 +66,9 @@ class IterableSource(Source):
         """
         return iter([])
 
+
 class RandomAccessSource(IterableSource):
-    """Represents a Source that can be accessed using a time or channel mapping.
+    """A Source that can be accessed using a time or channel mapping.
 
     Classes implementing this interface allow specific chunks to be requested
     using key-based access. The semantics for the key are as follows:
@@ -95,5 +96,5 @@ class Filter(Sink, Source):
     pass
 
 
-
-
+# Variables:
+# End:
