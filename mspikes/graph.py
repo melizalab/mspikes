@@ -5,7 +5,7 @@
 Graphs are composed of Nodes that are either Sources or Sinks. Sources can be
 connected to Sinks to form processing graphs. Graphs must have one or more root
 Sources, which are linked to Sinks by appending them to the Source.target
-property. Graphs may be invoked a blocking mode through iteration on the root
+property. Graphs may be invoked in a blocking mode through iteration on the root
 Source(s). Each iteration will only complete once all the dependent nodes have
 received and processed the data chunk.
 
@@ -21,6 +21,13 @@ filter.targets.append(writer)
 for t in reader:
     update_status_display(t)
 
+Graphs can be constructed programmatically or by parsing a set of definitions.
+The definitions have a python-based syntax (see parse_node). Building a graph is
+accomplished in several passes:
+
+Pass 1: convert python statements to structured node definitions
+Pass 2: instantiate nodes and filters
+Pass 3: link target nodes to sources
 
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 15:44:00 2013
@@ -30,7 +37,7 @@ import ast
 from collections import namedtuple
 
 # representation of node definition
-_node_def = namedtuple("_node_def",("name","type","sources","params"))
+NodeDef = namedtuple("NodeDef", ("name", "type", "sources", "params"))
 
 
 def get_node_type(node_type_name):
@@ -52,7 +59,7 @@ def get_data_filter(data_filter_name):
 def parse_node(stmt):
     """Parse a node definition.
 
-    stmt -- either a string, which will parsed with Python's ast module, or an
+    stmt -- either a string, to be parsed with Python's ast module, or an
             already parsed ast.Assign object.
 
     returns a tuple (node_name, node_type, sources, parameters), with symbol
@@ -64,14 +71,15 @@ def parse_node(stmt):
 
     node_name must be a valid python identifier
 
-    node_type must be the name of a python class in the mspikes.modules module.
-    Additional classes may be registered with the 'org.meliza.mspikes.modules'
-    entry point using setuptools.
+    node_type must be the name of a python class in the mspikes.modules
+    namespace. Additional classes may be registered with the
+    'org.meliza.mspikes.modules' entry point using setuptools.
 
     *sources signifies zero or more sources, separated by commas. Each source
-     must be the name of another node, or a tuple (node_name, chunk_filter),
-     where chunk_filter must be the name of a function in the mspikes.filters
-     module. Additional callables may be registered with the
+     must be the name of another node, or a tuple
+     (node_name,filter,[filter],...), where filter must be the name of a
+     function in the mspikes.filters namespace. Filters are applied in sequence.
+     Additional callables may be registered with the
      'org.meliza.mspikes.filters' entry point.
 
     **parameters signifies zero or more key=value pairs, separated by commas.
@@ -92,17 +100,15 @@ def parse_node(stmt):
     node_sources = []
     for arg in stmt.value.args:
         if isinstance(arg, (ast.Tuple, ast.List)):
-            if not len(arg.elts) == 2:
-                raise SyntaxError("source tuple must have two elements: %s" % ast.dump(arg))
             if not all(isinstance(a, ast.Name) for a in arg.elts):
                 raise SyntaxError("source tuple elements must be symbol names: %s" % ast.dump(arg))
             node_sources.append(tuple(a.id for a in arg.elts))
         elif isinstance(arg, ast.Name):
-            node_sources.append((arg.id,None))
+            node_sources.append((arg.id, None))
         else:
             raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
 
-    return _node_def(name=stmt.targets[0].id,
+    return NodeDef(name=stmt.targets[0].id,
                      type=stmt.value.func.id,
                      sources=tuple(node_sources),
                      params=dict((k.arg, ast.literal_eval(k.value)) for k in stmt.value.keywords))
@@ -120,13 +126,13 @@ def build_node_graph(node_defs, **options):
 
     node_defs -- sequence of node definitions (as returned by parse_node())
 
-    options -- mapping with qualified construction parameters (e.g. nodename_paramname) as keys
+    options -- mapping with qualified construction parameters (e.g.
+               nodename_paramname) as keys
 
     Returns a list of the head nodes (i.e., leaf Sources) in the graph, with
     downstream nodes linked.
 
     """
-
     # instantiate the nodes
     nodes = dict()
     sources = dict()

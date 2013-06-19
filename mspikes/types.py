@@ -6,9 +6,8 @@
 import abc
 from collections import namedtuple
 
-# simple immutable struct for passing data
-data_chunk = namedtuple("data_chunk",
-                        ("id", "offset", "dt", "data"))
+# simple immutable struct for transporting blocks of data
+DataBlock = namedtuple("DataBlock", ("id", "offset", "dt", "data"))
 
 
 class Node:

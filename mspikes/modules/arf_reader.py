@@ -6,7 +6,7 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 import h5py
-from mspikes.types import data_chunk, RandomAccessSource
+from mspikes.types import DataBlock, RandomAccessSource
 
 class arf_reader(RandomAccessSource):
 
@@ -53,7 +53,7 @@ class arf_reader(RandomAccessSource):
         randg = RandomState(self.seed)
         t = 0
         while t < self.nsamples:
-            data = data_chunk(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
+            data = DataBlock(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
             yield [tgt(data) for tgt,filt in self.targets if filt(data)]
             t += self.chunk_size
 

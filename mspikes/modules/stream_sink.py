@@ -33,7 +33,7 @@ class stream_sink(Sink):
     def __call__(self, chunk):
         # TODO better formatting
         print >> self.stream, chunk
-        return chunk.time
+        return chunk.offset
 
 # Variables:
 # End:

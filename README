@@ -50,15 +50,12 @@ Toolchains are defined in *mspikes* in terms of directed graphs of component
 modules. Each node in the graph and its inputs are defined using a simple
 syntax:
 
-: node_name = node_class(sources, filters=None, **default_parameters)
+: node_name = node_class(*sources, **default_parameters)
 
 =node_class= must be a concrete type (e.g., =arf_reader=). Some generic types
 are available (e.g., =sampled_data_reader=) that will attempt to infer a more
 specific type based on the file name or contents.
 
-The =filters= parameter, if not =None=, must be a sequence with elements that
-define what kinds of data packets are accepted. Currently only =event= and
-=sampled= are accepted, but eventually function names may be allowed.
 
 ** Supported input formats
 
@@ -71,7 +68,6 @@ define what kinds of data packets are accepted. Currently only =event= and
 ** Supported spike sorters
 
 + klusters
-
 
 ** Support output formats
 

@@ -1,2 +1,3 @@
 *.pyc
 *_flymake.py
+/mspikes.egg-info/

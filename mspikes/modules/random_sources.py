@@ -6,7 +6,7 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 
-from mspikes.types import data_chunk, IterableSource
+from mspikes.types import DataBlock, IterableSource
 
 class random_samples(IterableSource):
 
@@ -39,13 +39,12 @@ class random_samples(IterableSource):
                               metavar='INT',
                               default=defaults.get('nsamples',cls.nsamples))
 
-
     def __iter__(self):
         from numpy.random import RandomState
         randg = RandomState(self.seed)
         t = 0
         while t < self.nsamples:
-            data = data_chunk(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
+            data = DataBlock(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
             yield [tgt(data) for tgt,filt in self.targets if filt(data)]
             t += self.chunk_size
 

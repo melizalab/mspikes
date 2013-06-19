@@ -9,9 +9,8 @@ import inspect
 from mspikes import graph
 from mspikes import modules
 
-# get some modules to play with
-node_types = inspect.getmembers(modules, inspect.isclass)
 
+# test syntax of graph parser
 test_defs = [("node1 = node_type()", ("node1","node_type",(),{})),
              ("node2 = node_type(param1=1234)", ("node2","node_type",(),{"param1":1234})),
              ("node3 = node_type(node1, (node2, events))", ("node3","node_type",
@@ -23,6 +22,7 @@ bad_defs = ["not an assignment",
             "node1 = not_a_call",
             "node1,node2 = too_many_lhs()",
             "node3 = bad_python_syntax(blah, param1="]
+
 
 def parse_node(statement, result):
     n = graph.parse_node(statement)
@@ -38,13 +38,17 @@ def test_node_syntax():
         yield f, statement, None
 
 
+# test lookup and doc generation for all nodes
+node_types = inspect.getmembers(modules, inspect.isclass)
+
+
 def test_node_lookup():
     for name, type in node_types:
         assert graph.get_node_type(name) == type
 
 
 def test_chain_doc():
-    """ test that an argparser can be constructed """
+    """ test construction of argparser with node docs """
     import argparse
 
     parser = argparse.ArgumentParser("test", add_help=False)
@@ -56,8 +60,11 @@ def test_chain_doc():
 
     parser.print_help()
 
+
+# test graph creation and running
 toolchains = [("rng = random_samples(seed=10)",
                "out = stream_sink((rng,sampled))")]
+
 
 def create_graph(definitions):
     node_defs = [graph.parse_node(d) for d in definitions]
@@ -66,14 +73,12 @@ def create_graph(definitions):
     assert len(node_graph) == sum(1 for d in node_defs if len(d.sources))
     return node_graph
 
+
 def run_graph(graph):
     from itertools import chain
     for x in chain(*graph):
         pass
 
-def test_graph_creation():
-    for defs in toolchains:
-        yield create_graph, defs
 
 def test_graph_run():
     for defs in toolchains:
