@@ -51,7 +51,7 @@ class rand_samples(IterableSource):
 
     @property
     def targets(self):
-        return super(random_samples,self).targets
+        return super(rand_samples,self).targets
 
 ## TODO random_events
 

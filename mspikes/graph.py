@@ -37,11 +37,11 @@ import ast
 from collections import namedtuple
 
 # representation of node definition
-NodeDef = namedtuple("NodeDef", ("name", "type", "sources", "params"))
+NodeDef = namedtuple("NodeDef", ("type", "sources", "params"))
 
 
 def parse_node_descr(expr):
-    """Parse a node description.
+    """Parse a node description. Returns (name,NodeDef).
 
     Nodes are defined with the following python-based syntax:
 
@@ -87,10 +87,10 @@ def parse_node_descr(expr):
         else:
             raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
 
-    return NodeDef(name=expr.targets[0].id,
-                   type=expr.value.func.id,
-                   sources=tuple(node_sources),
-                   params=dict((k.arg, ast.literal_eval(k.value)) for k in expr.value.keywords))
+    return (expr.targets[0].id,
+            NodeDef(type=expr.value.func.id,
+                    sources=tuple(node_sources),
+                    params=dict((k.arg, ast.literal_eval(k.value)) for k in expr.value.keywords)))
 
 
 def parse_graph_descr(code):
@@ -98,7 +98,7 @@ def parse_graph_descr(code):
 
     code -- a string, to be parsed with Python's ast module
 
-    returns a tuple of NodeDef objects
+    returns a tuple of (name, NodeDef) tuples
 
     """
     if isinstance(code, basestring):
@@ -111,25 +111,24 @@ def parse_graph_descr(code):
     return tuple(parse_node_descr(expr) for expr in exprs)
 
 
-def resolve_symbol(name, namespace, entry_point=None):
-    """Look up an object by name"""
-    # TODO scan entry points
-    # TODO throw more useful error type
-    return getattr(namespace, name)
+def node_descr(cls):
+    """Get node description from docstr"""
+    from inspect import getdoc
+    return getdoc(cls).split("\n")[0]
 
 
-def add_node_to_parser(node_def, parser):
+def add_node_to_parser(name, defn, parser):
     """Add a group to an argparse.ArgumentParser for setting options of nodes"""
     from mspikes import modules
-    cls = resolve_symbol(node_def.type, modules)
-    group = parser.add_argument_group(node_def.name, cls.descr())
-    cls.options(group, node_def.name, **node_def.params)
+    cls = getattr(modules, defn.type)
+    group = parser.add_argument_group(name, node_descr(cls))
+    cls.options(group, name, **defn.params)
 
 
 def build_node_graph(node_defs, **options):
     """Instantiate nodes and assemble into a graph
 
-    node_defs -- sequence of node definitions (as returned by parse_node())
+    node_defs -- sequence of tuples, (name, node_def)
 
     options -- mapping with qualified construction parameters (e.g.
                nodename_paramname) as keys
@@ -138,17 +137,16 @@ def build_node_graph(node_defs, **options):
     downstream nodes linked.
 
     """
-    import itertools
     from mspikes import modules, filters
 
     # instantiate the nodes
     nodes = dict()
     sources = dict()
-    for n in node_defs:
-        cls = resolve_symbol(n.type, modules)
-        opts = dict((k[len(n.name)+1:],v) for k,v in options.iteritems() if k.startswith(n.name))
-        nodes[n.name] = cls(**opts)
-        if len(n.sources) > 0: sources[n.name] = n.sources
+    for name,node in node_defs:
+        cls = getattr(modules, node.type)
+        opts = dict((k[len(name)+1:],v) for k,v in options.iteritems() if k.startswith(name))
+        nodes[name] = cls(**opts)
+        if len(node.sources) > 0: sources[name] = node.sources
 
     # assemble the graph
     head = []
@@ -160,7 +158,7 @@ def build_node_graph(node_defs, **options):
         for source in sources[name]:
             if source[0] not in nodes:
                 raise NameError("{} attempts to reference non-existent node {}".format(name, source[0]))
-            src_filts = tuple(resolve_symbol(x, filters) for x in source[1:])
+            src_filts = tuple(getattr(filters, x) for x in source[1:])
             nodes[source[0]].targets.append((node, src_filts))
 
     return head

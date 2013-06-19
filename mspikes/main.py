@@ -19,11 +19,6 @@ def print_descriptions(namespace, predicate, descr):
         print fmt.format(n, descr(obj))
 
 
-def getshortdoc(arg):
-    from inspect import getdoc
-    return getdoc(arg).split("\n")[0]
-
-
 def print_toolchains():
     """print list of predefined toolchains"""
     from operator import itemgetter
@@ -91,12 +86,12 @@ def mspikes(argv=None):
         return 0
 
     # TODO: parse an rc file with user-defined toolchains?
-    toolchain = []
+    toolchain = {}
     try:
         if opts.tchain_name:
-            toolchain = graph.parse_graph_descr(getattr(toolchains, opts.tchain_name)[1])
+            toolchain = dict(graph.parse_graph_descr(getattr(toolchains, opts.tchain_name)[1]))
         for expr in opts.tchain_def:
-            toolchain.extend(graph.parse_graph_descr(expr))
+            toolchain.update(graph.parse_graph_descr(expr))
 
     except AttributeError,e:
         print "E: no such toolchain {}".format(opts.tchain_name)
@@ -105,8 +100,8 @@ def mspikes(argv=None):
         print "E: couldn't parse definition: {}".format(e)
         raise
 
-    for node_def in toolchain:
-        graph.add_node_to_parser(node_def, p)
+    for node_name,node_def in toolchain.iteritems():
+        graph.add_node_to_parser(node_name, node_def, p)
 
     if opts.help or len(args)==0:
         p.print_help()
@@ -114,6 +109,11 @@ def mspikes(argv=None):
             print "\npredefined toolchains:"
             print_toolchains()
         return 0
+
+    # TODO pretty-print the toolchain steps
+
+    opts = p.parse_args(args, opts) # parse remaining args
+
 
 
 

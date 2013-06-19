@@ -11,11 +11,10 @@ from mspikes import modules
 
 
 # test syntax of graph parser
-test_defs = [("node1 = node_type()", ("node1","node_type",(),{})),
-             ("node2 = node_type(param1=1234)", ("node2","node_type",(),{"param1":1234})),
-             ("node3 = node_type(node1, (node2, events))", ("node3","node_type",
-                                                            (("node1",None),("node2","events")),
-                                                            {}))
+test_defs = [("node1 = node_type()", "node1", ("node_type",(),{})),
+             ("node2 = node_type(param1=1234)", "node2", ("node_type",(),{"param1":1234})),
+             ("node3 = node_type(node1, (node2, events))", "node3",
+              ("node_type", (("node1",None),("node2","events")), {}))
          ]
 
 bad_defs = ["not an assignment",
@@ -24,14 +23,15 @@ bad_defs = ["not an assignment",
             "node3 = bad_python_syntax(blah, param1="]
 
 
-def parse_node(statement, result):
-    n = graph.parse_node_descr(statement)
-    assert_sequence_equal(n, result)
+def parse_node(statement, *result):
+    name,node = graph.parse_node_descr(statement)
+    assert_equal(name, result[0])
+    assert_sequence_equal(node, result[1])
 
 
 def test_node_syntax():
-    for statement, result in test_defs:
-        yield parse_node, statement, result
+    for statement, name, node in test_defs:
+        yield parse_node, statement, name, node
 
     f = raises(SyntaxError)(parse_node)
     for statement in bad_defs:
@@ -47,14 +47,14 @@ def test_chain_doc():
 
     parser = argparse.ArgumentParser("test", add_help=False)
     code = ";".join("node{} = {}()".format(i,n) for i,(n,t) in enumerate(node_types))
-    for node_def in graph.parse_graph_descr(code):
-        graph.add_node_to_parser(node_def, parser)
+    for name,node_def in graph.parse_graph_descr(code):
+        graph.add_node_to_parser(name, node_def, parser)
 
     parser.print_help()
 
 
 # test graph creation and running
-toolchains = [("rng = random_samples(seed=10)",
+toolchains = [("rng = rand_samples(seed=10)",
                "out = stream_sink((rng,sampled))")]
 
 
@@ -62,7 +62,7 @@ def create_graph(definitions):
     node_defs = graph.parse_graph_descr(";".join(definitions))
     node_graph = graph.build_node_graph(node_defs)
 
-    assert len(node_graph) == sum(1 for d in node_defs if len(d.sources))
+    assert len(node_graph) == sum(1 for _,d in node_defs if len(d.sources))
     return node_graph
 
 
