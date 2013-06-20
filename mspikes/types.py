@@ -10,48 +10,51 @@ from collections import namedtuple
 DataBlock = namedtuple("DataBlock", ("id", "offset", "dt", "data"))
 
 
-class Node:
+class Node(object):
     """Represents a node in the mspikes processing graph."""
-    __metaclass__ = abc.ABCMeta
 
     @classmethod
-    def options(cls, arggroup, **defaults):
-        """Add options for the module to arggroup.
+    def options(cls, argfun, **defaults):
+        """Add options for the Node to arggroup.
 
-        arggroup -- an instance of argparse.ArgumentParser
+        argfun -- a closure with the same signature as
+                  ArgumentParser.add_argument
 
-        Must return sequence of the objects added to arggroup
+        Additional keyword arguments contain parameters set in the node
+        definition.
+
         """
-        return ()
+        pass
 
 
 class Source(Node):
     """A Node that produces data."""
-    _targets = []
 
-    @abc.abstractproperty
-    def targets(self):
-        """The (mutable) sequence of (Sink,data_filter) links for this node."""
-        return self._targets
+    def add_sink(self, sink, filter):
+        """Add a Sink that receives data from this node"""
+        if not hasattr(self, "_sinks"): self._sinks = []
+        self._sinks.append((sink, filter))
+
+    def send(self, data):
+        """Send a chunk of data to connected Sinks.
+
+        Returns sequence of values from Sink.recv calls
+
+        """
+        return tuple(tgt.recv(data) for tgt,filt in self._sinks if filt(data))
 
 
 class Sink(Node):
     """A Node that consumes data"""
 
-    @abc.abstractmethod
-    def __call__(self, chunk):
-        """Push a chunk of data to the module for processing.
-
-        Raises ValueError if the data are of the wrong type.
-
-        """
-        raise NotImplementedError
+    def recv(self, data):
+        """Receive a chunk of data and process it."""
+        pass
 
 
 class IterableSource(Source):
     """A Source that can be iterated to read data from an external source"""
 
-    @abc.abstractmethod
     def __iter__(self):
         """Process chunks of data and push them to downstream Nodes.
 
@@ -80,7 +83,7 @@ class RandomAccessSource(IterableSource):
     for chunk in rsource[1000.0]: do_something
 
     """
-    @abc.abstractmethod
+
     def __getitem__(self, key):
         """Returns an iterator yielding chunks referenced by key"""
         return iter([])
@@ -89,7 +92,6 @@ class RandomAccessSource(IterableSource):
 class Filter(Sink, Source):
     """A Node that consumes and produces data"""
     pass
-
 
 # Variables:
 # End:

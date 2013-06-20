@@ -33,7 +33,6 @@ class arf_reader(RandomAccessSource):
         addopt_f("--channels",
                  help="list of channels",
                  metavar='CH',
-                 required=True,
                  nargs='+')
         addopt_f("--times",
                  help="range of times (in s) to analyze (default all)",
@@ -43,7 +42,7 @@ class arf_reader(RandomAccessSource):
         addopt_f("--entries",
                  help="list of entries to analyze (default all)",
                  metavar='E',
-                 nargs="*")
+                 nargs="+")
 
     def __iter__(self):
         from numpy.random import RandomState

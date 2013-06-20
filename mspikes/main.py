@@ -10,7 +10,6 @@ from mspikes import graph
 from mspikes import modules
 from mspikes import filters
 
-
 def print_descriptions(namespace, predicate, descr):
     import inspect
     objs = inspect.getmembers(namespace, predicate)
@@ -28,13 +27,13 @@ def print_toolchains():
 def print_modules():
     """print list of available modules"""
     from inspect import isclass
-    print_descriptions(modules, isclass, getshortdoc)
+    print_descriptions(modules, isclass, graph.node_descr)
 
 
 def print_filters():
     """print list of available filters"""
     from inspect import isfunction
-    print_descriptions(filters, isfunction, getshortdoc)
+    print_descriptions(filters, isfunction, graph.node_descr)
 
 
 def print_doc(arg):
@@ -89,9 +88,9 @@ def mspikes(argv=None):
     toolchain = {}
     try:
         if opts.tchain_name:
-            toolchain = dict(graph.parse_graph_descr(getattr(toolchains, opts.tchain_name)[1]))
+            toolchain = dict(graph.parse_node_descrs(getattr(toolchains, opts.tchain_name)[1]))
         for expr in opts.tchain_def:
-            toolchain.update(graph.parse_graph_descr(expr))
+            toolchain.update(graph.parse_node_descrs(expr))
 
     except AttributeError,e:
         print "E: no such toolchain {}".format(opts.tchain_name)
@@ -103,16 +102,18 @@ def mspikes(argv=None):
     for node_name,node_def in toolchain.iteritems():
         graph.add_node_to_parser(node_name, node_def, p)
 
-    if opts.help or len(args)==0:
+    if opts.help:
         p.print_help()
         if len(toolchain) == 0:
             print "\npredefined toolchains:"
             print_toolchains()
         return 0
 
-    # TODO pretty-print the toolchain steps
-
     opts = p.parse_args(args, opts) # parse remaining args
+    pgraph = graph.build_node_graph(toolchain.items(), opts)
+    return pgraph
+
+    # TODO pretty-print the toolchain steps
 
 
 

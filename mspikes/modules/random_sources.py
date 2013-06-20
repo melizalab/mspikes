@@ -7,13 +7,11 @@ Created Wed May 29 14:50:02 2013
 """
 
 from mspikes.types import DataBlock, IterableSource
+from numpy.random import RandomState
+
 
 class rand_samples(IterableSource):
-    """Generates random values from N(0,1)
-
-    This Source is useful for testing and not much else.
-
-    """
+    """Generates random values from N(0,1)"""
     seed = 1
     nsamples = 4096
 
@@ -24,7 +22,7 @@ class rand_samples(IterableSource):
         self.chunk_size = 1024
         self.channel = "random"
         self.sampling_rate = 1
-        self._targets = []
+        self._randg = RandomState(self.seed)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -39,18 +37,15 @@ class rand_samples(IterableSource):
                metavar='INT',
                default=defaults.get('nsamples',cls.nsamples))
 
+    def data(self, t=0):
+        """Generates a data chunk"""
+        return DataBlock(self.channel, t, self.sampling_rate, self._randg.randn(self.chunk_size))
+
     def __iter__(self):
-        from numpy.random import RandomState
-        randg = RandomState(self.seed)
         t = 0
         while t < self.nsamples:
-            data = DataBlock(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
-            yield [tgt(data) for tgt,filt in self.targets if filt(data)]
+            yield self.send(self.data(t))
             t += self.chunk_size
-
-    @property
-    def targets(self):
-        return super(rand_samples,self).targets
 
 ## TODO random_events
 

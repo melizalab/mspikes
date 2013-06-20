@@ -25,9 +25,10 @@ Graphs can be constructed programmatically or by parsing a set of definitions.
 The definitions have a python-based syntax (see parse_node). Building a graph is
 accomplished in several passes:
 
-Pass 1: parse_node_descr() converts python statements to abstract node definitions
-Pass 2: instantiate nodes and filters
-Pass 3: link target nodes to sources
+Pass 1: generate node definitions from python expressions
+Pass 2: instantiate node objects from node definitions
+Pass 3: build graph by linking target node objects to source
+        node objects (looking up filters)
 
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 15:44:00 2013
@@ -83,7 +84,7 @@ def parse_node_descr(expr):
                 raise SyntaxError("source tuple elements must be symbol names: %s" % ast.dump(arg))
             node_sources.append(tuple(a.id for a in arg.elts))
         elif isinstance(arg, ast.Name):
-            node_sources.append((arg.id, None))
+            node_sources.append((arg.id,))
         else:
             raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
 
@@ -93,8 +94,8 @@ def parse_node_descr(expr):
                     params=dict((k.arg, ast.literal_eval(k.value)) for k in expr.value.keywords)))
 
 
-def parse_graph_descr(code):
-    """Parse a node graph description.
+def parse_node_descrs(code):
+    """Parse a node graph description, with one or more node definitions.
 
     code -- a string, to be parsed with Python's ast module
 
@@ -124,6 +125,7 @@ def argparse_prefixer(prefix, group):
     def f(*args, **kwargs):
         # adds prefix to options
         args = map(lambda x : rx.sub(r"\1%s-\2" % prefix, x), args)
+        # TODO add default to help text
         return group.add_argument(*args, **kwargs)
     return f
 
@@ -135,56 +137,61 @@ def argparse_extracter(namespace, prefix):
     """
     from itertools import imap, izip
     import re
+    if namespace is None:
+        return dict()
     rx = re.compile(r"^%s(?:-|_)(.*)" % prefix)
     keys = dir(namespace)
     return dict((m.group(1),getattr(namespace,s))
                 for m,s in izip(imap(rx.match, keys), keys) if m)
 
 
-def add_node_to_parser(name, defn, parser):
-    """Add a group to an argparse.ArgumentParser for setting options of nodes"""
+def add_node_to_parser(name, node_def, parser):
+    """Add a group to an argparse.ArgumentParser for setting options of """
     from mspikes import modules
-    cls = getattr(modules, defn.type)
+    cls = getattr(modules, node_def.type)
     group = parser.add_argument_group(name, node_descr(cls))
-    cls.options(argparse_prefixer(name, group), **defn.params)
+    cls.options(argparse_prefixer(name, group), **node_def.params)
     return group
 
 
-def build_node_graph(node_defs, **options):
+def chain_predicates(*ps):
+    """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
+    return lambda x: all(p(x) for p in ps)
+
+
+def build_node_graph(node_defs, options=None):
     """Instantiate nodes and assemble into a graph
 
     node_defs -- sequence of tuples, (name, node_def)
 
-    options -- mapping with qualified construction parameters (e.g.
-               nodename_paramname) as keys
+    options -- construction parameters for nodes; attributes are matched
+               with nodes using names; pattern is nodename_paramname
 
     Returns a list of the head nodes (i.e., leaf Sources) in the graph, with
     downstream nodes linked.
 
     """
+    from itertools import imap, starmap
     from mspikes import modules, filters
 
-    # instantiate the nodes
-    nodes = dict()
-    sources = dict()
-    for name,node in node_defs:
-        cls = getattr(modules, node.type)
-        opts = dict((k[len(name)+1:],v) for k,v in options.iteritems() if k.startswith(name))
-        nodes[name] = cls(**opts)
-        if len(node.sources) > 0: sources[name] = node.sources
+    # instantiate the nodes (pass 2)
+    nodes = dict((name, getattr(modules,node_def.type)(**argparse_extracter(options, name)))
+                  for name,node_def in node_defs)
 
-    # assemble the graph
+    def reslv(src,*filts):
+        from functools import partial
+        return nodes[src], tuple(imap(partial(getattr, filters), filts))
+
+    # assemble the graph (pass 3)
     head = []
-    for name,node in nodes.iteritems():
-        if name not in sources:
+    for name,node_def in node_defs:
+        node = nodes[name]
+        for source,filts in starmap(reslv, node_def.sources):
+            # source.add_sink(node, filts)
+            # compose filters into a single function
+            source.add_sink(node, chain_predicates(*filts))
+        if len(node_def.sources) == 0:
             head.append(node)
-            continue
-
-        for source in sources[name]:
-            if source[0] not in nodes:
-                raise NameError("{} attempts to reference non-existent node {}".format(name, source[0]))
-            src_filts = tuple(getattr(filters, x) for x in source[1:])
-            nodes[source[0]].targets.append((node, src_filts))
 
     return head
 
