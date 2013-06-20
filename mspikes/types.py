@@ -3,7 +3,6 @@
 """Basic types and concepts for mspikes.
 
 """
-import abc
 from collections import namedtuple
 
 # simple immutable struct for transporting blocks of data
@@ -11,7 +10,7 @@ DataBlock = namedtuple("DataBlock", ("id", "offset", "dt", "data"))
 
 
 class Node(object):
-    """Represents a node in the mspikes processing graph."""
+    """A node in a processing graph."""
 
     @classmethod
     def options(cls, argfun, **defaults):
@@ -30,7 +29,7 @@ class Node(object):
 class Source(Node):
     """A Node that produces data."""
 
-    def add_sink(self, sink, filter):
+    def add_sink(self, sink, filter=None):
         """Add a Sink that receives data from this node"""
         if not hasattr(self, "_sinks"): self._sinks = []
         self._sinks.append((sink, filter))
@@ -41,7 +40,8 @@ class Source(Node):
         Returns sequence of values from Sink.recv calls
 
         """
-        return tuple(tgt.recv(data) for tgt,filt in self._sinks if filt(data))
+        return tuple(tgt.recv(data) for tgt,filt in self._sinks
+                     if (filt is None or filt(data)))
 
 
 class Sink(Node):
@@ -88,10 +88,6 @@ class RandomAccessSource(IterableSource):
         """Returns an iterator yielding chunks referenced by key"""
         return iter([])
 
-
-class Filter(Sink, Source):
-    """A Node that consumes and produces data"""
-    pass
 
 # Variables:
 # End:

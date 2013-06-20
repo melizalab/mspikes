@@ -11,11 +11,11 @@ received and processed the data chunk.
 
 For example:
 
-reader = generic_file_reader(filename, ...)
-filter = generic_filter(...)
-writer = generic_file_writer(filename, ...)
+input = generic_file_reader(filename, ...)
+trans = generic_transform(...)
+output = generic_file_writer(filename, ...)
 
-reader.targets.append(filter)
+input.add_sink(trans)
 filter.targets.append(writer)
 
 for t in reader:
