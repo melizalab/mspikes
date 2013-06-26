@@ -13,8 +13,3 @@ def chain_predicates(*ps):
 
 # Variables:
 # End:
-
-
-
-
-

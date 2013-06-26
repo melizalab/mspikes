@@ -5,7 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
-import h5py
+import arf
 from mspikes import util
 from mspikes.types import DataBlock, RandomAccessSource
 
@@ -34,7 +34,7 @@ class arf_reader(RandomAccessSource):
 
     def __init__(self, filename, **options):
         import re
-        self.file = h5py.File(filename, "r")
+        self.file = arf.file(filename, "r")
         self.times = options.get("times", None)
 
         if "channels" in options:
@@ -49,7 +49,15 @@ class arf_reader(RandomAccessSource):
         else:
             self.entryp = true_p
 
-        # choose an entry sorting function based on file creator
+
+    def _entry_table(self):
+        """ Generate a table of entries and start times """
+        from itertools import ifilter
+
+        # choose an entry key function based on file creator
+
+        it = ifilter(self.entryp, self.file)
+
 
 
     def __iter__(self):
@@ -61,7 +69,7 @@ class arf_reader(RandomAccessSource):
         # some other key.
         #
         # 2. validate whether the requested channels are homogeneous across
-        # entries? probably not, it's rather pathological.
+        # entries? probably not, it's rather pathological if they're not
         #
         # 3. How about whether there's overlapping data?  Okay with the arf
         # spec, but do we try to straighten it out?  How to detect?  Need to
@@ -70,9 +78,6 @@ class arf_reader(RandomAccessSource):
         # 4. dealing with different timebases and formats. Some arf files will
         # have sample counts, which should probably be used instead of
         # timestamps when possible...
-        from itertools import ifilter
-
-        it = ifilter(self.entryp, self.file) # prefilter based on name
 
 
         pass

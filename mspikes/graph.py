@@ -35,12 +35,14 @@ Created Wed May 29 15:44:00 2013
 
 """
 import ast
+import logging
 from mspikes import util
 from collections import namedtuple
 
 # representation of node definition
 NodeDef = namedtuple("NodeDef", ("type", "sources", "params"))
-
+# log messages
+_log = logging.getLogger('mspikes.graph')
 
 def parse_node_descr(expr):
     """Parse a node description. Returns (name,NodeDef).
@@ -89,10 +91,11 @@ def parse_node_descr(expr):
         else:
             raise SyntaxError("invalid source specification: %s" % ast.dump(arg))
 
-    return (expr.targets[0].id,
-            NodeDef(type=expr.value.func.id,
-                    sources=tuple(node_sources),
-                    params=dict((k.arg, ast.literal_eval(k.value)) for k in expr.value.keywords)))
+    node_def = NodeDef(type=expr.value.func.id,
+                       sources=tuple(node_sources),
+                       params=dict((k.arg, ast.literal_eval(k.value)) for k in expr.value.keywords))
+    _log.debug("'%s': %s", expr.targets[0].id, node_def)
+    return (expr.targets[0].id, node_def)
 
 
 def parse_node_descrs(code):
@@ -103,6 +106,7 @@ def parse_node_descrs(code):
     returns a tuple of (name, NodeDef) tuples
 
     """
+    _log.info("parsing node definitions")
     if isinstance(code, basestring):
         exprs = ast.parse(code, "single").body
     elif isinstance(code, ast.Module):
@@ -170,11 +174,13 @@ def build_node_graph(node_defs, options=None):
     from itertools import imap, starmap
     from mspikes import modules, filters
 
+    _log.info("building processing graph")
     # instantiate the nodes (pass 2)
     nodes = dict((name, getattr(modules,node_def.type)(**argparse_extracter(options, name)))
                   for name,node_def in node_defs)
 
-    def reslv(src,*filts):
+    def resolve_source(src,*filts):
+        """Resolves a source definition: ('node','filt1','filt2',...)"""
         from functools import partial
         return nodes[src], tuple(imap(partial(getattr, filters), filts))
 
@@ -182,8 +188,9 @@ def build_node_graph(node_defs, options=None):
     head = []
     for name,node_def in node_defs:
         node = nodes[name]
-        for source,filts in starmap(reslv, node_def.sources):
-            # source.add_sink(node, filts)
+        _log.debug("'%s': %s", name, node)
+        for source,filts in starmap(resolve_source, node_def.sources):
+            _log.info("%s <- %s %s", ' ' * (len(name) + 3), source, node_def.sources[1:])
             # compose filters into a single function
             source.add_sink(node, util.chain_predicates(*filts))
         if len(node_def.sources) == 0:

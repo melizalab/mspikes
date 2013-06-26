@@ -66,7 +66,9 @@ def print_doc(arg):
 
 def mspikes(argv=None):
     import argparse
+    import logging
     from itertools import chain
+    from mspikes import __version__
 
     p = argparse.ArgumentParser(prog="mspikes",
                                 add_help=False,
@@ -79,11 +81,19 @@ def mspikes(argv=None):
                    metavar='DEF', dest="tchain_def")
 
     opts,args = p.parse_known_args(argv)
-    print opts
 
     if opts.doc is not None:
         print_doc(opts.doc)
         return 0
+
+    log = logging.getLogger('mspikes')   # root logger
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)-15s [%(name)s] %(message)s")
+    log.setLevel(logging.DEBUG)
+    ch.setLevel(logging.DEBUG)  # change
+    ch.setFormatter(formatter)
+    log.addHandler(ch)
+    log.info("version %s", __version__)
 
     # TODO: parse an rc file with user-defined toolchains?
     toolchain = {}
@@ -100,6 +110,7 @@ def mspikes(argv=None):
         print "E: couldn't parse definition: {}".format(e)
         raise
 
+    # add nodes to the parser so user can set their parameters
     for node_name,node_def in toolchain.iteritems():
         try:
             graph.add_node_to_parser(node_name, node_def, p)
@@ -107,7 +118,7 @@ def mspikes(argv=None):
             print "E: no such processing module '{}'".format(node_def.type)
             return -1
 
-    if opts.help:
+    if opts.help or len(toolchain)==0:
         p.print_help()
         if len(toolchain) == 0:
             print "\npredefined toolchains:"
