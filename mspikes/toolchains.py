@@ -7,7 +7,7 @@ Created Wed Jun 19 09:55:10 2013
 """
 
 view_raw = ("Inspect raw sampled data",
-            "input = arf_reader()\n"
+            "input = rand_samples()\n"
             "output = stream_sink(input)")
 
 spk_extract = ("Extract spikes from raw neural recordings",

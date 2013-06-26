@@ -66,6 +66,7 @@ def print_doc(arg):
 
 def mspikes(argv=None):
     import argparse
+    from itertools import chain
 
     p = argparse.ArgumentParser(prog="mspikes",
                                 add_help=False,
@@ -93,14 +94,18 @@ def mspikes(argv=None):
             toolchain.update(graph.parse_node_descrs(expr))
 
     except AttributeError,e:
-        print "E: no such toolchain {}".format(opts.tchain_name)
-        raise
+        print "E: no such toolchain '{}'".format(opts.tchain_name)
+        return -1
     except SyntaxError,e:
         print "E: couldn't parse definition: {}".format(e)
         raise
 
     for node_name,node_def in toolchain.iteritems():
-        graph.add_node_to_parser(node_name, node_def, p)
+        try:
+            graph.add_node_to_parser(node_name, node_def, p)
+        except AttributeError,e:
+            print "E: no such processing module '{}'".format(node_def.type)
+            return -1
 
     if opts.help:
         p.print_help()
@@ -110,12 +115,22 @@ def mspikes(argv=None):
         return 0
 
     opts = p.parse_args(args, opts) # parse remaining args
-    pgraph = graph.build_node_graph(toolchain.items(), opts)
-    return pgraph
+    try:
+        root = graph.build_node_graph(toolchain.items(), opts)
+    except AttributeError,e:
+        name = e.message.split()[-1]
+        print "E: no such filter {}".format(name)
+        return -1
+    except KeyError,e:
+        print "E: no such node {}".format(e)
+        return -1
+    # TODO catch instantiation errors
 
     # TODO pretty-print the toolchain steps
 
-
+    # run the graph
+    for ret in chain(*root):
+        pass
 
 
 # Variables:

@@ -6,32 +6,20 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 import h5py
+from mspikes import util
 from mspikes.types import DataBlock, RandomAccessSource
+
+def true_p(*args): return True
 
 class arf_reader(RandomAccessSource):
     """Read data from an ARF/HDF5 file"""
-
-    def __init__(self, filename, channels, **options):
-        """Open an ARF file for reading.
-
-        filename -- the path of the file to open
-        channels -- list of channels to include
-        times    -- [start,stop) times (in s, relative to start of file)
-                    to include in iteration (default is all)
-        entries  -- list of entries to include (default is all)
-
-        """
-        self.file = h5py.File(filename, "r")
-        self.channels = channels
-        self.times = options.get("times", None)
-        self.entries = options.get("entries", None)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("filename",
                  help="the file to read")
         addopt_f("--channels",
-                 help="list of channels",
+                 help="names or regexps of channels (default all)",
                  metavar='CH',
                  nargs='+')
         addopt_f("--times",
@@ -40,23 +28,54 @@ class arf_reader(RandomAccessSource):
                  metavar='FLOAT',
                  nargs=2)
         addopt_f("--entries",
-                 help="list of entries to analyze (default all)",
-                 metavar='E',
+                 help="names or regexps of entries (default all)",
+                 metavar='P',
                  nargs="+")
 
+    def __init__(self, filename, **options):
+        import re
+        self.file = h5py.File(filename, "r")
+        self.times = options.get("times", None)
+
+        if "channels" in options:
+            rx = (re.compile(p).search for p in options['channels'])
+            self.chanp = util.chain_predicates(*rx)
+        else:
+            self.chanp = true_p
+
+        if "entries" in options:
+            rx = (re.compile(p).search for p in options['entries'])
+            self.entryp = util.chain_predicates(*rx)
+        else:
+            self.entryp = true_p
+
+        # choose an entry sorting function based on file creator
+
+
     def __iter__(self):
-        from numpy.random import RandomState
-        randg = RandomState(self.seed)
-        t = 0
-        while t < self.nsamples:
-            data = DataBlock(self.channel, t, self.sampling_rate, randg.randn(self.chunk_size))
-            yield [tgt(data) for tgt,filt in self.targets if filt(data)]
-            t += self.chunk_size
+        # questions about how to iterate:
+        #
+        # 1. does it matter what order we go through entries? Yes for some
+        # applications but not for others. Sorting takes time though because we
+        # have to load all the entries and inspect the timestamp attributes (or
+        # some other key.
+        #
+        # 2. validate whether the requested channels are homogeneous across
+        # entries? probably not, it's rather pathological.
+        #
+        # 3. How about whether there's overlapping data?  Okay with the arf
+        # spec, but do we try to straighten it out?  How to detect?  Need to
+        # keep track of whether the time has passed the start time of the next entry
+        #
+        # 4. dealing with different timebases and formats. Some arf files will
+        # have sample counts, which should probably be used instead of
+        # timestamps when possible...
+        from itertools import ifilter
 
-    @property
-    def targets(self):
-        return super(arf_reader,self).targets
+        it = ifilter(self.entryp, self.file) # prefilter based on name
 
+
+        pass
 
 # Variables:
 # End:

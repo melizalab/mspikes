@@ -10,7 +10,7 @@ from mspikes.types import Sink
 
 
 class stream_sink(Sink):
-    """Output data information to a stream"""
+    """Output data block info to a stream"""
 
     stream = sys.stdout
 
@@ -27,7 +27,7 @@ class stream_sink(Sink):
                  type=FileType('w'),
                  default=defaults.get('stream',cls.stream))
 
-    def __call__(self, chunk):
+    def recv(self, chunk):
         # TODO better formatting
         print >> self.stream, chunk
         return chunk.offset

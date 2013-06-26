@@ -35,6 +35,7 @@ Created Wed May 29 15:44:00 2013
 
 """
 import ast
+from mspikes import util
 from collections import namedtuple
 
 # representation of node definition
@@ -154,11 +155,6 @@ def add_node_to_parser(name, node_def, parser):
     return group
 
 
-def chain_predicates(*ps):
-    """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
-    return lambda x: all(p(x) for p in ps)
-
-
 def build_node_graph(node_defs, options=None):
     """Instantiate nodes and assemble into a graph
 
@@ -189,11 +185,16 @@ def build_node_graph(node_defs, options=None):
         for source,filts in starmap(reslv, node_def.sources):
             # source.add_sink(node, filts)
             # compose filters into a single function
-            source.add_sink(node, chain_predicates(*filts))
+            source.add_sink(node, util.chain_predicates(*filts))
         if len(node_def.sources) == 0:
             head.append(node)
 
     return head
+
+
+def print_graph(graph):
+    """Pretty-print a toolchain graph"""
+    pass
 
 
 
