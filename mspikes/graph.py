@@ -42,7 +42,7 @@ from collections import namedtuple
 # representation of node definition
 NodeDef = namedtuple("NodeDef", ("type", "sources", "params"))
 # log messages
-_log = logging.getLogger('mspikes.graph')
+_log = logging.getLogger(__name__)
 
 def parse_node_descr(expr):
     """Parse a node description. Returns (name,NodeDef).

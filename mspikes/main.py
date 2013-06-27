@@ -140,6 +140,7 @@ def mspikes(argv=None):
     # TODO pretty-print the toolchain steps
 
     # run the graph
+    log.info("starting graph")
     for ret in chain(*root):
         pass
 
