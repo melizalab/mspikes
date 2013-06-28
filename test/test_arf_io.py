@@ -29,18 +29,22 @@ def test_attritemgetter():
 def test_keyiter_jack_frame():
     import numpy as nx
 
-    frames = nx.arange(100, dtype=nx.uint32) * 1000
+    # dummy list of times, shuffled to test sorting
+    idx = nx.arange(100, dtype=nx.uint32)
+    nx.random.shuffle(idx)
+    frames = idx * 1000
     usecs = (frames * 50).astype(nx.uint64)
+
 
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames))
     keys = [k for k, e in arf_io.keyiter_jack_frame(entries)]
-    assert_true(nx.array_equal(frames, keys))
+    assert_true(nx.array_equal(sorted(frames), keys))
 
 
     # overflow the frame counter
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames - 50000))
     keys = [k for k, e in arf_io.keyiter_jack_frame(entries)]
-    assert_true(nx.array_equal(frames, keys))
+    assert_true(nx.array_equal(sorted(frames), keys))
 
 
 

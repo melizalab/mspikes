@@ -8,6 +8,7 @@ Created Wed May 29 14:50:02 2013
 import h5py
 import logging
 import functools
+import operator
 from mspikes import util
 from mspikes.types import DataBlock, RandomAccessSource
 
@@ -112,7 +113,6 @@ class arf_reader(RandomAccessSource):
         else:
             self.entryp = true_p
 
-
     def _entry_table(self):
         """ Generate a table of entries and start times """
         from arf import timestamp_to_float
@@ -121,19 +121,25 @@ class arf_reader(RandomAccessSource):
         entries = (entry for name, entry in self.file.iteritems() if self.entryp(name))
 
         # choose an entry key function based on file creator
-        _log.info("sorting entries")
+        # defaults:
+        keyname = "timestamp"
+        keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
+        sratefun = lambda f: None
         if self.use_timestamp:
-            keyname = "timestamp"
-            keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
+            pass
         elif self.file.attrs.get('program', None) == 'arfxplog':
             keyname = "sample_count"
             keyiter = functools.partial(keyiter_attr, name=keyname)
+            sratefun = attritemgetter('sampling_rate')
         elif "jill_log" in self.file:
-            keyname = "jack_frame "
+            keyname = "jack_frame"
             keyiter = keyiter_jack_frame
+        else:
+            _log.info("couldn't determine ARF file source, using default sort method")
+
 
         _log.info("sorting entries by '%s'", keyname)
-        keyiter(entries)
+        self.entries = sorted(keyiter(entries), key=operator.itemgetter(0))
 
         _log.info("validating entries")
 
