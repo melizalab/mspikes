@@ -11,5 +11,11 @@ def chain_predicates(*ps):
     return lambda x: all(p(x) for p in ps)
 
 
+def compose(f1, f2):
+    """Return a function that calls f1(f2(*args, **kwargs))"""
+    def f(*args, **kwargs):
+        return f1(f2(*args, **kwargs))
+    return f
+
 # Variables:
 # End:

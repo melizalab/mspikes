@@ -32,7 +32,8 @@ def keyiter_attr(entries, name, fun=None):
 
     """
     keyfun = attritemgetter(name)
-    if fun is not None: keyfun = lambda x: fun(keyfun(x))
+    if fun is not None:
+        keyfun = util.compose(fun, keyfun)
     for entry in entries:
         try:
             yield keyfun(entry), entry
@@ -70,8 +71,29 @@ def keyiter_jack_frame(entries):
     seterr(**orig)
 
 
-class arf_reader(RandomAccessSource):
+def data_sampling_rate(file, strict=False):
+    """check that all datasets have same sampling rate and log the ones that don't"""
+    _log.info("validating datasets")
+    sr = [None]
+    def sampling_rate_visitor(name, obj):
+        if isinstance(obj, h5py.Dataset):
+            rate = obj.attrs.get("sampling_rate", None)
+            if rate is None:
+                pass
+            elif sr[0] is None:
+                sr[0] = rate
+            elif sr[0] != rate:
+                msg = "'%s' sampling rate %d doesn't match rate for file (%d)" % (name, rate, sr[0])
+                if strict:
+                    raise ValueError(msg)
+                else:
+                    _log.warn(msg)
 
+    file.visititems(sampling_rate_visitor)
+    return sr[0]
+
+
+class arf_reader(RandomAccessSource):
     """Read data from an ARF/HDF5 file"""
 
     @classmethod
@@ -113,36 +135,50 @@ class arf_reader(RandomAccessSource):
         else:
             self.entryp = true_p
 
+        self.entries = self._entry_table()
+        self.sampling_rate = self._sampling_rate()
+        _log.info("file sampling rate: %s", self.sampling_rate)
+
+    @property
+    def creator(self):
+        """The program that created the file, or None if unknown"""
+        if self.file.attrs.get('program', None) == 'arfxplog':
+            return 'arfxplog'
+        elif "jill_log" in self.file:
+            return "jill"
+        else:
+            return None
+
     def _entry_table(self):
         """ Generate a table of entries and start times """
         from arf import timestamp_to_float
 
-        # filter by name
-        entries = (entry for name, entry in self.file.iteritems() if self.entryp(name))
-
-        # choose an entry key function based on file creator
-        # defaults:
-        keyname = "timestamp"
-        keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
-        sratefun = lambda f: None
-        if self.use_timestamp:
-            pass
-        elif self.file.attrs.get('program', None) == 'arfxplog':
+        if self.use_timestamp or self.creator is None:
+            keyname = "timestamp"
+            keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
+            if self.creator is None:
+                _log.info("couldn't determine ARF file source, using default sort method")
+        elif self.creator == 'arfxplog':
             keyname = "sample_count"
             keyiter = functools.partial(keyiter_attr, name=keyname)
-            sratefun = attritemgetter('sampling_rate')
-        elif "jill_log" in self.file:
+        elif self.creator == 'jill':
             keyname = "jack_frame"
             keyiter = keyiter_jack_frame
-        else:
-            _log.info("couldn't determine ARF file source, using default sort method")
-
-
         _log.info("sorting entries by '%s'", keyname)
-        self.entries = sorted(keyiter(entries), key=operator.itemgetter(0))
 
-        _log.info("validating entries")
+        # filter by name
+        entries = (entry for name, entry in self.file.iteritems() if self.entryp(name))
+        return sorted(keyiter(entries), key=operator.itemgetter(0))
 
+    def _sampling_rate(self):
+        """Infer sampling rate from file"""
+        if self.use_timestamp or self.creator is None:
+            return None
+        elif self.creator == 'arfxplog':
+            return self.file.attrs['sampling_rate']
+        elif self.creator == 'jill':
+            # assumes entries have been validated
+            return data_sampling_rate(self.file)
 
     def __iter__(self):
         # questions about how to iterate:

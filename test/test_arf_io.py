@@ -9,6 +9,7 @@ from nose.tools import *
 from nose.plugins.skip import SkipTest
 import inspect
 import itertools
+import h5py
 
 from mspikes.modules import arf_io
 
@@ -47,7 +48,25 @@ def test_keyiter_jack_frame():
     assert_true(nx.array_equal(sorted(frames), keys))
 
 
+def test_data_sampling_rate():
 
+    # create an in-memory hdf5 file
+    srate = 50000
+    f = h5py.File("tmp", driver="core", backing_store=False)
+    for i in range(20):
+        e = f.create_group("entry_%d" % i)
+        for j in range(5):
+            d = e.create_dataset("dset_%d" % j, shape=(10,))
+            d.attrs['sampling_rate'] = srate
+
+    assert_equal(arf_io.data_sampling_rate(f, strict=True), srate)
+
+    e = f.create_group("bad")
+    d = e.create_dataset("bad", shape=(10,))
+    d.attrs['sampling_rate'] = srate / 2
+
+    with assert_raises(ValueError):
+        arf_io.data_sampling_rate(f, strict=True)
 
 
 # Variables:
