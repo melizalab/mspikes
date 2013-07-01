@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
-"""A Source that reads data from an ARF file.
+"""Functions and classes for reading and writing ARF files.
 
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
@@ -55,9 +55,10 @@ def keyiter_jack_frame(entries):
     # first sort by jack_usec, a uint64
     usec_sorted = sorted(keyiter_attr(entries, "jack_usec"), key=itemgetter(0))
 
-    # then convert the jack_frame  uint32's to uint64's by incrementing. this
-    # may not be very efficient; could potentially do some kind of arithmetic
-    # with the usec variable and sample_rate (validating sample rate in the process)
+    # then convert the jack_frame uint32's to uint64's by incrementing. this may
+    # not be very efficient, and won't work if there's a gap longer than the
+    # size of the frame counter; could potentially do some kind of arithmetic
+    # with the usec variable and the sample rate.
     _, entry = usec_sorted[0]
     last = entry.attrs['jack_frame']
     frame = uint64(0)
@@ -71,46 +72,62 @@ def keyiter_jack_frame(entries):
     seterr(**orig)
 
 
-def data_sampling_rate(file, strict=False):
-    """check that all datasets have same sampling rate and log the ones that don't"""
-    _log.info("validating datasets")
-    sr = [None]
-    def sampling_rate_visitor(name, obj):
-        if isinstance(obj, h5py.Dataset):
-            rate = obj.attrs.get("sampling_rate", None)
-            if rate is None:
-                pass
-            elif sr[0] is None:
-                sr[0] = rate
-            elif sr[0] != rate:
-                msg = "'%s' sampling rate %d doesn't match rate for file (%d)" % (name, rate, sr[0])
-                if strict:
-                    raise ValueError(msg)
-                else:
-                    _log.warn(msg)
+def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
+    """calculate the total offset of a dataset, converting to entry timebase as needed"""
+    import fractions
 
-    file.visititems(sampling_rate_visitor)
-    return sr[0]
+    dtype = getattr(entry_time, "dtype", None)
+    if entry_dt == dset_dt:
+        return entry_time + dset_offset
+    elif entry_dt is None:
+        dtype = dtype or float
+        return entry_time + dtype(dset_offset) / dset_dt
+    elif dset_dt is None:
+        dtype = dtype or int
+        return entry_time + dtype(dset_offset * entry_dt)
+    elif fractions.Fraction(*sorted((entry_dt, dset_dt))).numerator == 1:
+        dtype = dtype or int
+        return entry_time + dtype(dset_offset * entry_dt / dset_dt)
+    else:
+        raise ValueError("dataset timebase is incompatible with entry timebase")
+
 
 
 class arf_reader(RandomAccessSource):
-    """Read data from an ARF/HDF5 file"""
+    """Source data from an ARF/HDF5 file
+
+    Produces data by iterating through entries of the file in temporal order,
+    emitting chunks separately for each dataset in the entries. By default the
+    timestamp of the entries is used to calculate offsets for the chunks, but
+    for ARF files created by 'arfxplog' and 'jrecord' the sample clock can be
+    used as well.
+
+    Using sample-based offsets with files that were recorded at different
+    sampling rates or with different instances of the data collection program
+    will lead to undefined behavior because the sample counts will not be
+    consistent within the file.
+
+    """
 
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("filename",
                  help="the file to read")
         addopt_f("--channels",
-                 help="names or regexps of channels (default all)",
+                 help="names or regexps of channels to read (default all)",
                  metavar='CH',
                  nargs='+')
-        addopt_f("--times",
-                 help="range of times (in s) to analyze (default all)",
+        addopt_f("--start",
+                 help="time (in s) to start reading (default 0)",
                  type=float,
-                 metavar='FLOAT',
-                 nargs=2)
+                 default=0,
+                 metavar='FLOAT')
+        addopt_f("--stop",
+                 help="time (in s) to stop reading (default None)",
+                 type=float,
+                 metavar='FLOAT')
         addopt_f("--entries",
-                 help="names or regexps of entries (default all)",
+                 help="names or regexps of entries to read (default all)",
                  metavar='P',
                  nargs="+")
         addopt_f("--use-timestamp",
@@ -119,8 +136,12 @@ class arf_reader(RandomAccessSource):
 
     def __init__(self, filename, **options):
         import re
-        self.file = h5py.File(filename, "r")
-        self.times = options.get("times", None)
+        if isinstance(filename, h5py.File):
+            self.file = filename
+        else:
+            self.file = h5py.File(filename, "r")
+        self.start = options.get("start", 0)
+        self.stop  = options.get("stop", None)
         self.use_timestamp = options.get("use_timestamp", False)
 
         if "channels" in options:
@@ -177,17 +198,75 @@ class arf_reader(RandomAccessSource):
         elif self.creator == 'arfxplog':
             return self.file.attrs['sampling_rate']
         elif self.creator == 'jill':
-            # assumes entries have been validated
-            return data_sampling_rate(self.file)
+            # returns sampling rate of first dataset
+            def srate_visitor(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    # if None is returned the iteration will continue
+                    return obj.attrs.get("sampling_rate", None)
+            return self.file.visititems(srate_visitor)
+
+    def iterdatasets(self):
+        """Iterate through the datasets.
+
+        yields DataBlocks with the data field referencing the dataset object
+
+        Datasets that don't match the entry and dataset selectors are skipped,
+        as are datasets that have timebases inconsistent with the rest of the
+        file.
+
+        """
+        for entry_time, entry in self.entries:
+            for id, dset in entry.iteritems():
+                if not self.chanp(id):
+                    continue
+
+                dset_dt = dset.attrs.get('sampling_rate', None)
+                try:
+                    dset_time = dset_offset(entry_time, self.sampling_rate,
+                                            dset.attrs.get('offset', 0), dset_dt)
+                except ValueError:
+                    _log.warn("dataset '%s' sampling rate (%s) incompatible with file sampling rate (%d)",
+                              dset.name, dset_dt, self.sampling_rate)
+                    continue
+
+                yield DataBlock(id, dset_time, dset_dt, dset)
 
     def __iter__(self):
+        """Iterate through the data in the file"""
+        from numpy import fromiter, float64
+
+        # convert user start and stop times to entry timebase
+        start_offset = self.start * (self.sampling_rate or 1.0)
+        if self.stop is None:
+            stop_offset = self.entries[-1][0]
+        else:
+            stop_offset = self.stop * (self.sampling_rate or 1.0)
+
+        for i, entry_time in enumerate(entry_offsets):
+            entry = self.entries[i][1]
+            for id, dset in entry.iteritems():
+                if not self.chanp(id):
+                    continue
+
+                is_pointproc = dset.attrs["units"] in ("s", "samples")
+
+                # try:
+                #     dt = dset.attrs['sampling_rate']
+                #     if dt != self.sampling_rate:
+                # except KeyError:
+                #     dt = None
+
+                # try:
+                #     dset_offset = dset.attrs['offset']
+                #     if dt is None:
+                #         if self.sampling_rate is None:
+                #             offset = entry_time + dset_offset
+                #         else:
+                #             offset = entry_time
+
+
         # questions about how to iterate:
-        #
-        # 1. does it matter what order we go through entries? Yes for some
-        # applications but not for others. Sorting takes time though because we
-        # have to load all the entries and inspect the timestamp attributes (or
-        # some other key.
-        #
+
         # 2. validate whether the requested channels are homogeneous across
         # entries? probably not, it's rather pathological if they're not
         #
@@ -202,7 +281,6 @@ class arf_reader(RandomAccessSource):
         # factor because datasets don't have to be at the same sampling rate.
 
 
-        pass
 
 # Variables:
 # End:

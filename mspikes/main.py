@@ -137,7 +137,7 @@ def mspikes(argv=None):
         return -1
     # TODO catch instantiation errors
 
-    # TODO pretty-print the toolchain steps
+    # TODO pretty-print the toolchain steps?
 
     # run the graph
     log.info("starting graph")
