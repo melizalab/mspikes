@@ -230,7 +230,7 @@ class arf_reader(RandomAccessSource):
         for entry_time, entry in self.entries:
             # check for marked errors
             if "jill_error" in entry.attrs:
-                _log.warn("'%s' marked with an error: %s%s", entry.name, entry.attrs['jill_error'],
+                _log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
                           " (skipping)" if not self.use_xruns else "")
                 if not self.use_xruns:
                     continue
@@ -257,9 +257,13 @@ class arf_reader(RandomAccessSource):
         from collections import defaultdict
 
         # monitor the time in each channel to check for inconsistencies
-        time_0 = self.entries[0][0]
-        cp = self.channel_position = defaultdict(type(time_0))
+        dtype = type(self.entries[0][0])
+        cp = self.channel_position = defaultdict(dtype)
         for dset in self.iterdatasets():
+            # check for overlap (within channel)
+            if dset.offset < cp[dset.id]:
+                _log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
+                          dset.data.name, dset.offset, cp[dset.id])
             # restrict by time
             nframes = dset.data.shape[0]
             blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
@@ -269,10 +273,10 @@ class arf_reader(RandomAccessSource):
                              blocksize)
             for i in indices:
                 t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
-                yield dset._replace(offset=t, data=dset.data[slice(i, i + blocksize), ...])
+                data = dset.data[slice(i, i + blocksize), ...]
+                yield dset._replace(offset=t, data=data)
 
-            # check for overlap (within channel)
-
+            cp[dset.id] = dtype(dset.offset + nframes)
             # optionally check for consistency of timestamps and frame counts
 
 
