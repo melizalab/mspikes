@@ -14,6 +14,7 @@ from mspikes.types import DataBlock, RandomAccessSource
 
 _log = logging.getLogger(__name__)
 
+
 def true_p(*args):
     return True
 
@@ -76,21 +77,26 @@ def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
     """calculate the total offset of a dataset, converting to entry timebase as needed"""
     import fractions
 
-    dtype = getattr(entry_time, "dtype", None)
+    dtype = type(entry_time)
+
     if entry_dt == dset_dt:
-        return entry_time + dset_offset
+        val = entry_time + dset_offset
     elif entry_dt is None:
-        dtype = dtype or float
-        return entry_time + dtype(dset_offset) / dset_dt
+        val = entry_time + dtype(dset_offset) / dset_dt
     elif dset_dt is None:
-        dtype = dtype or int
-        return entry_time + dtype(dset_offset * entry_dt)
+        val = entry_time + dtype(dset_offset * entry_dt)
     elif fractions.Fraction(*sorted((entry_dt, dset_dt))).numerator == 1:
-        dtype = dtype or int
-        return entry_time + dtype(dset_offset * entry_dt / dset_dt)
+        val = entry_time + dtype(dset_offset * entry_dt / dset_dt)
     else:
         raise ValueError("dataset timebase is incompatible with entry timebase")
 
+    return dtype(val)
+
+
+def set_option_attributes(obj, opts, **attrs):
+    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
+    for key, value in attrs.iteritems():
+        setattr(obj, key, opts.get(key, value))
 
 
 class arf_reader(RandomAccessSource):
@@ -108,6 +114,7 @@ class arf_reader(RandomAccessSource):
     consistent within the file.
 
     """
+    blockchunks = 64               # number of hdf5 chunks to process at once
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -133,16 +140,19 @@ class arf_reader(RandomAccessSource):
         addopt_f("--use-timestamp",
                  help="use entry timestamp for timebase and ignore other fields",
                  action='store_true')
+        addopt_f("--use-xruns",
+                 help="use entries with xruns or other errors (default is to skip)",
+                 action='store_true')
 
     def __init__(self, filename, **options):
         import re
+        set_option_attributes(self, options,
+                              start=0, stop=None, use_timestamp=False, use_xruns=False)
+
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
             self.file = h5py.File(filename, "r")
-        self.start = options.get("start", 0)
-        self.stop  = options.get("stop", None)
-        self.use_timestamp = options.get("use_timestamp", False)
 
         if "channels" in options:
             rx = (re.compile(p).search for p in options['channels'])
@@ -188,7 +198,8 @@ class arf_reader(RandomAccessSource):
         _log.info("sorting entries by '%s'", keyname)
 
         # filter by name
-        entries = (entry for name, entry in self.file.iteritems() if self.entryp(name))
+        entries = (entry for name, entry in self.file.iteritems()
+                   if self.entryp(name) and isinstance(entry, h5py.Group))
         return sorted(keyiter(entries), key=operator.itemgetter(0))
 
     def _sampling_rate(self):
@@ -215,71 +226,54 @@ class arf_reader(RandomAccessSource):
         file.
 
         """
+        time_0 = self.entries[0][0]
         for entry_time, entry in self.entries:
+            # check for marked errors
+            if "jill_error" in entry.attrs:
+                _log.warn("'%s' marked with an error: %s%s", entry.name, entry.attrs['jill_error'],
+                          " (skipping)" if not self.use_xruns else "")
+                if not self.use_xruns:
+                    continue
+
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
 
                 dset_dt = dset.attrs.get('sampling_rate', None)
                 try:
-                    dset_time = dset_offset(entry_time, self.sampling_rate,
+                    dset_time = dset_offset(entry_time - time_0, self.sampling_rate,
                                             dset.attrs.get('offset', 0), dset_dt)
                 except ValueError:
-                    _log.warn("dataset '%s' sampling rate (%s) incompatible with file sampling rate (%d)",
+                    _log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
                               dset.name, dset_dt, self.sampling_rate)
                     continue
 
-                yield DataBlock(id, dset_time, dset_dt, dset)
+                is_pointproc = "units" in dset.attrs and dset.attrs["units"] in ("s", "samples")
+
+                yield DataBlock(id=id, repr=1 - is_pointproc, offset=dset_time, dt=dset_dt, data=dset)
 
     def __iter__(self):
         """Iterate through the data in the file"""
-        from numpy import fromiter, float64
+        from collections import defaultdict
 
-        # convert user start and stop times to entry timebase
-        start_offset = self.start * (self.sampling_rate or 1.0)
-        if self.stop is None:
-            stop_offset = self.entries[-1][0]
-        else:
-            stop_offset = self.stop * (self.sampling_rate or 1.0)
+        # monitor the time in each channel to check for inconsistencies
+        time_0 = self.entries[0][0]
+        cp = self.channel_position = defaultdict(type(time_0))
+        for dset in self.iterdatasets():
+            # restrict by time
+            nframes = dset.data.shape[0]
+            blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
+            indices = xrange(max(0, (self.start - dset.offset / self.sampling_rate) * dset.dt),
+                             min(nframes, (self.stop - dset.offset / self.sampling_rate) * dset.dt
+                                 if self.stop else nframes),
+                             blocksize)
+            for i in indices:
+                t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
+                yield dset._replace(offset=t, data=dset.data[slice(i, i + blocksize), ...])
 
-        for i, entry_time in enumerate(entry_offsets):
-            entry = self.entries[i][1]
-            for id, dset in entry.iteritems():
-                if not self.chanp(id):
-                    continue
+            # check for overlap (within channel)
 
-                is_pointproc = dset.attrs["units"] in ("s", "samples")
-
-                # try:
-                #     dt = dset.attrs['sampling_rate']
-                #     if dt != self.sampling_rate:
-                # except KeyError:
-                #     dt = None
-
-                # try:
-                #     dset_offset = dset.attrs['offset']
-                #     if dt is None:
-                #         if self.sampling_rate is None:
-                #             offset = entry_time + dset_offset
-                #         else:
-                #             offset = entry_time
-
-
-        # questions about how to iterate:
-
-        # 2. validate whether the requested channels are homogeneous across
-        # entries? probably not, it's rather pathological if they're not
-        #
-        # 3. How about whether there's overlapping data?  Okay with the arf
-        # spec, but do we try: to straighten it out?  How to detect?  Need to
-        # keep track of whether the time has passed the start time of the next entry
-        #
-        # 4. dealing with different timebases and formats. Some arf files will
-        # have sample counts, which should probably be used instead of
-        # timestamps when possible.  However, these have to be converted to real
-        # times at some point.  And, actually, there's no canonical conversion
-        # factor because datasets don't have to be at the same sampling rate.
-
+            # optionally check for consistency of timestamps and frame counts
 
 
 # Variables:

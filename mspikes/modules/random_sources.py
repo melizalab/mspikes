@@ -39,7 +39,8 @@ class rand_samples(IterableSource):
 
     def data(self, t=0):
         """Generates a data chunk"""
-        return DataBlock(self.channel, t, self.sampling_rate, self._randg.randn(self.chunk_size))
+        return DataBlock(id=self.channel, repr=0, offset=t, dt=self.sampling_rate,
+                         data=self._randg.randn(self.chunk_size))
 
     def __iter__(self):
         t = 0
