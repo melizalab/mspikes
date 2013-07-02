@@ -120,5 +120,20 @@ def test_dset_timebase():
         arf_io.dset_offset(1000, 10, 1000, 66)
 
 
+def test_time_series_offset():
+
+    f = arf_io.time_series_offsets
+
+    assert_equal(f(0, None, 1, 20, None, 100), (20, 100))
+    assert_equal(f(20, None, 1, 20, 80, 100), (0, 60))
+
+    assert_equal(f(200, 10, 1, 0, None, 100), (0, 100))
+    assert_equal(f(200, 10, 1, 0, 80, 100), (0, 60))
+
+    assert_equal(f(0, 10, 10, 20, 80, 1000), (200, 800))
+
+    with assert_raises(ValueError):
+        f(0, 10, None, 20, 80, 5)
+
 # Variables:
 # End:

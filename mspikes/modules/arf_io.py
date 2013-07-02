@@ -235,6 +235,9 @@ class arf_reader(RandomAccessSource):
                 if not self.use_xruns:
                     continue
 
+            # check for consistency of timestamps and frame counts?
+
+
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
@@ -256,9 +259,9 @@ class arf_reader(RandomAccessSource):
         """Iterate through the data in the file"""
         from collections import defaultdict
 
+        dtype = type(self.entries[0][0])   # type of timebase
         # monitor the time in each channel to check for inconsistencies
-        dtype = type(self.entries[0][0])
-        cp = self.channel_position = defaultdict(dtype)
+        cp = self.channel_time = defaultdict(dtype)
         for dset in self.iterdatasets():
             # check for overlap (within channel)
             if dset.offset < cp[dset.id]:
@@ -267,17 +270,32 @@ class arf_reader(RandomAccessSource):
             # restrict by time
             nframes = dset.data.shape[0]
             blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
-            indices = xrange(max(0, (self.start - dset.offset / self.sampling_rate) * dset.dt),
-                             min(nframes, (self.stop - dset.offset / self.sampling_rate) * dset.dt
-                                 if self.stop else nframes),
-                             blocksize)
-            for i in indices:
+            start, stop = time_series_offsets(dset.offset, self.sampling_rate, dset.dt,
+                                            self.start, self.stop, nframes)
+            for i in xrange(start, stop, blocksize):
                 t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
                 data = dset.data[slice(i, i + blocksize), ...]
                 yield dset._replace(offset=t, data=data)
 
-            cp[dset.id] = dtype(dset.offset + nframes)
-            # optionally check for consistency of timestamps and frame counts
+            cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+
+
+def time_series_offsets(dset_offset, offset_dt, dset_dt, start_time, stop_time, nframes):
+    """Calculate indices of start and stop times in a time series.
+
+    For an array of nframes that begins at dset_offset (samples) with timebase
+    offset_dt (samples/sec) and has samples spaced at dset_dt (samples/sec),
+    returns the range of valid indices into the array, restricted between start_time
+    and stop_time (in seconds).
+
+    """
+    if dset_dt is None:
+        raise ValueError("function only valid for sampled timebases")
+    dset_offset = dset_offset / (offset_dt or 1)
+    start_idx = max(0, (start_time - dset_offset) * dset_dt) if start_time else 0
+    stop_idx = min(nframes, (stop_time - dset_offset) * dset_dt) if stop_time else nframes
+
+    return int(start_idx), int(stop_idx)
 
 
 # Variables:
