@@ -12,11 +12,12 @@ _log = logging.getLogger(__name__)
 
 
 class zscale(Source, Sink):
-    """Centers and rescales time series data, optionally excluding deviant data
+    """Centers and rescales time series data, optionally excluding
 
-    accepts: time-series data
+    accepts: all block types
 
-    emits: z-scaled time-series data
+    emits: z-scaled time-series blocks
+           unmodified event and structure blocks
            start and stop exclusions (events)
 
     """

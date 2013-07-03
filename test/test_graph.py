@@ -37,7 +37,7 @@ def test_node_syntax():
                  ("node3 = node_type(node1, (node2, events))", "node3",
                   ("node_type", (("node1",),("node2","events")), {})),
                  ("node4 = node_type((node1, _sampled))", "node4",
-                  ("node_type", (("node1","_sampled"),), {}))
+                  ("node_type", (("node1","_sampled"),), {})),
              ]
     for statement, name, node in test_defs:
         yield parse_node_descr, statement, name, node
@@ -45,7 +45,9 @@ def test_node_syntax():
         bad_defs = ["not an assignment",
                     "node1 = not_a_call",
                     "node1,node2 = too_many_lhs()",
-                    "node3 = bad_python_syntax(blah, param1="]
+                    "node3 = bad_python_syntax(blah, param1=",
+                    "node5 = node_type((node1, has_all(_sampled))))", # not yet
+                ]
     f = raises(SyntaxError)(parse_node_descr)
     for statement in bad_defs:
         yield f, statement, None

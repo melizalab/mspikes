@@ -59,9 +59,12 @@ def parse_node_descr(expr):
 
     '*sources' signifies zero or more sources, separated by commas. Each source
     must be the name of another node, or a tuple (node_name, filter,
-    [filter],...), where each filter must be the name of a function in the
-    mspikes.filters namespace, or a colon-prefixed tag (e.g., ':sampled')
-    indicating that the data block must have that tag. Filters are applied in
+    [filter],...).
+
+    Filters may be (1) an underscore-prefixed tag (e.g., '_sampled') indicating
+    that the data block must have that tag; (2) the name of a predicate function
+    in the mspikes.filters namespace, or (3) TODO a call to a function in
+    mspikes.filters that returns a predicate function. Filters are applied in
     sequence. Additional callables may be registered with the
     'org.meliza.mspikes.filters' entry point.
 
@@ -182,7 +185,7 @@ def build_node_graph(node_defs, options=None):
 
     def resolve_source(src,*filts):
         """Resolves a source definition: ('node','filt1','filt2',...)"""
-        return nodes[src], tuple(imap(filters.get, filts))
+        return nodes[src], tuple(imap(filters._get, filts))
 
     # assemble the graph (pass 3)
     head = []

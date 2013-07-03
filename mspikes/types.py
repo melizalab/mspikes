@@ -9,6 +9,11 @@ from collections import namedtuple
 DataBlock = namedtuple("DataBlock", ("id", "offset", "dt", "data", "tags"))
 
 
+def tag_set(*args):
+    """return a set of tags"""
+    return frozenset(intern(s) for s in args)
+
+
 class Node(object):
     """A node in a processing graph."""
 

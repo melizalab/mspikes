@@ -10,7 +10,7 @@ import logging
 import functools
 import operator
 from mspikes import util
-from mspikes.types import DataBlock, RandomAccessSource
+from mspikes.types import DataBlock, RandomAccessSource, tag_set
 
 _log = logging.getLogger(__name__)
 
@@ -160,6 +160,10 @@ class arf_reader(RandomAccessSource):
                 if not self.use_xruns:
                     continue
 
+            # emit structure blocks to indicate entry onsets
+            yield DataBlock(id=entry.name, offset=entry_time, dt=self.sampling_rate, data=(),
+                            tags=tag_set("structure"))
+
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
@@ -174,12 +178,11 @@ class arf_reader(RandomAccessSource):
                     continue
 
                 if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples"):
-                    tag = intern("events")
+                    tag = "events"
                 else:
-                    tag = intern("samples")
+                    tag = "samples"
 
-                yield DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset,
-                                tags=frozenset((tag,)))
+                yield DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset, tags=tag_set(tag))
 
     def __iter__(self):
         """Iterate through the data in the file"""
@@ -191,7 +194,10 @@ class arf_reader(RandomAccessSource):
         for dset in self.iterdatasets():
             dset_time = dset.offset / (self.sampling_rate or 1)
 
-            if "events" in dset.tags:
+            if "structure" in dset.tags:
+                yield dset
+
+            elif "events" in dset.tags:
                 # point process data is sent in one chunk
                 if self.start or self.stop:
                     data_seconds = ((dset.data['start'] if dset.data.dtype.names else dset.data[:])
@@ -223,6 +229,7 @@ class arf_reader(RandomAccessSource):
 
                 cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
             else:
+                import pdb; pdb.set_trace() ## DEBUG ##
                 raise Exception("uncaught data type in %s" % dset)
 
 

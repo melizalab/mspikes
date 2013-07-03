@@ -7,7 +7,15 @@ Created Fri May 31 13:19:05 2013
 
 """
 
-def get(name):
+def _has_tag(tag):
+    """Generate a predicate function that returns true if the block is tagged 'name'"""
+    # TODO memoize this for really large graphs?
+    def f(obj):
+        return (tag in obj.tags)
+    return f
+
+
+def _get(name):
     """Look up filter in this module.
 
     If 'name' starts with '_', it's interpreted as a tag lookup; otherwise, it's taken
@@ -16,22 +24,20 @@ def get(name):
 
     """
     if name.startswith('_') and len(name) > 1:
-        tag = name[1:]
-        def f(obj):
-            return (tag in obj.tags)
+        f = _has_tag(name[1:])
         f.__name__ = name
         return f
     else:
-        filts = dict(all())
+        filts = dict(_all())
         try:
             return filts[name]
         except KeyError:
             raise AttributeError("no such filter '%s'" % name)
 
-def all():
+def _all():
     import inspect
     return inspect.getmembers(inspect.getmodule(all),
-                              lambda x: inspect.isfunction(x) and x.__name__ not in ('get','all'))
+                              lambda x: inspect.isfunction(x) and not x.__name__.startswith('_'))
 
 # Variables:
 # End:

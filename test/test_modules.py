@@ -26,9 +26,10 @@ def test_rand_samples():
 
     src = rand_samples()
 
+    is_sampled = filters._has_tag('samples')
     count = 0
     def f(data):
-        assert_true(filters.sampled(data))
+        assert_true(is_sampled(data))
         assert_equal(data.data.size, src.chunk_size)
         assert_equal(data.offset, count)
         return count + data.data.size

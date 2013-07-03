@@ -74,12 +74,14 @@ def test_entry_iteration():
 
     # real timebase
     e = f.create_entry("entry-real", 0, sample_count=0)
+    expected_times.append(0)    # from structure block
     for j, t in enumerate(dset_times):
         d = e.add_data("dset_%d" % j, (), offset=t, units="s", sampling_rate=None)
         expected_times.append(t)
 
     # sampled timebase
     e = f.create_entry("entry-sampled", 1000, sample_count=1000 * srate)
+    expected_times.append(1000)    # from structure block
     for j, t in enumerate(dset_times):
         d = e.add_data("dset_%d" % j, (), offset=int(t * srate), sampling_rate=srate)
         expected_times.append(t + 1000)
@@ -118,6 +120,7 @@ def test_dset_timebase():
     # sampled entry, sampled dset (inconvertible rates)
     with assert_raises(ValueError):
         arf_io.dset_offset(1000, 10, 1000, 66)
+
 
 def test_time_series_offset():
 

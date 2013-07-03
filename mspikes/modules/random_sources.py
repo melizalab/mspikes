@@ -6,7 +6,7 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 
-from mspikes.types import DataBlock, IterableSource
+from mspikes.types import DataBlock, IterableSource, tag_set
 from numpy.random import RandomState
 
 
@@ -41,7 +41,7 @@ class rand_samples(IterableSource):
         """Generates a data chunk"""
         return DataBlock(id=self.channel, offset=t, dt=self.sampling_rate,
                          data=self._randg.randn(self.chunk_size),
-                         tags=frozenset(("samples",)))
+                         tags=tag_set("samples"))
 
     def __iter__(self):
         t = 0
