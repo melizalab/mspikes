@@ -15,101 +15,11 @@ from mspikes.types import DataBlock, RandomAccessSource
 _log = logging.getLogger(__name__)
 
 
-def true_p(*args):
-    return True
-
-
-def attritemgetter(name):
-    """Return a function that extracts arg.attr['name']"""
-    return lambda arg: arg.attrs[name]
-
-
-def keyiter_attr(entries, name, fun=None):
-    """Iterate entries producing (key, entry) pairs.
-
-    key is entry.attrs['name'], or if fun is defined, fun(entry.attrs['name'])
-
-    Skips entries with no 'name' attribute
-
-    """
-    keyfun = attritemgetter(name)
-    if fun is not None:
-        keyfun = util.compose(fun, keyfun)
-    for entry in entries:
-        try:
-            yield keyfun(entry), entry
-        except KeyError:
-            _log.info("'%s' skipped (missing '%s' attribute)", entry.name, name)
-
-
-def keyiter_jack_frame(entries):
-    """Iterate entries producing (key, entry), with key = jack_frame
-
-    jack_frame values are converted from uint32 values (which may overflow) to
-    uint64 values
-
-    """
-    from operator import itemgetter
-    from numpy import uint64, seterr
-    orig = seterr(over='ignore')   # ignore overflow warning
-
-    # first sort by jack_usec, a uint64
-    usec_sorted = sorted(keyiter_attr(entries, "jack_usec"), key=itemgetter(0))
-
-    # then convert the jack_frame uint32's to uint64's by incrementing. this may
-    # not be very efficient, and won't work if there's a gap longer than the
-    # size of the frame counter; could potentially do some kind of arithmetic
-    # with the usec variable and the sample rate.
-    _, entry = usec_sorted[0]
-    last = entry.attrs['jack_frame']
-    frame = uint64(0)
-    yield (frame, entry)
-    for _, entry in usec_sorted[1:]:
-        current = entry.attrs['jack_frame']
-        frame += current - last
-        last = current
-        yield (frame, entry)
-
-    seterr(**orig)              # restore numpy error settings
-
-
-def corrected_sampling_rate(keyed_entries):
-    """Calculate the sampling rate relative to the system clock"""
-    from arf import timestamp_to_float
-    kf = attritemgetter('timestamp')
-    entries = (keyed_entries[0], keyed_entries[-1])
-    (s1, t1), (s2, t2) = ((s,timestamp_to_float(kf(e))) for s, e in entries)
-    return (s2 - s1) / (t2 - t1)
-
-
-def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
-    """calculate the total offset of a dataset, converting to entry timebase as needed"""
-    import fractions
-
-    dtype = type(entry_time)
-
-    if entry_dt == dset_dt:
-        val = entry_time + dset_offset
-    elif entry_dt is None:
-        val = entry_time + dtype(dset_offset) / dset_dt
-    elif dset_dt is None:
-        val = entry_time + dtype(dset_offset * entry_dt)
-    elif fractions.Fraction(*sorted((entry_dt, dset_dt))).numerator == 1:
-        val = entry_time + dtype(dset_offset * entry_dt / dset_dt)
-    else:
-        raise ValueError("dataset timebase is incompatible with entry timebase")
-
-    return dtype(val)
-
-
-def set_option_attributes(obj, opts, **attrs):
-    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
-    for key, value in attrs.iteritems():
-        setattr(obj, key, opts.get(key, value))
-
-
 class arf_reader(RandomAccessSource):
     """Source data from an ARF/HDF5 file
+
+    emits: data blocks from ARF file (event and sampled)
+           entry start times (event) TODO
 
     Produces data by iterating through entries of the file in temporal order,
     emitting chunks separately for each dataset in the entries. By default the
@@ -305,6 +215,99 @@ class arf_reader(RandomAccessSource):
                     yield dset._replace(offset=t, data=data)
 
                 cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+
+
+def true_p(*args):
+    return True
+
+
+def attritemgetter(name):
+    """Return a function that extracts arg.attr['name']"""
+    return lambda arg: arg.attrs[name]
+
+
+def keyiter_attr(entries, name, fun=None):
+    """Iterate entries producing (key, entry) pairs.
+
+    key is entry.attrs['name'], or if fun is defined, fun(entry.attrs['name'])
+
+    Skips entries with no 'name' attribute
+
+    """
+    keyfun = attritemgetter(name)
+    if fun is not None:
+        keyfun = util.compose(fun, keyfun)
+    for entry in entries:
+        try:
+            yield keyfun(entry), entry
+        except KeyError:
+            _log.info("'%s' skipped (missing '%s' attribute)", entry.name, name)
+
+
+def keyiter_jack_frame(entries):
+    """Iterate entries producing (key, entry), with key = jack_frame
+
+    jack_frame values are converted from uint32 values (which may overflow) to
+    uint64 values
+
+    """
+    from operator import itemgetter
+    from numpy import uint64, seterr
+    orig = seterr(over='ignore')   # ignore overflow warning
+
+    # first sort by jack_usec, a uint64
+    usec_sorted = sorted(keyiter_attr(entries, "jack_usec"), key=itemgetter(0))
+
+    # then convert the jack_frame uint32's to uint64's by incrementing. this may
+    # not be very efficient, and won't work if there's a gap longer than the
+    # size of the frame counter; could potentially do some kind of arithmetic
+    # with the usec variable and the sample rate.
+    _, entry = usec_sorted[0]
+    last = entry.attrs['jack_frame']
+    frame = uint64(0)
+    yield (frame, entry)
+    for _, entry in usec_sorted[1:]:
+        current = entry.attrs['jack_frame']
+        frame += current - last
+        last = current
+        yield (frame, entry)
+
+    seterr(**orig)              # restore numpy error settings
+
+
+def corrected_sampling_rate(keyed_entries):
+    """Calculate the sampling rate relative to the system clock"""
+    from arf import timestamp_to_float
+    kf = attritemgetter('timestamp')
+    entries = (keyed_entries[0], keyed_entries[-1])
+    (s1, t1), (s2, t2) = ((s,timestamp_to_float(kf(e))) for s, e in entries)
+    return (s2 - s1) / (t2 - t1)
+
+
+def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
+    """calculate the total offset of a dataset, converting to entry timebase as needed"""
+    import fractions
+
+    dtype = type(entry_time)
+
+    if entry_dt == dset_dt:
+        val = entry_time + dset_offset
+    elif entry_dt is None:
+        val = entry_time + dtype(dset_offset) / dset_dt
+    elif dset_dt is None:
+        val = entry_time + dtype(dset_offset * entry_dt)
+    elif fractions.Fraction(*sorted((entry_dt, dset_dt))).numerator == 1:
+        val = entry_time + dtype(dset_offset * entry_dt / dset_dt)
+    else:
+        raise ValueError("dataset timebase is incompatible with entry timebase")
+
+    return dtype(val)
+
+
+def set_option_attributes(obj, opts, **attrs):
+    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
+    for key, value in attrs.iteritems():
+        setattr(obj, key, opts.get(key, value))
 
 
 def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
