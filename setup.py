@@ -5,7 +5,7 @@ import sys
 if sys.hexversion < 0x02070000:
     raise RuntimeError("Python 2.7 or higher required")
 
-from distribute_setup import use_setuptools
+from ez_setup import use_setuptools
 use_setuptools()
 from setuptools import find_packages
 

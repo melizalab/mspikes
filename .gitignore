@@ -1,3 +1,6 @@
 *.pyc
+*.pyo
 *_flymake.py
 /mspikes.egg-info/
+/build/
+/dist/
