@@ -6,7 +6,7 @@
 from collections import namedtuple
 
 # simple immutable struct for transporting blocks of data
-DataBlock = namedtuple("DataBlock", ("id", "repr", "offset", "dt", "data"))
+DataBlock = namedtuple("DataBlock", ("id", "offset", "dt", "data", "tags"))
 
 
 class Node(object):

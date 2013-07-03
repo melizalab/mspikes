@@ -35,7 +35,9 @@ def test_node_syntax():
     test_defs = [("node1 = node_type()", "node1", ("node_type",(),{})),
                  ("node2 = node_type(param1=1234)", "node2", ("node_type",(),{"param1":1234})),
                  ("node3 = node_type(node1, (node2, events))", "node3",
-                  ("node_type", (("node1",),("node2","events")), {}))
+                  ("node_type", (("node1",),("node2","events")), {})),
+                 ("node4 = node_type((node1, _sampled))", "node4",
+                  ("node_type", (("node1","_sampled"),), {}))
              ]
     for statement, name, node in test_defs:
         yield parse_node_descr, statement, name, node
@@ -75,7 +77,7 @@ def create_graph(definitions):
 
 def test_graph_run():
     toolchains = [("rng = rand_samples(seed=10)",
-                   "out = stream_sink((rng,sampled))")]
+                   "out = stream_sink((rng, _sampled))")]
 
     for descrs in toolchains:
         yield create_graph, descrs

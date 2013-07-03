@@ -8,13 +8,13 @@ Created Wed Jun 19 09:55:10 2013
 
 view_raw = ("Inspect raw sampled data",
             "input = rand_samples()\n"
-            "output = stream_sink(input)")
+            "output = stream_sink((input,sampled))")
 
 spk_extract = ("Extract spikes from raw neural recordings",
-                 "input = file_reader()\n"
-                 "hpass = highpass_filter((input, sampled))\n"
-                 "spikes = spike_detect(hpass)\n"
-                 "output = file_writer(spikes)")
+                 "input = arf_reader()\n"
+                 "hpass = zscale((input, _sampled))\n")
+                 # "spikes = spike_detect(hpass)\n"
+                 # "output = file_writer(spikes)")
 
 
 # Variables:

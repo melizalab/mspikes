@@ -57,15 +57,16 @@ def parse_node_descr(expr):
     namespace. Additional classes may be registered with the
     'org.meliza.mspikes.modules' entry point using setuptools.
 
-    *sources signifies zero or more sources, separated by commas. Each source
-     must be the name of another node, or a tuple
-     (node_name,filter,[filter],...), where filter must be the name of a
-     function in the mspikes.filters namespace. Filters are applied in sequence.
-     Additional callables may be registered with the
-     'org.meliza.mspikes.filters' entry point.
+    '*sources' signifies zero or more sources, separated by commas. Each source
+    must be the name of another node, or a tuple (node_name, filter,
+    [filter],...), where each filter must be the name of a function in the
+    mspikes.filters namespace, or a colon-prefixed tag (e.g., ':sampled')
+    indicating that the data block must have that tag. Filters are applied in
+    sequence. Additional callables may be registered with the
+    'org.meliza.mspikes.filters' entry point.
 
-    **parameters signifies zero or more key=value pairs, separated by commas.
-      These are passed as keyword arguments to the node_type constructor.
+    '**parameters' signifies zero or more key=value pairs, separated by commas.
+    These are passed as keyword arguments to the node_type constructor.
 
     raises SyntaxError for failures to conform to the above syntax
 
@@ -181,8 +182,7 @@ def build_node_graph(node_defs, options=None):
 
     def resolve_source(src,*filts):
         """Resolves a source definition: ('node','filt1','filt2',...)"""
-        from functools import partial
-        return nodes[src], tuple(imap(partial(getattr, filters), filts))
+        return nodes[src], tuple(imap(filters.get, filts))
 
     # assemble the graph (pass 3)
     head = []
@@ -190,7 +190,7 @@ def build_node_graph(node_defs, options=None):
         node = nodes[name]
         _log.debug("'%s': %s", name, node)
         for source,filts in starmap(resolve_source, node_def.sources):
-            _log.info("%s <- %s %s", ' ' * (len(name) + 3), source, node_def.sources[1:])
+            _log.info("%s <- %s %s", ' ' * (len(name) + 3), source, filts)
             # compose filters into a single function
             source.add_sink(node, util.chain_predicates(*filts))
         if len(node_def.sources) == 0:

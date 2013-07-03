@@ -72,15 +72,18 @@ class arf_reader(RandomAccessSource):
             self.file = filename
         else:
             self.file = h5py.File(filename, "r")
+        _log.info("input file: %s", self.file.filename)
 
-        if "channels" in options:
-            rx = (re.compile(p).search for p in options['channels'])
+        channels = options.get("channels", None)
+        if channels:
+            rx = (re.compile(p).search for p in channels)
             self.chanp = util.chain_predicates(*rx)
         else:
             self.chanp = true_p
 
-        if "entries" in options:
-            rx = (re.compile(p).search for p in options['entries'])
+        entries = options.get("entries", None)
+        if entries:
+            rx = (re.compile(p).search for p in entries)
             self.entryp = util.chain_predicates(*rx)
         else:
             self.entryp = true_p
@@ -170,9 +173,13 @@ class arf_reader(RandomAccessSource):
                               dset.name, dset_dt, self.sampling_rate)
                     continue
 
-                is_pointproc = "units" in dset.attrs and dset.attrs["units"] in ("s", "samples")
+                if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples"):
+                    tag = intern("events")
+                else:
+                    tag = intern("samples")
 
-                yield DataBlock(id=id, repr=1 - is_pointproc, offset=dset_time, dt=dset_dt, data=dset)
+                yield DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset,
+                                tags=frozenset((tag,)))
 
     def __iter__(self):
         """Iterate through the data in the file"""
@@ -184,7 +191,7 @@ class arf_reader(RandomAccessSource):
         for dset in self.iterdatasets():
             dset_time = dset.offset / (self.sampling_rate or 1)
 
-            if dset.repr == 0:
+            if "events" in dset.tags:
                 # point process data is sent in one chunk
                 if self.start or self.stop:
                     data_seconds = ((dset.data['start'] if dset.data.dtype.names else dset.data[:])
@@ -198,7 +205,7 @@ class arf_reader(RandomAccessSource):
                 else:
                     yield dset
 
-            elif dset.repr == 1:
+            elif "samples" in dset.tags:
                 # check for overlap (within channel).
                 if dset.offset < cp[dset.id]:
                     _log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
@@ -215,6 +222,8 @@ class arf_reader(RandomAccessSource):
                     yield dset._replace(offset=t, data=data)
 
                 cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+            else:
+                raise Exception("uncaught data type in %s" % dset)
 
 
 def true_p(*args):
