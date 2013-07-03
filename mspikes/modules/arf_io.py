@@ -70,7 +70,16 @@ def keyiter_jack_frame(entries):
         last = current
         yield (frame, entry)
 
-    seterr(**orig)
+    seterr(**orig)              # restore numpy error settings
+
+
+def corrected_sampling_rate(keyed_entries):
+    """Calculate the sampling rate relative to the system clock"""
+    from arf import timestamp_to_float
+    kf = attritemgetter('timestamp')
+    entries = (keyed_entries[0], keyed_entries[-1])
+    (s1, t1), (s2, t2) = ((s,timestamp_to_float(kf(e))) for s, e in entries)
+    return (s2 - s1) / (t2 - t1)
 
 
 def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
@@ -168,7 +177,8 @@ class arf_reader(RandomAccessSource):
 
         self.entries = self._entry_table()
         self.sampling_rate = self._sampling_rate()
-        _log.info("file sampling rate: %s", self.sampling_rate)
+        if self.sampling_rate:
+            _log.info("file sampling rate (nominal): %d Hz", self.sampling_rate)
 
     @property
     def creator(self):
@@ -197,9 +207,10 @@ class arf_reader(RandomAccessSource):
             keyiter = keyiter_jack_frame
         _log.info("sorting entries by '%s'", keyname)
 
-        # filter by name
+        # filter by name and type
         entries = (entry for name, entry in self.file.iteritems()
                    if self.entryp(name) and isinstance(entry, h5py.Group))
+        # keyiter extracts key, entry pairs; then we sort by key
         return sorted(keyiter(entries), key=operator.itemgetter(0))
 
     def _sampling_rate(self):
@@ -226,6 +237,7 @@ class arf_reader(RandomAccessSource):
         file.
 
         """
+
         time_0 = self.entries[0][0]
         for entry_time, entry in self.entries:
             # check for marked errors
@@ -234,9 +246,6 @@ class arf_reader(RandomAccessSource):
                           " (skipping)" if not self.use_xruns else "")
                 if not self.use_xruns:
                     continue
-
-            # check for consistency of timestamps and frame counts?
-
 
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
@@ -263,24 +272,42 @@ class arf_reader(RandomAccessSource):
         # monitor the time in each channel to check for inconsistencies
         cp = self.channel_time = defaultdict(dtype)
         for dset in self.iterdatasets():
-            # check for overlap (within channel)
-            if dset.offset < cp[dset.id]:
-                _log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
-                          dset.data.name, dset.offset, cp[dset.id])
-            # restrict by time
-            nframes = dset.data.shape[0]
-            blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
-            start, stop = time_series_offsets(dset.offset, self.sampling_rate, dset.dt,
-                                            self.start, self.stop, nframes)
-            for i in xrange(start, stop, blocksize):
-                t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
-                data = dset.data[slice(i, i + blocksize), ...]
-                yield dset._replace(offset=t, data=data)
+            dset_time = dset.offset / (self.sampling_rate or 1)
 
-            cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+            if dset.repr == 0:
+                # point process data is sent in one chunk
+                if self.start or self.stop:
+                    data_seconds = ((dset.data['start'] if dset.data.dtype.names else dset.data[:])
+                                    * (dset.dt or 1.0) + dset_time)
+                    idx = data_seconds >= self.start
+                    if self.stop:
+                        idx &= data_seconds <= self.stop
+                    if idx.sum() > 0:
+                        # only emit chunk if there's data
+                        yield dset._replace(data=dset.data[idx])
+                else:
+                    yield dset
+
+            elif dset.repr == 1:
+                # check for overlap (within channel).
+                if dset.offset < cp[dset.id]:
+                    _log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
+                              dset.data.name, dset.offset, cp[dset.id])
+
+                # restrict by time
+                nframes = dset.data.shape[0]
+                blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
+                start, stop = time_series_offsets(dset_time, dset.dt, self.start, self.stop, nframes)
+
+                for i in xrange(start, stop, blocksize):
+                    t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
+                    data = dset.data[slice(i, i + blocksize), ...]
+                    yield dset._replace(offset=t, data=data)
+
+                cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
 
 
-def time_series_offsets(dset_offset, offset_dt, dset_dt, start_time, stop_time, nframes):
+def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
     """Calculate indices of start and stop times in a time series.
 
     For an array of nframes that begins at dset_offset (samples) with timebase
@@ -289,14 +316,10 @@ def time_series_offsets(dset_offset, offset_dt, dset_dt, start_time, stop_time, 
     and stop_time (in seconds).
 
     """
-    if dset_dt is None:
-        raise ValueError("function only valid for sampled timebases")
-    dset_offset = dset_offset / (offset_dt or 1)
-    start_idx = max(0, (start_time - dset_offset) * dset_dt) if start_time else 0
-    stop_idx = min(nframes, (stop_time - dset_offset) * dset_dt) if stop_time else nframes
+    start_idx = max(0, (start_time - dset_time) * dset_dt) if start_time else 0
+    stop_idx = min(nframes, (stop_time - dset_time) * dset_dt) if stop_time else nframes
 
     return int(start_idx), int(stop_idx)
-
 
 # Variables:
 # End:
