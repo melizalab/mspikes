@@ -12,40 +12,60 @@ from mspikes.types import Source, Sink, DataBlock
 _log = logging.getLogger(__name__)
 
 
-def exponential_smoother(data, window_size, init=None):
-    """Calculate moving window statistics of data using an exponential smoother
+def exponential_smoother(data, M, M_0=None, S_0=None):
+    """Calculate moving first and second moments of data using an exponential smoother
 
-    window_size - the integration window
-    init - a tuple giving (initial value, number of points) for initializing the
-           smoother. If not supplied, the first window_size points will be used.
+    Given a time series X = {x_0,...,x_N}, calculates a weighted average of f(x_i) and the
+    values of f(x_j) for j = {i - M, ... i - 1}, with the past values weighted by
+    the number of samples (M), where f() is an arbitrary function of x.
+
+    S_i = (S_{i-1} * M + f(x_i)) / (M + 1)
+
+    The intial value S_0 can be estimated from the first M samples of X, or it can
+    be supplied as a value along with the number of samples used to make the estimate.
+
+    data - a 1-dimensional array
+    M    - the number of samples to use in the integration window
+    M_0  - the number of samples to use in initialization. If not supplied, M is used.
+
+    S_0  - tuple giving initial estimates for (mean, variance). If not supplied, the values
+           are estimated from the first M_0 samples of the data
+
     """
-
     from numpy import zeros
     assert data.ndim == 1
     avg = zeros(data.shape)
+    var = zeros(data.shape)
 
-    if init is None:
-        init = data[:window_size].mean()
-        N = window_size
+    if M_0 is None or M_0 == 0:
+        M_0 = M
+
+    if S_0 is None or M_0 == 0:
+        a_0, v_0 = (data[:M_0].mean(), data[:M_0].var())
     else:
-        init, N = init
+        a_0, v_0 = S_0
 
-    avg[0] = (init * N + data[0]) / (N + 1)
+    mean = lambda i, p, n: (p * n + data[i]) / (n + 1)
+    variance = lambda i, p, n: (p * n + (data[i] - avg[i]) ** 2) / (n + 1)
 
+    avg[0] = mean(0, a_0, M_0)
+    var[0] = variance(0, v_0, M_0)
+
+    # unrolled loop for different weightings
     i = 1
-    while i < N:
-        avg[i] = (avg[i-1] * N + data[i]) / (N + 1)
-        i += 1
+    for i in xrange(1, M_0):
+        avg[i] = mean(i, avg[i-1], M_0)
+        var[i] = variance(i, var[i-1], M_0)
 
-    while i < window_size:
-        avg[i] = (avg[i-1] * i + data[i]) / (i + 1)
-        i += 1
+    for i in xrange(i, M):
+        avg[i] = mean(i, avg[i-1], i)
+        var[i] = variance(i, var[i-1], i)
 
-    while i < data.size:
-        avg[i] = (avg[i-1] * window_size + data[i]) / (window_size + 1)
-        i += 1
+    for i in xrange(i, data.size):
+        avg[i] = mean(i, avg[i-1], M)
+        var[i] = variance(i, var[i-1], M)
 
-    return avg
+    return avg, var
 
 
 class zscale(Source, Sink):
