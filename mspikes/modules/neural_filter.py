@@ -69,17 +69,35 @@ def exponential_smoother(data, M, M_0=None, S_0=None):
 
 
 class zscale(Source, Sink):
-    """Centers and rescales time series data, optionally excluding
+    """Centers and rescales time series data using a sliding window
+
+    Data are z-scaled by subtracting the mean and dividing by the standard
+    deviation. The mean and SD of the data are calculated using an exponential
+    smoother.
+
+    Optionally, data can be marked for exclusion when the SD of the data exceeds
+    some threshold, which is defined relative to the moving average of the SD.
 
     accepts: all block types
 
-    emits: z-scaled time-series blocks
-           unmodified event and structure blocks
-           start and stop exclusions (events)
+    emits: z-scaled time-series blocks (_samples)
+           unmodified _events and _structure blocks
+           start and stop exclusions (_events)
 
     """
 
-    pass
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("window",
+                 help="integration window (in s; default 2)",
+                 type=float,
+                 metavar='FLOAT')
+        addopt_f("exclude-rms",
+                 help="mark times when the signal RMS is greater than this value",
+                 type=float,
+                 metavar='FLOAT')
+
+
 
 
 

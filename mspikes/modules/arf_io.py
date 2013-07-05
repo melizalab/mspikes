@@ -18,16 +18,16 @@ _log = logging.getLogger(__name__)
 class arf_reader(RandomAccessSource):
     """Source data from an ARF/HDF5 file
 
-    emits: data blocks from ARF file (event and sampled)
-           entry start times (event) TODO
-
     Produces data by iterating through entries of the file in temporal order,
     emitting chunks separately for each dataset in the entries. By default the
     timestamp of the entries is used to calculate offsets for the chunks, but
     for ARF files created by 'arfxplog' and 'jrecord' the sample clock can be
     used as well.
 
-    Using sample-based offsets with files that were recorded at different
+    emits: data blocks from ARF file (_events and _samples)
+           entry start times (_structure)
+
+    Note: using sample-based offsets with files that were recorded at different
     sampling rates or with different instances of the data collection program
     will lead to undefined behavior because the sample counts will not be
     consistent within the file.
