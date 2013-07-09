@@ -17,5 +17,11 @@ def compose(f1, f2):
         return f1(f2(*args, **kwargs))
     return f
 
+
+def set_option_attributes(obj, opts, **attrs):
+    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
+    for key, value in attrs.iteritems():
+        setattr(obj, key, opts.get(key, value))
+
 # Variables:
 # End:

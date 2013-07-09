@@ -15,8 +15,8 @@ input = generic_file_reader(filename, ...)
 trans = generic_transform(...)
 output = generic_file_writer(filename, ...)
 
-input.add_sink(trans)
-filter.targets.append(writer)
+input.add_target(trans)
+trans.add_target(writer)
 
 for t in reader:
     update_status_display(t)
@@ -134,7 +134,6 @@ def argparse_prefixer(prefix, group):
     def f(*args, **kwargs):
         # adds prefix to options
         args = map(lambda x : rx.sub(r"\1%s-\2" % prefix, x), args)
-        # TODO add default to help text
         return group.add_argument(*args, **kwargs)
     return f
 
@@ -193,9 +192,9 @@ def build_node_graph(node_defs, options=None):
         node = nodes[name]
         _log.debug("'%s': %s", name, node)
         for source,filts in starmap(resolve_source, node_def.sources):
-            _log.info("%s <- %s %s", ' ' * (len(name) + 3), source, filts)
+            _log.debug("%s <- %s %s", ' ' * (len(name) + 3), source, filts)
             # compose filters into a single function
-            source.add_sink(node, util.chain_predicates(*filts))
+            source.add_target(node, util.chain_predicates(*filts))
         if len(node_def.sources) == 0:
             head.append(node)
 

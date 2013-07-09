@@ -30,47 +30,62 @@ class Node(object):
         """
         pass
 
+    def add_target(self, target, filter=None):
+        """Tell the Node to send data to target
+
+        target  -- an object with a send() method
+
+        filter -- an optional predicate function that must return True for the
+        data to be sent to target
+
+        """
+        if not hasattr(self, "_targets"): self._targets = []
+        self._targets.append((target, filter))
+
+    def send(self, data):
+        """Send a chunk of data to the node.
+
+        Default behavior is to broadcast the chunk to all connected targets
+        (after filtering).
+
+        """
+        for tgt, filt in self._targets:
+            if filt is None or filt(data): tgt.send(data)
+
+    def done(self):
+        """Called by upstream Sources when data stream is exhausted.
+
+        This method provides a mechanism for processing modules to indicate
+        whether they've finished processing, or whether an additional pass is
+        neeeded. If the node is still processing data, it should block until
+        it's done. If the node has processed all the data, but needs another
+        pass, it should return False. If the node is terminal (has no sinks),
+        and is completely finished, it should return True. If the node is not
+        terminal, it should return all(x.done() for x in self._targets)
+
+        """
+        pass
+
 
 class Source(Node):
     """A Node that produces data."""
 
-    def add_sink(self, sink, filter=None):
-        """Add a Sink that receives data from this node"""
-        if not hasattr(self, "_sinks"): self._sinks = []
-        self._sinks.append((sink, filter))
-
     def send(self, data):
-        """Send a chunk of data to connected Sinks.
+        raise NotImplementedError("Don't call send on Sources, but instead iterate over them")
 
-        Returns sequence of values from Sink.recv calls
+    def __iter__(self):
+        """Process chunks of data and push them to connected targets
+
+        Yields the generated chunks.
+
+        Note: call done() after the iterator exits to join running threads and
+        determine whether an additional pass is needed.
 
         """
-        return tuple(tgt.recv(data) for tgt,filt in self._sinks
-                     if (filt is None or filt(data)))
-
-
-class Sink(Node):
-    """A Node that consumes data"""
-
-    def recv(self, data):
-        """Receive a chunk of data and process it."""
         pass
 
 
-class IterableSource(Source):
-    """A Source that can be iterated to read data from an external source"""
-
-    def __iter__(self):
-        """Process chunks of data and push them to downstream Nodes.
-
-        Blocks until all downstream nodes have returned. Yields a tuple of the
-        return values from all the downstream leaves.
-
-        """
-        return iter([])
-
-
-class RandomAccessSource(IterableSource):
+class RandomAccessSource(Source):
     """A Source that can be accessed using a time or channel mapping.
 
     Classes implementing this interface allow specific chunks to be requested
@@ -91,7 +106,7 @@ class RandomAccessSource(IterableSource):
 
     def __getitem__(self, key):
         """Returns an iterator yielding chunks referenced by key"""
-        return iter([])
+        pass
 
 
 # Variables:

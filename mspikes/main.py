@@ -71,8 +71,9 @@ def mspikes(argv=None):
     p = argparse.ArgumentParser(prog="mspikes",
                                 add_help=False,
                                 description="Process time-varying data using configurable toolchains")
-    p.add_argument("-h","--help", help="show this message, or options for a toolchain", action='store_true')
+    p.add_argument("-h", "--help", help="show this message, or options for a toolchain", action='store_true')
     p.add_argument("--doc", help="print extended help information", nargs='?', const="")
+    p.add_argument("-v", "--verbose", help="verbose output", action='store_false') # FIXME
 
     p.add_argument("-t", help="use a predefined toolchain", metavar='NAME', dest="tchain_name")
     p.add_argument("-T", help="define or extend toolchain", action='append', default=[],
@@ -87,8 +88,12 @@ def mspikes(argv=None):
     log = logging.getLogger('mspikes')   # root logger
     ch = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)-15s [%(name)s] %(message)s")
-    log.setLevel(logging.DEBUG)
-    ch.setLevel(logging.DEBUG)  # change
+    if opts.verbose:
+        loglevel = logging.DEBUG
+    else:
+        loglevel = logging.INFO
+    log.setLevel(loglevel)
+    ch.setLevel(loglevel)  # change
     ch.setFormatter(formatter)
     log.addHandler(ch)
     log.info("version %s", __version__)
@@ -139,7 +144,7 @@ def mspikes(argv=None):
 
     # run the graph
     log.info("starting graph")
-    for ret in chain(*root):
+    for chunk in chain(*root):
         pass
 
 

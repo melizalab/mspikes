@@ -7,9 +7,28 @@ Created Wed Jul  3 13:22:29 2013
 """
 from __future__ import division
 import logging
-from mspikes.types import Source, Sink, DataBlock
+
+from mspikes import util
+from mspikes.types import Node, DataBlock
 
 _log = logging.getLogger(__name__)
+
+def moving_meanvar(x, s, w):
+    """Calculating moving mean and variance of a time series
+
+    x - input data. 1-dimensional numpy array
+
+    s - previous state: (mean, variance)
+
+    w - weight assigned to previous state, relative to the number of elements in
+        x. set to 0 to initialize
+
+    returns updated mean, variance
+
+    """
+    m = (s[0] * w + x.sum()) / (w + x.size)
+    v = (s[1] * w + ((x - m) ** 2).sum()) / (w + x.size)
+    return (m, v)
 
 
 def exponential_smoother(data, M, step=1, M_0=None, S_0=None):
@@ -44,31 +63,25 @@ def exponential_smoother(data, M, step=1, M_0=None, S_0=None):
     if M_0 is None or M_0 == 0:
         M_0 = M
 
-    # initial values
+    # initial values from data
     if S_0 is None:
-        S = array((data[:M_0].mean(), data[:M_0].var()))
-    else:
-        S = asarray(S_0)
-
-    def meanvar(i, n):
-        x = data[i:i+step]
-        S[0] = (S[0] * n + x.sum()) / (n + x.size)
-        S[1] = (S[1] * n + ((x - S[0]) ** 2).sum()) / (n + x.size)
-        return S
+        S_0 = moving_meanvar(data[:M_0], (0, 0), 0)
 
     # unrolled loop for different weightings
-    i = 0
     for i in xrange(0, M_0, step):
-        yield meanvar(i, M_0)
+        S_0 = moving_meanvar(data[i:i+step], S_0, M_0)
+        yield S_0
 
     for i in xrange(M_0, M, step):
-        yield meanvar(i, i+1)
+        S_0 = moving_meanvar(data[i:i+step], S_0, i+1)
+        yield S_0
 
     for i in xrange(M, data.size, step):
-        yield meanvar(i, M)
+        S_0 = moving_meanvar(data[i:i+step], S_0, M)
+        yield S_0
 
 
-class rms_exclude(Source, Sink):
+class rms_exclude(Node):
     """Exclude intervals when power exceeds a threshold.
 
     Movement artifacts are characterized by large transient increases in signal
@@ -83,11 +96,19 @@ class rms_exclude(Source, Sink):
     common average reference.
 
     """
-    pass
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("--window",
+                 help="integration window for calculating RMS (in min; default %(default).1f)",
+                 default=defaults.get('window', 1),
+                 type=float,
+                 metavar='FLOAT')
 
 
 
-class zscale(Source, Sink):
+
+class zscale(Node):
     """Centers and rescales time series data using a sliding window
 
     Data are z-scaled by subtracting the mean and dividing by the standard
@@ -105,10 +126,28 @@ class zscale(Source, Sink):
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("--window",
-                 help="integration window for calculating mean and SD (in s; default %(default).1f)",
-                 default=2.0,
+                 help="duration of sliding window for calculating mean and SD (in s; default %(default).1f)",
+                 default=defaults.get('window', 2),
+                 type=float,
+                 metavar='SEC')
+        addopt_f("--step",
+                 help="step size for sliding window (in ms; default=%(default).1f)",
+                 default=defaults.get('step', 100),
+                 type=float,
+                 metavar='MS')
+        addopt_f("--exclude-rms",
+                 help="if set, exclude intervals where RMS is greater than %(metavar)s %% above baseline",
                  type=float,
                  metavar='FLOAT')
+
+
+
+
+    def __init__(self, **options):
+        util.set_option_attributes(self, options, window=2.0)
+
+    def send(self, data):
+        pass
 
 
 

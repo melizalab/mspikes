@@ -36,3 +36,5 @@ def test_exponential_filter():
     for i,(m,v) in enumerate(neural_filter.exponential_smoother(data, 3, 2)):
         assert_equal(m, m_exp[i])
         assert_equal(v, v_exp[i])
+
+

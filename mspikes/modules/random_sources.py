@@ -6,19 +6,18 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 
-from mspikes.types import DataBlock, IterableSource, tag_set
+from mspikes import util
+from mspikes.types import DataBlock, Source, Node, tag_set
 from numpy.random import RandomState
 
 
-class rand_samples(IterableSource):
+class rand_samples(Source):
     """Generates random values from N(0,1)"""
     seed = 1
     nsamples = 4096
 
     def __init__(self, **options):
-        # boilerplate
-        for opt in ("seed","nsamples"):
-            if options.has_key(opt): setattr(self, opt, options[opt])
+        util.set_option_attributes(self, options, seed=1, nsamples=4096)
         self.chunk_size = 1024
         self.channel = "random"
         self.sampling_rate = 1
@@ -46,7 +45,9 @@ class rand_samples(IterableSource):
     def __iter__(self):
         t = 0
         while t < self.nsamples:
-            yield self.send(self.data(t))
+            data = self.data(t)
+            Node.send(self, data)
+            yield data
             t += self.chunk_size
 
 ## TODO random_events

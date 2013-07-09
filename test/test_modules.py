@@ -11,34 +11,29 @@ from nose.plugins.skip import SkipTest
 from mspikes import types
 from mspikes import filters
 
-class test_module(types.Sink):
-    """Wrapper class for testing the output of a module"""
-
-    def __init__(self, testf):
-        self.testf = testf
-
-    def recv(self, data):
-        return self.testf(data)
-
-
 def test_rand_samples():
     from mspikes.modules.random_sources import rand_samples
 
     src = rand_samples()
-
     is_sampled = filters._has_tag('samples')
-    count = 0
-    def f(data):
-        assert_true(is_sampled(data))
-        assert_equal(data.data.size, src.chunk_size)
-        assert_equal(data.offset, count)
-        return count + data.data.size
 
-    tgt = test_module(f)
-    src.add_sink(tgt)
+    class test_module(types.Node):
+        """Wrapper class for testing the output of a module"""
+
+        def __init__(self):
+            self.count = 0
+
+        def send(self, data):
+            assert_true(is_sampled(data))
+            assert_equal(data.data.size, src.chunk_size)
+            assert_equal(data.offset, self.count)
+            self.count += data.data.size
+
+    tgt = test_module()
+    src.add_target(tgt)
 
     for x in src:
-        count = x[0]
+        pass
 
 
 # Variables:

@@ -6,17 +6,15 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 15:06:22 2013
 """
 import sys
-from mspikes.types import Sink
+from mspikes import util
+from mspikes.types import Node
 
 
-class stream_sink(Sink):
+class stream_sink(Node):
     """Output data block info to a stream"""
 
-    stream = sys.stdout
-
     def __init__(self, **options):
-        for opt in ("stream"):
-            if options.has_key(opt): setattr(self, opt, options[opt])
+        util.set_option_attributes(self, options, stream=sys.stdout)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -25,9 +23,9 @@ class stream_sink(Sink):
                  help="file for output (default stdout)",
                  nargs='?',
                  type=FileType('w'),
-                 default=defaults.get('stream',cls.stream))
+                 default=defaults.get('stream', sys.stdout))
 
-    def recv(self, chunk):
+    def send(self, chunk):
         # TODO better formatting
         print >> self.stream, chunk
         return chunk.offset

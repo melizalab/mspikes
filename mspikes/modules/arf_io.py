@@ -10,7 +10,7 @@ import logging
 import functools
 import operator
 from mspikes import util
-from mspikes.types import DataBlock, RandomAccessSource, tag_set
+from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set
 
 _log = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class arf_reader(RandomAccessSource):
 
     def __init__(self, filename, **options):
         import re
-        set_option_attributes(self, options,
-                              start=0, stop=None, use_timestamp=False, use_xruns=False)
+        util.set_option_attributes(self, options,
+                                   start=0, stop=None, use_timestamp=False, use_xruns=False)
 
         if isinstance(filename, h5py.File):
             self.file = filename
@@ -98,7 +98,7 @@ class arf_reader(RandomAccessSource):
         """The program that created the file, or None if unknown"""
         if self.file.attrs.get('program', None) == 'arfxplog':
             return 'arfxplog'
-        elif "jill_log" in self.file:
+        elif "jill_log" in self.file:  # maybe check for jack_sample attribute?
             return "jill"
         else:
             return None
@@ -194,12 +194,10 @@ class arf_reader(RandomAccessSource):
         for dset in self.iterdatasets():
             dset_time = dset.offset / (self.sampling_rate or 1)
 
-            if "structure" in dset.tags:
-                yield dset
-
-            elif "events" in dset.tags:
+            if "events" in dset.tags:
                 # point process data is sent in one chunk
                 if self.start or self.stop:
+                    # filter out events outside requested times
                     data_seconds = ((dset.data['start'] if dset.data.dtype.names else dset.data[:])
                                     * (dset.dt or 1.0) + dset_time)
                     idx = data_seconds >= self.start
@@ -207,9 +205,9 @@ class arf_reader(RandomAccessSource):
                         idx &= data_seconds <= self.stop
                     if idx.sum() > 0:
                         # only emit chunk if there's data
-                        yield dset._replace(data=dset.data[idx])
-                else:
-                    yield dset
+                        dset = dset._replace(data=dset.data[idx])
+                Node.send(self, dset)
+                yield dset
 
             elif "samples" in dset.tags:
                 # check for overlap (within channel).
@@ -225,12 +223,15 @@ class arf_reader(RandomAccessSource):
                 for i in xrange(start, stop, blocksize):
                     t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
                     data = dset.data[slice(i, i + blocksize), ...]
-                    yield dset._replace(offset=t, data=data)
+                    dset = dset._replace(offset=t, data=data)
+                    Node.send(self, dset)
+                    yield dset
 
                 cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
             else:
-                import pdb; pdb.set_trace() ## DEBUG ##
-                raise Exception("uncaught data type in %s" % dset)
+                # pass on structure and other non-data chunks
+                Node.send(self, dset)
+                yield dset
 
 
 def true_p(*args):
@@ -318,12 +319,6 @@ def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
         raise ValueError("dataset timebase is incompatible with entry timebase")
 
     return dtype(val)
-
-
-def set_option_attributes(obj, opts, **attrs):
-    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
-    for key, value in attrs.iteritems():
-        setattr(obj, key, opts.get(key, value))
 
 
 def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
