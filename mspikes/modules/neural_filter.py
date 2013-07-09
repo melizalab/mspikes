@@ -12,7 +12,7 @@ from mspikes.types import Source, Sink, DataBlock
 _log = logging.getLogger(__name__)
 
 
-def exponential_smoother(data, M, M_0=None, S_0=None):
+def exponential_smoother(data, M, step=1, M_0=None, S_0=None):
     """Calculate moving first and second moments of data using an exponential smoother
 
     Given a time series X = {x_0,...,x_N}, calculates a weighted average of f(x_i) and the
@@ -25,58 +25,74 @@ def exponential_smoother(data, M, M_0=None, S_0=None):
     be supplied as a value along with the number of samples used to make the estimate.
 
     data - a 1-dimensional array
+
     M    - the number of samples to use in the integration window
+
+    step - the number of samples to advance the window. setting this to a value
+           other than 1 (the default) means the data will be reduced by a factor
+           of <step>.
+
     M_0  - the number of samples to use in initialization. If not supplied, M is used.
 
-    S_0  - tuple giving initial estimates for (mean, variance). If not supplied, the values
+    S_0 - initial estimates for (mean, variance). If not supplied, the values
            are estimated from the first M_0 samples of the data
 
     """
-    from numpy import zeros
+    from numpy import zeros, array, asarray
     assert data.ndim == 1
-    avg = zeros(data.shape)
-    var = zeros(data.shape)
 
     if M_0 is None or M_0 == 0:
         M_0 = M
 
-    if S_0 is None or M_0 == 0:
-        a_0, v_0 = (data[:M_0].mean(), data[:M_0].var())
+    # initial values
+    if S_0 is None:
+        S = array((data[:M_0].mean(), data[:M_0].var()))
     else:
-        a_0, v_0 = S_0
+        S = asarray(S_0)
 
-    mean = lambda i, p, n: (p * n + data[i]) / (n + 1)
-    variance = lambda i, p, n: (p * n + (data[i] - avg[i]) ** 2) / (n + 1)
-
-    avg[0] = mean(0, a_0, M_0)
-    var[0] = variance(0, v_0, M_0)
+    def meanvar(i, n):
+        x = data[i:i+step]
+        S[0] = (S[0] * n + x.sum()) / (n + x.size)
+        S[1] = (S[1] * n + ((x - S[0]) ** 2).sum()) / (n + x.size)
+        return S
 
     # unrolled loop for different weightings
-    i = 1
-    for i in xrange(1, M_0):
-        avg[i] = mean(i, avg[i-1], M_0)
-        var[i] = variance(i, var[i-1], M_0)
+    i = 0
+    for i in xrange(0, M_0, step):
+        yield meanvar(i, M_0)
 
-    for i in xrange(i, M):
-        avg[i] = mean(i, avg[i-1], i)
-        var[i] = variance(i, var[i-1], i)
+    for i in xrange(M_0, M, step):
+        yield meanvar(i, i+1)
 
-    for i in xrange(i, data.size):
-        avg[i] = mean(i, avg[i-1], M)
-        var[i] = variance(i, var[i-1], M)
+    for i in xrange(M, data.size, step):
+        yield meanvar(i, M)
 
-    return avg, var
+
+class rms_exclude(Source, Sink):
+    """Exclude intervals when power exceeds a threshold.
+
+    Movement artifacts are characterized by large transient increases in signal
+    power and intervals with strong artifacts should be excluded from spike
+    detection or clustering. Power may vary across channels and on slow
+    timescales (minutes), so this module estimates power using a long-window
+    moving average, and marks intervals for exclusion that deviate from this
+    average by too much for too long.
+
+    This algorithm is primiarily designed for single channels. For multiple
+    electrodes, it may be more effective to remove artifacts by subtracting a
+    common average reference.
+
+    """
+    pass
+
 
 
 class zscale(Source, Sink):
     """Centers and rescales time series data using a sliding window
 
     Data are z-scaled by subtracting the mean and dividing by the standard
-    deviation. The mean and SD of the data are calculated using an exponential
-    smoother.
-
-    Optionally, data can be marked for exclusion when the SD of the data exceeds
-    some threshold, which is defined relative to the moving average of the SD.
+    deviation. The mean and SD of the data are calculated using a moving
+    exponential smoother.
 
     accepts: all block types
 
@@ -88,16 +104,11 @@ class zscale(Source, Sink):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("window",
-                 help="integration window (in s; default 2)",
+        addopt_f("--window",
+                 help="integration window for calculating mean and SD (in s; default %(default).1f)",
+                 default=2.0,
                  type=float,
                  metavar='FLOAT')
-        addopt_f("exclude-rms",
-                 help="mark times when the signal RMS is greater than this value",
-                 type=float,
-                 metavar='FLOAT')
-
-
 
 
 
