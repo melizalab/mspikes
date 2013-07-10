@@ -11,19 +11,10 @@ from mspikes.types import Node
 
 
 class stream_sink(Node):
-    """Output data block info to a stream"""
+    """Output data block info to the console"""
 
     def __init__(self, **options):
-        util.set_option_attributes(self, options, stream=sys.stdout)
-
-    @classmethod
-    def options(cls, addopt_f, **defaults):
-        from argparse import FileType
-        addopt_f("file",
-                 help="file for output (default stdout)",
-                 nargs='?',
-                 type=FileType('w'),
-                 default=defaults.get('stream', sys.stdout))
+        self.stream = sys.stdout
 
     def send(self, chunk):
         # TODO better formatting

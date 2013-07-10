@@ -11,6 +11,8 @@ import inspect
 import itertools
 import h5py
 import arf
+from fractions import Fraction
+
 
 from mspikes.modules import arf_io
 
@@ -73,15 +75,15 @@ def test_entry_iteration():
     f = arf.file(fp)
 
     # real timebase
-    e = f.create_entry("entry-real", 0, sample_count=0)
-    expected_times.append(0)    # from structure block
+    e = f.create_entry("entry-real", 0., sample_count=0)
+    expected_times.append(0.)    # from structure block
     for j, t in enumerate(dset_times):
         d = e.add_data("dset_%d" % j, (), offset=t, units="s", sampling_rate=None)
         expected_times.append(t)
 
     # sampled timebase
-    e = f.create_entry("entry-sampled", 1000, sample_count=1000 * srate)
-    expected_times.append(1000)    # from structure block
+    e = f.create_entry("entry-sampled", 1000., sample_count=1000 * srate)
+    expected_times.append(1000.)    # from structure block
     for j, t in enumerate(dset_times):
         d = e.add_data("dset_%d" % j, (), offset=int(t * srate), sampling_rate=srate)
         expected_times.append(t + 1000)
@@ -97,29 +99,31 @@ def test_entry_iteration():
     fp.attrs['sampling_rate'] = srate
 
     # add some incompatible datasets - should be skipped
-    e.add_data("dset_bad", (), offset=0, sampling_rate=srate/3)
+    d = e.add_data("dset_bad", (), offset=10, sampling_rate=srate/3)
 
     r = arf_io.arf_reader(fp)
     assert_equal(r.sampling_rate, srate)
 
     dset_times = [d.offset for d in r.iterdatasets()]
-    assert_sequence_equal(dset_times, [int(t * srate) for t in expected_times])
+    assert_sequence_equal(dset_times, [Fraction(t) for t in expected_times])
 
 
 def test_dset_timebase():
 
     def f(msg, expected, *args):
-        assert_equal(arf_io.dset_offset(*args), expected, msg)
+        assert_equal(arf_io.data_offset(*args), expected, msg)
 
+    f("real entry timebase", 100., 100., None)
+    f("sampled entry", Fraction(1000,10), 1000, 10)
     f("real entry timebase, real dset", 110., 100., None, 10., None)
     f("real entry, sampled dset", 110., 100., None, 100, 10)
-    f("sampled entry, real dset", 1100, 1000, 10, 10., None)
-    f("sampled entry, sampled dset (same rate)", 1100, 1000, 10, 100, 10)
-    f("sampled entry, sampled dset (convertable rates)", 1100, 1000, 10, 1000, 100)
+    f("sampled entry, real dset", Fraction(1100,10), 1000, 10, 10., None)
+    f("sampled entry, sampled dset (same rate)", Fraction(1100, 10), 1000, 10, 100, 10)
+    f("sampled entry, sampled dset (convertable rates)", Fraction(1100, 10), 1000, 10, 1000, 100)
 
     # sampled entry, sampled dset (inconvertible rates)
     with assert_raises(ValueError):
-        arf_io.dset_offset(1000, 10, 1000, 66)
+        arf_io.data_offset(1000, 10, 1000, 66)
 
 
 def test_time_series_offset():

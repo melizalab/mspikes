@@ -49,6 +49,8 @@ class Node(object):
         (after filtering).
 
         """
+        if not hasattr(self, "_targets"):
+            return
         for tgt, filt in self._targets:
             if filt is None or filt(data): tgt.send(data)
 

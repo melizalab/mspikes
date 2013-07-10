@@ -6,14 +6,15 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 import h5py
+import numpy
 import logging
 import functools
 import operator
+from fractions import Fraction
 from mspikes import util
 from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set
 
 _log = logging.getLogger(__name__)
-
 
 class arf_reader(RandomAccessSource):
     """Source data from an ARF/HDF5 file
@@ -59,9 +60,13 @@ class arf_reader(RandomAccessSource):
         addopt_f("--use-timestamp",
                  help="use entry timestamp for timebase and ignore other fields",
                  action='store_true')
-        addopt_f("--use-xruns",
+        addopt_f("--ignore-xruns",
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
+        addopt_f("--skip-sort",
+                 help="skip initial sort of entries",
+                 action='store_true')
+
 
     def __init__(self, filename, **options):
         import re
@@ -161,7 +166,10 @@ class arf_reader(RandomAccessSource):
                     continue
 
             # emit structure blocks to indicate entry onsets
-            yield DataBlock(id=entry.name, offset=entry_time, dt=self.sampling_rate, data=(),
+            yield DataBlock(id=entry.name,
+                            offset=data_offset(entry_time - time_0, self.sampling_rate),
+                            dt=self.sampling_rate,
+                            data=(),
                             tags=tag_set("structure"))
 
             for id, dset in entry.iteritems():
@@ -169,15 +177,16 @@ class arf_reader(RandomAccessSource):
                     continue
 
                 dset_dt = dset.attrs.get('sampling_rate', None)
+
                 try:
-                    dset_time = dset_offset(entry_time - time_0, self.sampling_rate,
+                    dset_time = data_offset(entry_time - time_0, self.sampling_rate,
                                             dset.attrs.get('offset', 0), dset_dt)
                 except ValueError:
                     _log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
                               dset.name, dset_dt, self.sampling_rate)
                     continue
 
-                if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples"):
+                if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples","ms"):
                     tag = "events"
                 else:
                     tag = "samples"
@@ -192,7 +201,6 @@ class arf_reader(RandomAccessSource):
         # monitor the time in each channel to check for inconsistencies
         cp = self.channel_time = defaultdict(dtype)
         for dset in self.iterdatasets():
-            dset_time = dset.offset / (self.sampling_rate or 1)
 
             if "events" in dset.tags:
                 # point process data is sent in one chunk
@@ -218,16 +226,17 @@ class arf_reader(RandomAccessSource):
                 # restrict by time
                 nframes = dset.data.shape[0]
                 blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
-                start, stop = time_series_offsets(dset_time, dset.dt, self.start, self.stop, nframes)
+                start, stop = time_series_offsets(dset.offset, dset.dt, self.start, self.stop, nframes)
 
                 for i in xrange(start, stop, blocksize):
-                    t = dset_offset(dset.offset, self.sampling_rate, i, dset.dt)
+                    t = dset.offset + Fraction(i, int(dset.dt))
                     data = dset.data[slice(i, i + blocksize), ...]
-                    dset = dset._replace(offset=t, data=data)
-                    Node.send(self, dset)
-                    yield dset
+                    chunk = dset._replace(offset=t, data=data)
+                    Node.send(self, chunk)
+                    yield chunk
 
-                cp[dset.id] = dset_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+                cp[dset.id] = data_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
+
             else:
                 # pass on structure and other non-data chunks
                 Node.send(self, dset)
@@ -301,30 +310,32 @@ def corrected_sampling_rate(keyed_entries):
     return (s2 - s1) / (t2 - t1)
 
 
-def dset_offset(entry_time, entry_dt, dset_offset, dset_dt):
-    """calculate the total offset of a dataset, converting to entry timebase as needed"""
-    import fractions
-
+def data_offset(entry_time, entry_dt, dset_time=0, dset_dt=None):
+    """Return offset of a dataset in seconds, as either a float or a Fraction"""
     dtype = type(entry_time)
 
-    if entry_dt == dset_dt:
-        val = entry_time + dset_offset
-    elif entry_dt is None:
-        val = entry_time + dtype(dset_offset) / dset_dt
-    elif dset_dt is None:
-        val = entry_time + dtype(dset_offset * entry_dt)
-    elif fractions.Fraction(*sorted((entry_dt, dset_dt))).numerator == 1:
-        val = entry_time + dtype(dset_offset * entry_dt / dset_dt)
-    else:
-        raise ValueError("dataset timebase is incompatible with entry timebase")
+    if dset_dt is not None:
+        dset_time = Fraction(int(dset_time), int(dset_dt))
 
-    return dtype(val)
+    if entry_dt is None:
+        # converts to float
+        return entry_time + dset_time
+    else:
+        entry_time = Fraction(long(entry_time), long(entry_dt))
+        if dset_dt is None:
+            # find nearest sample
+            return entry_time + Fraction(int(round(dset_time * entry_dt)), int(entry_dt))
+        else:
+            val = entry_time + dset_time
+            if (val * entry_dt).denominator != 1:
+                raise ValueError("dataset timebase is incompatible with entry timebase")
+            return val
 
 
 def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
     """Calculate indices of start and stop times in a time series.
 
-    For an array of nframes that begins at dset_offset (samples) with timebase
+    For an array of nframes that begins at data_time (samples) with timebase
     offset_dt (samples/sec) and has samples spaced at dset_dt (samples/sec),
     returns the range of valid indices into the array, restricted between start_time
     and stop_time (in seconds).
