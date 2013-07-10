@@ -5,6 +5,7 @@ from stream_sink import stream_sink
 from random_sources import rand_samples
 from arf_io import arf_reader
 from neural_filter import zscale
+from util import splitter
 #from file_io import file_reader, file_writer
 
 
