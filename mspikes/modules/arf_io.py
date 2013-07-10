@@ -34,7 +34,7 @@ class arf_reader(RandomAccessSource):
     consistent within the file.
 
     """
-    blockchunks = 64               # number of hdf5 chunks to process at once
+    _log = logging.getLogger(__name__ + ".arf_reader")
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -77,7 +77,7 @@ class arf_reader(RandomAccessSource):
             self.file = filename
         else:
             self.file = h5py.File(filename, "r")
-        _log.info("input file: %s", self.file.filename)
+        self._log.info("input file: %s", self.file.filename)
 
         channels = options.get("channels", None)
         if channels:
@@ -96,7 +96,7 @@ class arf_reader(RandomAccessSource):
         self.entries = self._entry_table()
         self.sampling_rate = self._sampling_rate()
         if self.sampling_rate:
-            _log.info("file sampling rate (nominal): %d Hz", self.sampling_rate)
+            self._log.info("file sampling rate (nominal): %d Hz", self.sampling_rate)
 
     @property
     def creator(self):
@@ -116,14 +116,14 @@ class arf_reader(RandomAccessSource):
             keyname = "timestamp"
             keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
             if self.creator is None:
-                _log.info("couldn't determine ARF file source, using default sort method")
+                self._log.info("couldn't determine ARF file source, using default sort method")
         elif self.creator == 'arfxplog':
             keyname = "sample_count"
             keyiter = functools.partial(keyiter_attr, name=keyname)
         elif self.creator == 'jill':
             keyname = "jack_frame"
             keyiter = keyiter_jack_frame
-        _log.info("sorting entries by '%s'", keyname)
+        self._log.info("sorting entries by '%s'", keyname)
 
         # filter by name and type
         entries = (entry for name, entry in self.file.iteritems()
@@ -145,7 +145,7 @@ class arf_reader(RandomAccessSource):
                     return obj.attrs.get("sampling_rate", None)
             return self.file.visititems(srate_visitor)
 
-    def iterdatasets(self):
+    def __iter__(self):
         """Iterate through the datasets.
 
         yields DataBlocks with the data field referencing the dataset object
@@ -160,17 +160,26 @@ class arf_reader(RandomAccessSource):
         for entry_time, entry in self.entries:
             # check for marked errors
             if "jill_error" in entry.attrs:
-                _log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
+                self._log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
                           " (skipping)" if not self.use_xruns else "")
                 if not self.use_xruns:
                     continue
 
+            entry_time = util.to_seconds(entry_time - time_0, self.sampling_rate)
+
+            if self.start and entry_time < self.start:
+                continue
+            if self.stop and entry_time > self.stop:
+                continue
+
             # emit structure blocks to indicate entry onsets
-            yield DataBlock(id=entry.name,
-                            offset=data_offset(entry_time - time_0, self.sampling_rate),
-                            dt=self.sampling_rate,
-                            data=(),
-                            tags=tag_set("structure"))
+            chunk = DataBlock(id=entry.name,
+                              offset=entry_time,
+                              dt=self.sampling_rate,
+                              data=(),
+                              tags=tag_set("structure"))
+            Node.send(self, chunk)
+            yield chunk
 
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
@@ -178,11 +187,9 @@ class arf_reader(RandomAccessSource):
 
                 dset_dt = dset.attrs.get('sampling_rate', None)
 
-                try:
-                    dset_time = data_offset(entry_time - time_0, self.sampling_rate,
-                                            dset.attrs.get('offset', 0), dset_dt)
-                except ValueError:
-                    _log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
+                dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_dt, entry_time)
+                if isinstance(dset_time, Fraction) and (dset_time * self.sampling_rate).denominator != 1:
+                    self._log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
                               dset.name, dset_dt, self.sampling_rate)
                     continue
 
@@ -191,56 +198,9 @@ class arf_reader(RandomAccessSource):
                 else:
                     tag = "samples"
 
-                yield DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset, tags=tag_set(tag))
-
-    def __iter__(self):
-        """Iterate through the data in the file"""
-        from collections import defaultdict
-
-        dtype = type(self.entries[0][0])   # type of timebase
-        # monitor the time in each channel to check for inconsistencies
-        cp = self.channel_time = defaultdict(dtype)
-        for dset in self.iterdatasets():
-
-            if "events" in dset.tags:
-                # point process data is sent in one chunk
-                if self.start or self.stop:
-                    # filter out events outside requested times
-                    data_seconds = ((dset.data['start'] if dset.data.dtype.names else dset.data[:])
-                                    * (dset.dt or 1.0) + dset_time)
-                    idx = data_seconds >= self.start
-                    if self.stop:
-                        idx &= data_seconds <= self.stop
-                    if idx.sum() > 0:
-                        # only emit chunk if there's data
-                        dset = dset._replace(data=dset.data[idx])
-                Node.send(self, dset)
-                yield dset
-
-            elif "samples" in dset.tags:
-                # check for overlap (within channel).
-                if dset.offset < cp[dset.id]:
-                    _log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
-                              dset.data.name, dset.offset, cp[dset.id])
-
-                # restrict by time
-                nframes = dset.data.shape[0]
-                blocksize = self.blockchunks * (dset.data.chunks[0] if dset.data.chunks else 1024)
-                start, stop = time_series_offsets(dset.offset, dset.dt, self.start, self.stop, nframes)
-
-                for i in xrange(start, stop, blocksize):
-                    t = dset.offset + Fraction(i, int(dset.dt))
-                    data = dset.data[slice(i, i + blocksize), ...]
-                    chunk = dset._replace(offset=t, data=data)
-                    Node.send(self, chunk)
-                    yield chunk
-
-                cp[dset.id] = data_offset(dset.offset, self.sampling_rate, nframes, dset.dt)
-
-            else:
-                # pass on structure and other non-data chunks
-                Node.send(self, dset)
-                yield dset
+                chunk = DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset, tags=tag_set(tag))
+                Node.send(self, chunk)
+                yield chunk
 
 
 def true_p(*args):
@@ -270,7 +230,7 @@ def keyiter_attr(entries, name, fun=None):
             _log.info("'%s' skipped (missing '%s' attribute)", entry.name, name)
 
 
-def keyiter_jack_frame(entries):
+def keyiter_jack_frame(entries, do_sort=True):
     """Iterate entries producing (key, entry), with key = jack_frame
 
     jack_frame values are converted from uint32 values (which may overflow) to
@@ -282,17 +242,19 @@ def keyiter_jack_frame(entries):
     orig = seterr(over='ignore')   # ignore overflow warning
 
     # first sort by jack_usec, a uint64
-    usec_sorted = sorted(keyiter_attr(entries, "jack_usec"), key=itemgetter(0))
+    usec = keyiter_attr(entries, "jack_usec")
+    if do_sort:
+        usec = iter(sorted(usec, key=itemgetter(0)))
 
     # then convert the jack_frame uint32's to uint64's by incrementing. this may
     # not be very efficient, and won't work if there's a gap longer than the
     # size of the frame counter; could potentially do some kind of arithmetic
     # with the usec variable and the sample rate.
-    _, entry = usec_sorted[0]
+    _, entry = usec.next()
     last = entry.attrs['jack_frame']
     frame = uint64(0)
     yield (frame, entry)
-    for _, entry in usec_sorted[1:]:
+    for _, entry in usec:
         current = entry.attrs['jack_frame']
         frame += current - last
         last = current
@@ -331,20 +293,6 @@ def data_offset(entry_time, entry_dt, dset_time=0, dset_dt=None):
                 raise ValueError("dataset timebase is incompatible with entry timebase")
             return val
 
-
-def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
-    """Calculate indices of start and stop times in a time series.
-
-    For an array of nframes that begins at data_time (samples) with timebase
-    offset_dt (samples/sec) and has samples spaced at dset_dt (samples/sec),
-    returns the range of valid indices into the array, restricted between start_time
-    and stop_time (in seconds).
-
-    """
-    start_idx = max(0, (start_time - dset_time) * dset_dt) if start_time else 0
-    stop_idx = min(nframes, (stop_time - dset_time) * dset_dt) if stop_time else nframes
-
-    return int(start_idx), int(stop_idx)
 
 # Variables:
 # End:

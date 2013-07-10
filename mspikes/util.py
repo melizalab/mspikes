@@ -18,20 +18,37 @@ def compose(f1, f2):
     return f
 
 
+def pair_iter(items):
+    """For a sequence (p0, p1, p2), yields (p0, p1), (p1, p2), ..."""
+    items = iter(items)
+    prev = items.next()
+    for p in items:
+        yield (prev, p)
+        prev = p
+
+
 def set_option_attributes(obj, opts, **attrs):
     """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
     for key, value in attrs.iteritems():
         setattr(obj, key, opts.get(key, value))
 
 
-def samples_to_seconds(samples, sampling_rate, offset=None):
+def to_seconds(samples, sampling_rate=None, offset=None):
     """Convert samples / sampling_rate to canonical form, optionally adding offset"""
     from fractions import Fraction
-    val = Fraction(int(samples), int(sampling_rate))
+    if sampling_rate is None:
+        val = float(samples)
+    else:
+        val = Fraction(int(samples), int(sampling_rate))
     if offset is not None:
         return offset + val
     else:
         return val
+
+
+def to_samples(seconds, sampling_rate):
+    """Convert seconds to integer number of samples, rounding to nearest sample"""
+    return long(round(seconds * sampling_rate))
 
 # Variables:
 # End:

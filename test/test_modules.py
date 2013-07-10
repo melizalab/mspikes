@@ -36,5 +36,34 @@ def test_rand_samples():
         pass
 
 
+def test_time_series_offset():
+    from mspikes.modules import util
+
+    f = util.time_series_offsets
+
+    assert_equal(f(0, 1, 20, None, 100), (20, 100))
+    assert_equal(f(20, 1, 20, 80, 100), (0, 60))
+
+    assert_equal(f(0, 10, 20, 80, 1000), (200, 800))
+
+    with assert_raises(TypeError):
+        f(0, None, 20, 80, 5)
+
+
+def test_splitter():
+    from numpy import random, concatenate, array_equal
+    from mspikes.modules import util
+
+    data = types.DataBlock(id='random', offset=0, dt=1, data=random.randn(10000), tags=types.tag_set("samples"))
+
+    splitter = util.splitter()
+
+    x = concatenate([a.data for a in util.run_modules(data, splitter)])
+
+    assert_true(array_equal(x, data.data))
+
+
+
+
 # Variables:
 # End:

@@ -90,7 +90,7 @@ def test_entry_iteration():
 
 
     r = arf_io.arf_reader(fp)
-    dset_times = [d.offset for d in r.iterdatasets()]
+    dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, expected_times)
 
     # make the file look like something from arfxplog - now it will use the
@@ -104,7 +104,7 @@ def test_entry_iteration():
     r = arf_io.arf_reader(fp)
     assert_equal(r.sampling_rate, srate)
 
-    dset_times = [d.offset for d in r.iterdatasets()]
+    dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, [Fraction(t) for t in expected_times])
 
 
@@ -125,18 +125,6 @@ def test_dset_timebase():
     with assert_raises(ValueError):
         arf_io.data_offset(1000, 10, 1000, 66)
 
-
-def test_time_series_offset():
-
-    f = arf_io.time_series_offsets
-
-    assert_equal(f(0, 1, 20, None, 100), (20, 100))
-    assert_equal(f(20, 1, 20, 80, 100), (0, 60))
-
-    assert_equal(f(0, 10, 20, 80, 1000), (200, 800))
-
-    with assert_raises(TypeError):
-        f(0, None, 20, 80, 5)
 
 # Variables:
 # End:
