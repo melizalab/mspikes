@@ -14,6 +14,8 @@ from mspikes import filters
 def print_descriptions(keyvals, descr):
     """Pretty-print key, descr(value) pairs in keyvals"""
     objs = tuple(keyvals)      # in case it's an iterator
+    if len(objs)==0:
+        return
     fmt = "{:<%d}   {}" % max(len(n) for n,_ in objs)
     for n,obj in objs:
         print fmt.format(n, descr(obj))
@@ -34,7 +36,7 @@ def print_modules():
 def print_filters():
     """print list of available filters"""
     print "\nfilters:\n========"
-    print_descriptions(filters.all(), graph.node_descr)
+    print_descriptions(filters._all(), graph.node_descr)
 
 
 def print_doc(arg):
@@ -130,6 +132,7 @@ def mspikes(argv=None):
         return 0
 
     opts = p.parse_args(args, opts) # parse remaining args
+    print opts
     try:
         root = graph.build_node_graph(toolchain.items(), opts)
     except AttributeError,e:

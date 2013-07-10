@@ -35,8 +35,9 @@ def moving_meanvar(x, w=0, s=None):
     return (m, v)
 
 
-class smoother(object):
-    """A class for applying a moving smoother to data arrays
+@coroutine
+def smoother(func, M, S0=None, N0=0):
+    """A coroutine for applying a moving smoother to data arrays
 
     Given a time series X = {x_0,...,x_N}, calculates the average of
     func({x_i,...,x_i+N}) and func({x_i-M,...x_i-1}), weighted by N and M.
@@ -63,29 +64,6 @@ class smoother(object):
     0.504950495049505
 
     """
-
-    def __init__(self, func, M):
-        self.func = func
-        self.size = M
-        self.nsamples = 0
-        self.state = None
-        self.queue = []
-
-    def send(self, chunk):
-
-        self.nsamples += chunk.data.size
-
-        if self.nsamples < self.size:
-            queue.append(chunk)
-            return None
-
-
-
-
-
-
-@coroutine
-def smoother(func, M, S0=None, N0=0):
     from numpy import concatenate, asarray
 
     queue = [()]
@@ -107,56 +85,97 @@ def smoother(func, M, S0=None, N0=0):
         return
 
 
-def exponential_smoother(data, M, step=1, M_0=None, S_0=None):
-    """Calculate moving first and second moments of data using an exponential smoother
+class _smoother(Node):
+    """Modify a time series based on statistics in a sliding window
 
-    Given a time series X = {x_0,...,x_N}, calculates a weighted average of f(x_i) and the
-    values of f(x_j) for j = {i - M, ... i - 1}, with the past values weighted by
-    the number of samples (M), where f() is an arbitrary function of x.
-
-    S_i = (S_{i-1} * M + f(x_i)) / (M + 1)
-
-    The intial value S_0 can be estimated from the first M samples of X, or it can
-    be supplied as a value along with the number of samples used to make the estimate.
-
-    data - a 1-dimensional array
-
-    M    - the number of samples to use in the integration window
-
-    step - the number of samples to advance the window. setting this to a value
-           other than 1 (the default) means the data will be reduced by a factor
-           of <step>.
-
-    M_0  - the number of samples to use in initialization. If not supplied, M is used.
-
-    S_0 - initial estimates for (mean, variance). If not supplied, the values
-           are estimated from the first M_0 samples of the data
+    This is a base class. Deriving classes should implement statfun() and
+    datafun()
 
     """
-    assert data.ndim == 1
+    window = 2.0                # duration of sliding window, in seconds
 
-    if M_0 is None or M_0 == 0:
-        M_0 = min(M, data.size)
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("--window",
+                 help="duration of sliding window (s) (default=%(default).1f)",
+                 default=defaults.get('window', cls.window),
+                 type=float,
+                 metavar='SEC')
 
-    # initial values from data
-    if S_0 is None:
-        S_0 = moving_meanvar(data[:M_0], (0, 0), 0)
+    def __init__(self, **options):
+        util.set_option_attributes(self, options, window=self.window)
+        self.last_sample_t = 0    # time of last sample
+        self.stats = None         # statistics from sliding window
+        self.nsamples = 0         # number of samples for which we have data
+        self.queue = []           # queue for chunks while initializing smoother
 
-    # unrolled loop for different weightings
-    for i in xrange(0, M_0, step):
-        S_0 = moving_meanvar(data[i:i+step], S_0, M_0)
-        yield S_0, M_0
+    def statfun(self, chunk, nsamples, state):
+        """Return updated value for state incorporating new data"""
+        raise NotImplementedError
 
-    for i in xrange(M_0, M, step):
-        S_0 = moving_meanvar(data[i:i+step], S_0, i+1)
-        yield S_0, i+1
+    def datafun(self, chunk, state):
+        """Process the data in chunk and return a new DataBlock"""
+        raise NotImplementedError
 
-    for i in xrange(M, data.size, step):
-        S_0 = moving_meanvar(data[i:i+step], S_0, M)
-        yield S_0, M
+    def send(self, chunk):
+        # pass non-time series data
+        if not "samples" in chunk.tags:
+            Node.send(self, chunk)
+            return
+
+        # convert time windows to sample counts
+        n_window = int(self.window * chunk.dt)
+
+        # penalize for gaps - but still keep some old data
+        if self.nsamples > n_window / 5:
+            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.dt)
+            self.nsamples = max(n_window / 5, self.nsamples - gap)
+
+        # update stats
+        self.stats = self.statfun(chunk, self.nsamples, self.stats)
+        self.nsamples = min(n_window, self.nsamples + chunk.data.size)
+        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.dt, chunk.offset)
+
+        # if uninitialized, append to queue
+        if self.nsamples < n_window:
+            self.queue.append(chunk)
+            return
+
+        # flush the queue
+        elif len(self.queue):
+            for past_chunk in self.queue:
+                self.datafun(past_chunk, self.stats)
+            self.queue = []
+
+        # process the current chunk
+        self.datafun(chunk, self.stats)
 
 
-class rms_exclude(Node):
+class zscale(_smoother):
+    """Center and rescale time series with a sliding window.
+
+    Data are z-scaled by subtracting the mean and dividing by the standard
+    deviation. The mean and SD of the data are calculated using a moving
+    exponential smoother.
+
+    """
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        super(zscale, cls).options(addopt_f, **defaults)
+
+    def __init__(self, **options):
+        _smoother.__init__(self, **options)
+
+    def statfun(self, chunk, nsamples, stats):
+        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
+
+    def datafun(self, chunk, stats):
+        mean, var = stats
+        Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
+
+
+class rms_exclude(_smoother):
     """Exclude intervals when power exceeds a threshold.
 
     Movement artifacts are characterized by large transient increases in signal
@@ -171,92 +190,39 @@ class rms_exclude(Node):
     common average reference.
 
     """
+    window = 60.
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("--window",
-                 help="integration window for calculating RMS (in min; default %(default).1f)",
-                 default=defaults.get('window', 1),
-                 type=float,
-                 metavar='FLOAT')
-
-
-
-
-class zscale(Node):
-    """Centers and rescales time series data using a sliding window
-
-    Data are z-scaled by subtracting the mean and dividing by the standard
-    deviation. The mean and SD of the data are calculated using a moving
-    exponential smoother.
-
-    accepts: all block types
-
-    emits: z-scaled time-series blocks (_samples)
-           unmodified _events and _structure blocks
-           start and stop exclusions (_events)
-
-    """
-
-    @classmethod
-    def options(cls, addopt_f, **defaults):
-        addopt_f("--window",
-                 help="duration of sliding window (s) for calculating mean and SD (default=%(default).1f)",
-                 default=defaults.get('window', 2),
-                 type=float,
-                 metavar='SEC')
-        addopt_f("--exclude-rms",
+        super(rms_exclude, cls).options(addopt_f, **defaults)
+        addopt_f("--max-rms",
                  help="if set, exclude intervals where RMS > %(metavar)s%% above baseline",
                  type=float,
                  metavar='F')
-        addopt_f("--exclude-duration",
+        addopt_f("--min-duration",
                  help="only exclude intervals longer than %(metavar)s ms (default=%(default).0f)",
-                 default=defaults.get('exclude_duration', 100),
+                 default=defaults.get('exclude_duration', 200),
                  metavar='MS')
-        addopt_f("--exclude-baseline",
-                 help="duration of interval (s) used to set RMS baseline (default=%(default).1f)",
-                 default=defaults.get('exclude_baseline', 10),
-                 metavar='SEC')
 
     def __init__(self, **options):
-        util.set_option_attributes(self, options, window=2.0, step=100.,
-                                   exclude_rms=None, exclude_duration=100., exclude_baseline=10.)
-        self.last_sample_t = 0    # time of last sample
-        self.stats = None         # statistics from sliding window
-        self.nsamples = 0         # number of samples for which we have data
-        self.queue = []           # queue for chunks while initializing smoother
+        _smoother.__init__(self, **options)
+        util.set_option_attributes(self, options, max_rms=1.1, min_duration=100)
+        self.rms_queue = []     # need a separate queue to determine if the rms
+                                # stayed above threshold for > min_duration
 
-    def send(self, chunk):
+    def statfun(self, chunk, nsamples, stats):
+        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
 
-        # pass non-time series data
-        if not "samples" in chunk.tags:
-            Node.send(self, chunk)
+    def datafun(self, chunk, stats):
+        """Drop chunks that exceed the threshold"""
+        _, var = stats
 
-        # convert time windows to sample counts
-        n_window = int(self.window * chunk.dt)
 
-        #gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.dt)
 
-        # update stats
-        mean, var = self.stats = moving_meanvar(nx.asarray(chunk.data), self.nsamples, self.stats)
-        self.nsamples = max(n_window, self.nsamples + chunk.data.size)
-        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.dt, chunk.offset)
 
-        # if uninitialized, append to queue
-        if self.nsamples < n_window:
-            self.queue.append(chunk)
-            return
 
-        # flush the queue
-        elif len(self.queue):
-            for past_chunk in self.queue:
-                scaled = (past_chunk.data - mean) / nx.sqrt(var)
-                Node.send(self, past_chunk._replace(data=scaled))
-            self.queue = []
 
-        # process the current chunk
-        scaled = (chunk.data - mean) / nx.sqrt(var)
-        Node.send(self, chunk._replace(data=scaled))
+
 
 
 
