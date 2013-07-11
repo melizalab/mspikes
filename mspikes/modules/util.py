@@ -8,7 +8,7 @@ Created Tue Jul  9 17:00:11 2013
 
 import logging
 import contextlib
-from mspikes.types import Node
+from mspikes.types import Node, tag_set
 
 def coroutine(func):
     from functools import wraps
@@ -30,6 +30,23 @@ def visitor(func):
         pass
 
 
+@coroutine
+def print_progress():
+    """Print progress of incoming chunks"""
+    import sys
+    last_offset = 0
+    last_id = None
+    try:
+        while True:
+            chunk = (yield)
+            if chunk.offset > last_offset or chunk.id != last_id:
+                sys.stdout.write("\r progress: [ t:{: >15.3f}s id:{: >15s} ]".format(float(chunk.offset),
+                                                                                       chunk.id))
+                sys.stdout.flush()
+    except GeneratorExit:
+        sys.stdout.write("\n")
+
+
 @contextlib.contextmanager
 def chain_modules(*modules):
     """A context manager that connects modules in sequence
@@ -44,11 +61,10 @@ def chain_modules(*modules):
     for src,tgt in pair_iter(modules):
         src.add_target(tgt)
 
-    yield modules[0]
+    yield modules[0]            # returns the context
 
     for src,tgt in pair_iter(modules):
         src._targets.remove((tgt, None))
-
 
 
 class splitter(Node):
@@ -122,6 +138,16 @@ class splitter(Node):
         else:
             # pass on structure and other non-data chunks
             Node.send(self, chunk)
+
+
+def array_reader(array, dt, chunk_size, id='', tags=tag_set("samples")):
+    """Generate chunks from a 1d array"""
+    from mspikes.types import DataBlock
+    from mspikes.util import to_seconds
+
+    assert array.ndim == 1
+    for i in xrange(0, array.size, chunk_size):
+        yield DataBlock(id, to_seconds(i, dt), dt, array[i:i + chunk_size], tags)
 
 
 def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):

@@ -9,6 +9,7 @@ from __future__ import division
 import logging
 import numpy as nx
 from fractions import Fraction
+from collections import namedtuple
 
 from mspikes import util
 from mspikes.types import Node, DataBlock, tag_set
@@ -66,16 +67,16 @@ def smoother(func, M, S0=None, N0=0):
     """
     from numpy import concatenate, asarray
 
-    queue = [()]
+    init_queue = [()]
     N = N0
     try:
         while N < M:
             # return None while initializing
             X = asarray((yield))
-            queue.append(X)
+            init_queue.append(X)
             N += X.size
         # calculate initial state from full length of the window
-        X = concatenate(queue)
+        X = concatenate(init_queue)
         S = func(X, N0, S0)
         while True:
             # note: send() assigns value to X, then loops and returns S
@@ -93,7 +94,6 @@ class _smoother(Node):
 
     """
     window = 2.0                # duration of sliding window, in seconds
-    statnames = ()              # names of statistics (used in debug chunks)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -108,7 +108,7 @@ class _smoother(Node):
         self.last_sample_t = 0    # time of last sample
         self.stats = None         # statistics from sliding window
         self.nsamples = 0         # number of samples for which we have data
-        self.queue = []           # queue for chunks while initializing smoother
+        self.init_queue = []      # queue for chunks while initializing smoother
 
     def statfun(self, chunk, nsamples, state):
         """Return updated value for state incorporating new data"""
@@ -136,19 +136,17 @@ class _smoother(Node):
         self.stats = self.statfun(chunk, self.nsamples, self.stats)
         self.nsamples = min(n_window, self.nsamples + chunk.data.size)
         self.last_sample_t = util.to_seconds(chunk.data.size, chunk.dt, chunk.offset)
-        Node.send(self, chunk._replace(data=nx.rec.fromrecords((self.stats,), names=self.statnames)[0],
-                                       tags=tag_set("debug","scalar")))
 
-        # if uninitialized, append to queue
+        # if uninitialized, append to init_queue
         if self.nsamples < n_window:
-            self.queue.append(chunk)
+            self.init_queue.append(chunk)
             return
 
-        # flush the queue
-        elif len(self.queue):
-            for past_chunk in self.queue:
+        # flush the init_queue
+        elif len(self.init_queue):
+            for past_chunk in self.init_queue:
                 self.datafun(past_chunk, self.stats)
-            self.queue = []
+            self.init_queue = []
 
         # process the current chunk
         self.datafun(chunk, self.stats)
@@ -162,7 +160,8 @@ class zscale(_smoother):
     exponential smoother.
 
     """
-    statnames = ('mean','var')              # names of statistics (used in debug chunks)
+    stat_type = namedtuple('chunk_stats', ('mean', 'var'))
+
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -172,14 +171,16 @@ class zscale(_smoother):
         super(zscale, self).__init__(**options)
 
     def statfun(self, chunk, nsamples, stats):
-        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
+        stats =  moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
+        Node.send(self, chunk._replace(data=self.stat_type(*stats), tags=tag_set("debug","scalar")))
+        return stats
 
     def datafun(self, chunk, stats):
         mean, var = stats
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
 
 
-class rms_exclude(zscale):
+class rms_exclude(_smoother):
     """Exclude intervals when power exceeds a threshold.
 
     Movement artifacts are characterized by large transient increases in signal
@@ -195,6 +196,7 @@ class rms_exclude(zscale):
 
     """
     window = 60.
+    stat_type = namedtuple('chunk_stats', ('rms_ratio',))
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -205,24 +207,32 @@ class rms_exclude(zscale):
                  metavar='F')
         addopt_f("--min-duration",
                  help="only exclude intervals longer than %(metavar)s ms (default=%(default).0f)",
+                 type=float,
                  default=defaults.get('exclude_duration', 200),
                  metavar='MS')
 
     def __init__(self, **options):
         super(rms_exclude, self).__init__(**options)
-        util.set_option_attributes(self, options, max_rms=1.1, min_duration=200)
-        self.rms_queue = []     # need a separate queue to determine if the rms
+        util.set_option_attributes(self, options, max_rms=1.1, min_duration=200.)
+        self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
+
+    def statfun(self, chunk, nsamples, stats):
+        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
+
 
     def datafun(self, chunk, stats):
         """Drop chunks that exceed the threshold"""
-        _, var = stats
-        if nx.asarray(chunk.data).std() / nx.sqrt(var) > self.max_rms:
-            self.rms_queue.append(chunk)
+        rms_ratio = nx.sqrt(stats[1] / nx.var(chunk.data))
+        Node.send(self, chunk._replace(data=self.stat_type(rms_ratio), tags=tag_set("debug","scalar")))
+
+        import pdb; pdb.set_trace() ## DEBUG ##
+        if rms_ratio > self.max_rms:
+            self.excl_queue.append(chunk)
             return
 
-        if len(self.rms_queue):
-            first = self.rms_queue[0]
+        if len(self.excl_queue):
+            first = self.excl_queue[0]
             duration = chunk.offset - first.offset
             if (duration > self.min_duration / 100):
                 # too much bad data - drop
@@ -231,10 +241,10 @@ class rms_exclude(zscale):
                                                     names=('start','stop','reason')),
                                  tag_set("events","exclusions"))
                 Node.send(self, excl)
-                self.rms_queue = []
+                self.excl_queue = []
             else:
                 # release chunks
-                for c in self.rms_queue:
+                for c in self.excl_queue:
                     Node.send(self, c)
         Node.send(self, chunk)
 

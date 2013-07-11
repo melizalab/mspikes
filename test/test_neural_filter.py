@@ -54,12 +54,11 @@ def test_zscale():
 
     out = []
     chunks = []
+    data = nx.random.randn(chunk_size * 10)
     with util.chain_modules(zscaler, util.visitor(out.append)) as chain:
-        for i in xrange(10):
-            data = types.DataBlock('', i * chunk_size, 1, nx.random.randn(chunk_size),
-                                   types.tag_set("samples"))
-            chain.send(data)
-            chunks.append(data)
+        for chunk in util.array_reader(data, 1, chunk_size):
+            chain.send(chunk)
+            chunks.append(chunk)
 
     for chunk in out:
         if "scalar" in chunk.tags:
@@ -67,5 +66,22 @@ def test_zscale():
         elif "samples" in chunk.tags:
             data = chunks.pop(0)
             assert_true(nx.array_equal((data.data - mean) / nx.sqrt(var), chunk.data))
+
+
+def test_rms_exclude():
+
+    excluder = neural_filter.rms_exclude()
+    chunk_size = 4096
+    dt = 4096
+
+    n_window = int(excluder.window * dt)
+    data = nx.random.randn(n_window * 2)
+    noise_idx = slice(n_window * 1.3, n_window * 1.3 + int(excluder.min_duration * dt / 1000))
+    data[noise_idx] *= 2        # doubles rms
+
+    return data
+    # with util.chain_modules(excluder, util.visitor(out.append))
+
+
 
 
