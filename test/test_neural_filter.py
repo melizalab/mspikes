@@ -78,7 +78,7 @@ def test_rms_exclude():
     n_window = int(excluder.window * ds)
     data = _randg.randn(n_window * 2)
     noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(excluder.min_duration * ds / 1000))
-    data[noise_idx] *= 1.8        # doubles rms
+    data[noise_idx] *= 1.7        # doubles rms
 
     out = []
     with util.chain_modules(excluder, util.visitor(out.append, lambda x: "exclusions" in x.tags)) as chain:

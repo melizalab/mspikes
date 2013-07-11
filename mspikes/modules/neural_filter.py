@@ -177,7 +177,7 @@ class zscale(_smoother):
 
     def datafun(self, chunk):
         mean, var = self.state = self.statefun(chunk, self.nsamples, self.state)
-        Node.send(self, chunk._replace(data=self.stat_type(mean, var), tags=tag_set("debug","scalar")))
+        Node.send(self, chunk._replace(data=self.stat_type(mean, var), tags=tag_set("scalar")))
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
 
 
@@ -225,7 +225,7 @@ class rms_exclude(zscale):
 
         mean, var = self.statefun(chunk, self.nsamples, self.state)
         rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
-        Node.send(self, chunk._replace(data=self.stat_type(var, rms_ratio), tags=tag_set("debug","scalar")))
+        Node.send(self, chunk._replace(data=self.stat_type(var, rms_ratio), tags=tag_set("scalar")))
 
         if rms_ratio > self.max_rms:
             self.excl_queue.append(chunk)

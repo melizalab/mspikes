@@ -49,28 +49,39 @@ class Node(object):
         (after filtering).
 
         """
-        from mspikes import DEBUG
+        # from mspikes import DEBUG
+        # if not DEBUG and "debug" in data.tags:
+        #     return
 
-        if not hasattr(self, "_targets"):
-            return
-        if not DEBUG and "debug" in data.tags:
-            return
-        for tgt, filt in self._targets:
+        for tgt, filt in getattr(self, "_targets", ()):
             if filt is None or filt(data): tgt.send(data)
 
-    def done(self):
-        """Called by upstream Sources when data stream is exhausted.
+    def close(self):
+        """Indicate to the Node that the data stream is exhausted.
 
-        This method provides a mechanism for processing modules to indicate
-        whether they've finished processing, or whether an additional pass is
-        neeeded. If the node is still processing data, it should block until
-        it's done. If the node has processed all the data, but needs another
-        pass, it should return False. If the node is terminal (has no sinks),
-        and is completely finished, it should return True. If the node is not
-        terminal, it should return all(x.done() for x in self._targets)
+        Implementing classes should block on this call if they're not finished.
+        They may raise an exception (e.g., RequiresAdditionalPass) to indicate
+        that the caller needs to take additional action.
+
+        The default implementation is to call close() on all connected targets,
+        which all non-terminal Nodes must do.
 
         """
-        pass
+        for tgt, filt in getattr(self, "_targets", ()):
+            tgt.close()
+
+    def throw(self, exception):
+        """Indicate to the Node that an error has occurred.
+
+        Implementing classes should block on this call until they can stop
+        safely. Nodes may respond to throw() by catching the exception,
+        propagating it to connected targets, or propagating it back to the
+        caller (with raise). The default implementation is to call
+        throw(exception) on all connected targets.
+
+        """
+        for tgt, filt in getattr(self, "_targets", ()):
+            tgt.throw(exception)
 
 
 class Source(Node):
