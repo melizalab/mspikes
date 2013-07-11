@@ -109,7 +109,7 @@ class splitter(Node):
             if self.start or self.stop:
                 # filter out events outside requested times
                 data_seconds = ((chunk.data['start'] if chunk.data.dtype.names else chunk.data[:])
-                                * (chunk.dt or 1.0) + dset_time)
+                                * (chunk.ds or 1.0) + dset_time)
                 idx = data_seconds >= self.start
                 if self.stop:
                     idx &= data_seconds <= self.stop
@@ -126,41 +126,40 @@ class splitter(Node):
 
             # restrict by time
             nframes = chunk.data.shape[0]
-            start, stop = time_series_offsets(chunk.offset, chunk.dt, self.start, self.stop, nframes)
+            start, stop = time_series_offsets(chunk.offset, chunk.ds, self.start, self.stop, nframes)
 
             for i in xrange(start, stop, self.nsamples):
-                t = to_seconds(i, chunk.dt, chunk.offset)
+                t = to_seconds(i, chunk.ds, chunk.offset)
                 data = chunk.data[slice(i, i + self.nsamples), ...]
                 Node.send(self, chunk._replace(offset=t, data=data))
 
-            self.last_time = to_seconds(nframes, chunk.dt, chunk.offset)
+            self.last_time = to_seconds(nframes, chunk.ds, chunk.offset)
 
         else:
             # pass on structure and other non-data chunks
             Node.send(self, chunk)
 
 
-def array_reader(array, dt, chunk_size, id='', tags=tag_set("samples")):
+def array_reader(array, ds, chunk_size, id='', tags=tag_set("samples")):
     """Generate chunks from a 1d array"""
     from mspikes.types import DataBlock
     from mspikes.util import to_seconds
 
     assert array.ndim == 1
     for i in xrange(0, array.size, chunk_size):
-        yield DataBlock(id, to_seconds(i, dt), dt, array[i:i + chunk_size], tags)
+        yield DataBlock(id, to_seconds(i, ds), ds, array[i:i + chunk_size], tags)
 
 
-def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
+def time_series_offsets(dset_time, dset_ds, start_time, stop_time, nframes):
     """Calculate indices of start and stop times in a time series.
 
-    For an array of nframes that begins at data_time (samples) with timebase
-    offset_dt (samples/sec) and has samples spaced at dset_dt (samples/sec),
-    returns the range of valid indices into the array, restricted between start_time
-    and stop_time (in seconds).
+    For an array of nframes that begins at dset_time (seconds) and has samples
+    spaced at dset_ds (samples/sec), returns the range of valid indices into the
+    array, restricted between start_time and stop_time (in seconds).
 
     """
-    start_idx = max(0, (start_time - dset_time) * dset_dt) if start_time else 0
-    stop_idx = min(nframes, (stop_time - dset_time) * dset_dt) if stop_time else nframes
+    start_idx = max(0, (start_time - dset_time) * dset_ds) if start_time else 0
+    stop_idx = min(nframes, (stop_time - dset_time) * dset_ds) if stop_time else nframes
 
     return int(start_idx), int(stop_idx)
 

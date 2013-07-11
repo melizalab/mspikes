@@ -175,7 +175,7 @@ class arf_reader(RandomAccessSource):
             # emit structure blocks to indicate entry onsets
             chunk = DataBlock(id=entry.name,
                               offset=entry_time,
-                              dt=self.sampling_rate,
+                              ds=self.sampling_rate,
                               data=(),
                               tags=tag_set("structure"))
             Node.send(self, chunk)
@@ -185,12 +185,12 @@ class arf_reader(RandomAccessSource):
                 if not self.chanp(id):
                     continue
 
-                dset_dt = dset.attrs.get('sampling_rate', None)
+                dset_ds = dset.attrs.get('sampling_rate', None)
 
-                dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_dt, entry_time)
+                dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
                 if isinstance(dset_time, Fraction) and (dset_time * self.sampling_rate).denominator != 1:
                     self._log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
-                              dset.name, dset_dt, self.sampling_rate)
+                              dset.name, dset_ds, self.sampling_rate)
                     continue
 
                 if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples","ms"):
@@ -198,7 +198,7 @@ class arf_reader(RandomAccessSource):
                 else:
                     tag = "samples"
 
-                chunk = DataBlock(id=id, offset=dset_time, dt=dset_dt, data=dset, tags=tag_set(tag))
+                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tag_set(tag))
                 Node.send(self, chunk)
                 yield chunk
 
@@ -272,24 +272,24 @@ def corrected_sampling_rate(keyed_entries):
     return (s2 - s1) / (t2 - t1)
 
 
-def data_offset(entry_time, entry_dt, dset_time=0, dset_dt=None):
+def data_offset(entry_time, entry_ds, dset_time=0, dset_ds=None):
     """Return offset of a dataset in seconds, as either a float or a Fraction"""
-    dtype = type(entry_time)
+    dsype = type(entry_time)
 
-    if dset_dt is not None:
-        dset_time = Fraction(int(dset_time), int(dset_dt))
+    if dset_ds is not None:
+        dset_time = Fraction(int(dset_time), int(dset_ds))
 
-    if entry_dt is None:
+    if entry_ds is None:
         # converts to float
         return entry_time + dset_time
     else:
-        entry_time = Fraction(long(entry_time), long(entry_dt))
-        if dset_dt is None:
+        entry_time = Fraction(long(entry_time), long(entry_ds))
+        if dset_ds is None:
             # find nearest sample
-            return entry_time + Fraction(int(round(dset_time * entry_dt)), int(entry_dt))
+            return entry_time + Fraction(int(round(dset_time * entry_ds)), int(entry_ds))
         else:
             val = entry_time + dset_time
-            if (val * entry_dt).denominator != 1:
+            if (val * entry_ds).denominator != 1:
                 raise ValueError("dataset timebase is incompatible with entry timebase")
             return val
 

@@ -54,7 +54,7 @@ def test_splitter():
     from numpy import random, concatenate, array_equal
     from mspikes.modules import util
 
-    data = types.DataBlock(id='random', offset=0, dt=1, data=random.randn(10000), tags=types.tag_set("samples"))
+    data = types.DataBlock(id='random', offset=0, ds=1, data=random.randn(10000), tags=types.tag_set("samples"))
 
     splitter = util.splitter()
 

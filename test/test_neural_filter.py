@@ -72,11 +72,11 @@ def test_rms_exclude():
 
     excluder = neural_filter.rms_exclude()
     chunk_size = 4096
-    dt = 4096
+    ds = 4096
 
-    n_window = int(excluder.window * dt)
+    n_window = int(excluder.window * ds)
     data = nx.random.randn(n_window * 2)
-    noise_idx = slice(n_window * 1.3, n_window * 1.3 + int(excluder.min_duration * dt / 1000))
+    noise_idx = slice(n_window * 1.3, n_window * 1.3 + int(excluder.min_duration * ds / 1000))
     data[noise_idx] *= 2        # doubles rms
 
     return data

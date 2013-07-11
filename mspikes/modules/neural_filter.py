@@ -125,17 +125,17 @@ class _smoother(Node):
             return
 
         # convert time windows to sample counts
-        n_window = int(self.window * chunk.dt)
+        n_window = int(self.window * chunk.ds)
 
         # penalize for gaps - but still keep some old data
         if self.nsamples > n_window / 5:
-            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.dt)
+            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
             self.nsamples = max(n_window / 5, self.nsamples - gap)
 
         # update stats
         self.stats = self.statfun(chunk, self.nsamples, self.stats)
         self.nsamples = min(n_window, self.nsamples + chunk.data.size)
-        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.dt, chunk.offset)
+        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
 
         # if uninitialized, append to init_queue
         if self.nsamples < n_window:

@@ -38,7 +38,7 @@ class rand_samples(Source):
 
     def data(self, t=0):
         """Generates a data chunk"""
-        return DataBlock(id=self.channel, offset=t, dt=self.sampling_rate,
+        return DataBlock(id=self.channel, offset=t, ds=self.sampling_rate,
                          data=self._randg.randn(self.chunk_size),
                          tags=tag_set("samples"))
 
