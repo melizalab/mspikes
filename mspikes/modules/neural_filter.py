@@ -114,11 +114,8 @@ class _smoother(Node):
         """Return updated value for state incorporating new data"""
         raise NotImplementedError
 
-    def datafun(self, chunk, state):
-        """Process the data in chunk.
-
-        Return state if the smoother state should be updated, otherwise return
-        None.
+    def datafun(self, chunk):
+        """Process the data in chunk, updating self.state as needed
 
         """
         raise NotImplementedError
@@ -142,24 +139,19 @@ class _smoother(Node):
         # ensure that data is realized (e.g. from hdf5 arrays)
         chunk = chunk._replace(data=chunk.data[...])
 
-        # update state
-        state = self.statefun(chunk, self.nsamples, self.state)
-        self.nsamples = min(n_window, self.nsamples + chunk.data.size)
         self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
 
         # if uninitialized, append to init_queue
         if self.nsamples < n_window:
             self.init_queue.append(chunk)
-            self.state = state
-            return
+            self.state = self.statefun(chunk, self.nsamples, self.state)
+            self.nsamples = min(n_window, self.nsamples + chunk.data.size)
         else:
             # flush the init_queue
             for past_chunk in repeatedly(self.init_queue.pop, 0):
-                self.datafun(past_chunk, state)
+                self.datafun(past_chunk)
             # process the current chunk
-            state = self.datafun(chunk, state)
-            if state is not None:
-                self.state = state
+            self.datafun(chunk)
 
 
 class zscale(_smoother):
@@ -181,17 +173,15 @@ class zscale(_smoother):
         super(zscale, self).__init__(**options)
 
     def statefun(self, chunk, nsamples, state):
-        state =  moving_meanvar(chunk.data, nsamples, state)
-        Node.send(self, chunk._replace(data=self.stat_type(*state), tags=tag_set("debug","scalar")))
-        return state
+        return moving_meanvar(chunk.data, nsamples, state)
 
-    def datafun(self, chunk, state):
-        mean, var = state
+    def datafun(self, chunk):
+        mean, var = self.state = self.statefun(chunk, self.nsamples, self.state)
+        Node.send(self, chunk._replace(data=self.stat_type(mean, var), tags=tag_set("debug","scalar")))
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
-        return state
 
 
-class rms_exclude(_smoother):
+class rms_exclude(zscale):
     """Exclude intervals when power exceeds a threshold.
 
     Movement artifacts are characterized by large transient increases in signal
@@ -213,8 +203,9 @@ class rms_exclude(_smoother):
     def options(cls, addopt_f, **defaults):
         super(rms_exclude, cls).options(addopt_f, **defaults)
         addopt_f("--max-rms",
-                 help="if set, exclude intervals where RMS > %(metavar)s%% above baseline",
+                 help="if set, exclude intervals where relative RMS > %(metavar)s (default=%(default).1f)",
                  type=float,
+                 default=defaults.get('max_rms', 1.15),
                  metavar='F')
         addopt_f("--min-duration",
                  help="only exclude intervals longer than %(metavar)s ms (default=%(default).0f)",
@@ -224,17 +215,17 @@ class rms_exclude(_smoother):
 
     def __init__(self, **options):
         super(rms_exclude, self).__init__(**options)
-        util.set_option_attributes(self, options, max_rms=1.1, min_duration=200.)
+        util.set_option_attributes(self, options, max_rms=1.15, min_duration=200.)
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
 
-    def statefun(self, chunk, nsamples, state):
-        return moving_meanvar(nx.asarray(chunk.data), nsamples, state)
-
-    def datafun(self, chunk, state):
+    def datafun(self, chunk):
         """Drop chunks that exceed the threshold"""
-        rms_ratio = nx.sqrt(nx.var(chunk.data) / state[1])
-        Node.send(self, chunk._replace(data=self.stat_type(state[1], rms_ratio), tags=tag_set("debug","scalar")))
+        from mspikes.util import to_samples
+
+        mean, var = self.statefun(chunk, self.nsamples, self.state)
+        rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
+        Node.send(self, chunk._replace(data=self.stat_type(var, rms_ratio), tags=tag_set("debug","scalar")))
 
         if rms_ratio > self.max_rms:
             self.excl_queue.append(chunk)
@@ -245,10 +236,10 @@ class rms_exclude(_smoother):
             duration = chunk.offset - first.offset
             if (duration > self.min_duration / 1000):
                 # too much bad data - drop
-                excl = DataBlock(chunk.id, first.offset, None,
-                                 nx.rec.fromrecords(((0, duration, 'rms'),),
-                                                    names=('start','stop','reason')),
-                                 tag_set("events","exclusions"))
+                rec = ((to_samples(0, first.ds), to_samples(duration, first.ds), 'rms'),)
+                excl = DataBlock(chunk.id, first.offset, first.ds,
+                                 nx.rec.fromrecords(rec, names=('start', 'stop', 'reason')),
+                                 tag_set("events", "exclusions"))
                 Node.send(self, excl)
                 print excl
             else:
@@ -258,7 +249,7 @@ class rms_exclude(_smoother):
             self.excl_queue = []
 
         Node.send(self, chunk)
-        return state
+        self.state = (mean, var)
 
 
 # Variables:

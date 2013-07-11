@@ -21,11 +21,16 @@ def coroutine(func):
 
 
 @coroutine
-def visitor(func):
-    """A simple coroutine that calls func on each object passed to send()"""
+def visitor(func, pred=None):
+    """A simple coroutine that calls func(obj) on each obj passed to send()
+
+    If pred is non-none, only calls func(obj) if pred(obj) is true
+    """
     try:
         while True:
-            func((yield))
+            obj = (yield)
+            if pred is None or pred(obj):
+                func(obj)
     except GeneratorExit:
         pass
 

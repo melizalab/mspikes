@@ -77,15 +77,18 @@ def test_rms_exclude():
 
     n_window = int(excluder.window * ds)
     data = _randg.randn(n_window * 2)
-    noise_idx = slice(n_window * 1.3, n_window * 1.3 + int(excluder.min_duration * ds / 1000))
-    data[noise_idx] *= 2        # doubles rms
+    noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(excluder.min_duration * ds / 1000))
+    data[noise_idx] *= 1.8        # doubles rms
 
     out = []
-    with util.chain_modules(excluder, util.visitor(out.append)) as chain:
+    with util.chain_modules(excluder, util.visitor(out.append, lambda x: "exclusions" in x.tags)) as chain:
         for chunk in util.array_reader(data, ds, chunk_size):
             chain.send(chunk)
 
-    return out
+    assert_equal(len(out), 1)
+    assert_equal(out[0].offset, excluder.window * 1.5)
+    assert_equal(out[0].data.size, 1)
+    assert_equal(out[0].data[0]['stop'], max(int(excluder.min_duration * ds / 1000), chunk_size))
 
 
 
