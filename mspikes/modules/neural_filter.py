@@ -89,7 +89,7 @@ def smoother(func, M, S0=None, N0=0):
 class _smoother(Node):
     """Modify a time series based on statistics in a sliding window
 
-    This is a base class. Deriving classes should implement statfun() and
+    This is a base class. Deriving classes should implement statefun() and
     datafun()
 
     """
@@ -106,19 +106,26 @@ class _smoother(Node):
     def __init__(self, **options):
         util.set_option_attributes(self, options, window=self.window)
         self.last_sample_t = 0    # time of last sample
-        self.stats = None         # statistics from sliding window
+        self.state = None         # statistics from sliding window
         self.nsamples = 0         # number of samples for which we have data
         self.init_queue = []      # queue for chunks while initializing smoother
 
-    def statfun(self, chunk, nsamples, state):
+    def statefun(self, chunk, nsamples, state):
         """Return updated value for state incorporating new data"""
         raise NotImplementedError
 
     def datafun(self, chunk, state):
-        """Process the data in chunk and return a new DataBlock"""
+        """Process the data in chunk.
+
+        Return state if the smoother state should be updated, otherwise return
+        None.
+
+        """
         raise NotImplementedError
 
     def send(self, chunk):
+        from mspikes.util import repeatedly
+
         # pass non-time series data
         if not "samples" in chunk.tags:
             Node.send(self, chunk)
@@ -132,24 +139,27 @@ class _smoother(Node):
             gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
             self.nsamples = max(n_window / 5, self.nsamples - gap)
 
-        # update stats
-        self.stats = self.statfun(chunk, self.nsamples, self.stats)
+        # ensure that data is realized (e.g. from hdf5 arrays)
+        chunk = chunk._replace(data=chunk.data[...])
+
+        # update state
+        state = self.statefun(chunk, self.nsamples, self.state)
         self.nsamples = min(n_window, self.nsamples + chunk.data.size)
         self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
 
         # if uninitialized, append to init_queue
         if self.nsamples < n_window:
             self.init_queue.append(chunk)
+            self.state = state
             return
-
-        # flush the init_queue
-        elif len(self.init_queue):
-            for past_chunk in self.init_queue:
-                self.datafun(past_chunk, self.stats)
-            self.init_queue = []
-
-        # process the current chunk
-        self.datafun(chunk, self.stats)
+        else:
+            # flush the init_queue
+            for past_chunk in repeatedly(self.init_queue.pop, 0):
+                self.datafun(past_chunk, state)
+            # process the current chunk
+            state = self.datafun(chunk, state)
+            if state is not None:
+                self.state = state
 
 
 class zscale(_smoother):
@@ -170,14 +180,15 @@ class zscale(_smoother):
     def __init__(self, **options):
         super(zscale, self).__init__(**options)
 
-    def statfun(self, chunk, nsamples, stats):
-        stats =  moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
-        Node.send(self, chunk._replace(data=self.stat_type(*stats), tags=tag_set("debug","scalar")))
-        return stats
+    def statefun(self, chunk, nsamples, state):
+        state =  moving_meanvar(chunk.data, nsamples, state)
+        Node.send(self, chunk._replace(data=self.stat_type(*state), tags=tag_set("debug","scalar")))
+        return state
 
-    def datafun(self, chunk, stats):
-        mean, var = stats
+    def datafun(self, chunk, state):
+        mean, var = state
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
+        return state
 
 
 class rms_exclude(_smoother):
@@ -196,7 +207,7 @@ class rms_exclude(_smoother):
 
     """
     window = 60.
-    stat_type = namedtuple('chunk_stats', ('rms_ratio',))
+    stat_type = namedtuple('chunk_stats', ('base_rms','rms_ratio',))
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -217,16 +228,14 @@ class rms_exclude(_smoother):
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
 
-    def statfun(self, chunk, nsamples, stats):
-        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
+    def statefun(self, chunk, nsamples, state):
+        return moving_meanvar(nx.asarray(chunk.data), nsamples, state)
 
-
-    def datafun(self, chunk, stats):
+    def datafun(self, chunk, state):
         """Drop chunks that exceed the threshold"""
-        rms_ratio = nx.sqrt(stats[1] / nx.var(chunk.data))
-        Node.send(self, chunk._replace(data=self.stat_type(rms_ratio), tags=tag_set("debug","scalar")))
+        rms_ratio = nx.sqrt(nx.var(chunk.data) / state[1])
+        Node.send(self, chunk._replace(data=self.stat_type(state[1], rms_ratio), tags=tag_set("debug","scalar")))
 
-        import pdb; pdb.set_trace() ## DEBUG ##
         if rms_ratio > self.max_rms:
             self.excl_queue.append(chunk)
             return
@@ -234,19 +243,22 @@ class rms_exclude(_smoother):
         if len(self.excl_queue):
             first = self.excl_queue[0]
             duration = chunk.offset - first.offset
-            if (duration > self.min_duration / 100):
+            if (duration > self.min_duration / 1000):
                 # too much bad data - drop
                 excl = DataBlock(chunk.id, first.offset, None,
                                  nx.rec.fromrecords(((0, duration, 'rms'),),
                                                     names=('start','stop','reason')),
                                  tag_set("events","exclusions"))
                 Node.send(self, excl)
-                self.excl_queue = []
+                print excl
             else:
                 # release chunks
                 for c in self.excl_queue:
                     Node.send(self, c)
+            self.excl_queue = []
+
         Node.send(self, chunk)
+        return state
 
 
 # Variables:

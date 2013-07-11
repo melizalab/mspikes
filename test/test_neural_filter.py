@@ -12,7 +12,6 @@ import numpy as nx
 from mspikes import types
 from mspikes.modules import neural_filter, util
 
-
 def test_exponential_filter():
 
     data = nx.asarray([100, 50, 150,])
@@ -48,19 +47,20 @@ def test_exponential_filter():
 
 def test_zscale():
 
+    _randg = nx.random.RandomState(1)
     window_size = 4096
     chunk_size = 2048
     zscaler = neural_filter.zscale(window=window_size)
 
     out = []
     chunks = []
-    data = nx.random.randn(chunk_size * 10)
+    data = _randg.randn(chunk_size * 10) * 5
     with util.chain_modules(zscaler, util.visitor(out.append)) as chain:
         for chunk in util.array_reader(data, 1, chunk_size):
             chain.send(chunk)
             chunks.append(chunk)
 
-    for chunk in out:
+    for i,chunk in enumerate(out):
         if "scalar" in chunk.tags:
             mean, var = chunk.data
         elif "samples" in chunk.tags:
@@ -70,17 +70,22 @@ def test_zscale():
 
 def test_rms_exclude():
 
+    _randg = nx.random.RandomState(1)
     excluder = neural_filter.rms_exclude()
     chunk_size = 4096
     ds = 4096
 
     n_window = int(excluder.window * ds)
-    data = nx.random.randn(n_window * 2)
+    data = _randg.randn(n_window * 2)
     noise_idx = slice(n_window * 1.3, n_window * 1.3 + int(excluder.min_duration * ds / 1000))
     data[noise_idx] *= 2        # doubles rms
 
-    return data
-    # with util.chain_modules(excluder, util.visitor(out.append))
+    out = []
+    with util.chain_modules(excluder, util.visitor(out.append)) as chain:
+        for chunk in util.array_reader(data, ds, chunk_size):
+            chain.send(chunk)
+
+    return out
 
 
 

@@ -27,6 +27,26 @@ def pair_iter(items):
         prev = p
 
 
+def repeatedly(func, *args, **kwargs):
+    """Iterate over return values from calling func(*args, **kwargs) repeatedly.
+
+    Continues until func throws an exception.
+
+    Example:
+    >>> arr = [1,2,3]
+    >>> [x for x in repeatedly(arr.pop, 0)]
+    [1, 2, 3]
+    >>> arr
+    []
+
+    """
+    try:
+        while True:
+            yield func(*args, **kwargs)
+    except:
+        raise StopIteration
+
+
 def set_option_attributes(obj, opts, **attrs):
     """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
     for key, value in attrs.iteritems():
