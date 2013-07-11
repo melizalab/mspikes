@@ -58,9 +58,11 @@ def test_splitter():
 
     splitter = util.splitter()
 
-    x = concatenate([a.data for a in util.run_modules(data, splitter)])
+    x = []
+    with util.chain_modules(splitter, util.visitor(lambda chunk: x.append(chunk.data))) as chain:
+        chain.send(data)
 
-    assert_true(array_equal(x, data.data))
+    assert_true(array_equal(concatenate(x), data.data))
 
 
 

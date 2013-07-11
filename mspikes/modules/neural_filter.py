@@ -11,7 +11,7 @@ import numpy as nx
 from fractions import Fraction
 
 from mspikes import util
-from mspikes.types import Node, DataBlock
+from mspikes.types import Node, DataBlock, tag_set
 from mspikes.modules.util import coroutine
 
 _log = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ class _smoother(Node):
 
     """
     window = 2.0                # duration of sliding window, in seconds
+    statnames = ()              # names of statistics (used in debug chunks)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -135,6 +136,8 @@ class _smoother(Node):
         self.stats = self.statfun(chunk, self.nsamples, self.stats)
         self.nsamples = min(n_window, self.nsamples + chunk.data.size)
         self.last_sample_t = util.to_seconds(chunk.data.size, chunk.dt, chunk.offset)
+        Node.send(self, chunk._replace(data=nx.rec.fromrecords((self.stats,), names=self.statnames)[0],
+                                       tags=tag_set("debug","scalar")))
 
         # if uninitialized, append to queue
         if self.nsamples < n_window:
@@ -159,13 +162,14 @@ class zscale(_smoother):
     exponential smoother.
 
     """
+    statnames = ('mean','var')              # names of statistics (used in debug chunks)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
         super(zscale, cls).options(addopt_f, **defaults)
 
     def __init__(self, **options):
-        _smoother.__init__(self, **options)
+        super(zscale, self).__init__(**options)
 
     def statfun(self, chunk, nsamples, stats):
         return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
@@ -175,7 +179,7 @@ class zscale(_smoother):
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
 
 
-class rms_exclude(_smoother):
+class rms_exclude(zscale):
     """Exclude intervals when power exceeds a threshold.
 
     Movement artifacts are characterized by large transient increases in signal
@@ -205,26 +209,43 @@ class rms_exclude(_smoother):
                  metavar='MS')
 
     def __init__(self, **options):
-        _smoother.__init__(self, **options)
-        util.set_option_attributes(self, options, max_rms=1.1, min_duration=100)
+        super(rms_exclude, self).__init__(**options)
+        util.set_option_attributes(self, options, max_rms=1.1, min_duration=200)
         self.rms_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
-
-    def statfun(self, chunk, nsamples, stats):
-        return moving_meanvar(nx.asarray(chunk.data), nsamples, stats)
 
     def datafun(self, chunk, stats):
         """Drop chunks that exceed the threshold"""
         _, var = stats
+        if nx.asarray(chunk.data).std() / nx.sqrt(var) > self.max_rms:
+            self.rms_queue.append(chunk)
+            return
 
-
-
-
-
-
-
-
+        if len(self.rms_queue):
+            first = self.rms_queue[0]
+            duration = chunk.offset - first.offset
+            if (duration > self.min_duration / 100):
+                # too much bad data - drop
+                excl = DataBlock(chunk.id, first.offset, None,
+                                 nx.rec.fromrecords(((0, duration, 'rms'),),
+                                                    names=('start','stop','reason')),
+                                 tag_set("events","exclusions"))
+                Node.send(self, excl)
+                self.rms_queue = []
+            else:
+                # release chunks
+                for c in self.rms_queue:
+                    Node.send(self, c)
+        Node.send(self, chunk)
 
 
 # Variables:
 # End:
+
+
+
+
+
+
+
+

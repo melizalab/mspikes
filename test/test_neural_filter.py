@@ -9,8 +9,8 @@ from nose.tools import *
 from nose.plugins.skip import SkipTest
 
 import numpy as nx
-
-from mspikes.modules import neural_filter
+from mspikes import types
+from mspikes.modules import neural_filter, util
 
 
 def test_exponential_filter():
@@ -44,3 +44,28 @@ def test_exponential_filter():
     for d, me in zip(data[1:], m_exp):
         m, v = g.send([d])
         assert_equal(m, me)
+
+
+def test_zscale():
+
+    window_size = 4096
+    chunk_size = 2048
+    zscaler = neural_filter.zscale(window=window_size)
+
+    out = []
+    chunks = []
+    with util.chain_modules(zscaler, util.visitor(out.append)) as chain:
+        for i in xrange(10):
+            data = types.DataBlock('', i * chunk_size, 1, nx.random.randn(chunk_size),
+                                   types.tag_set("samples"))
+            chain.send(data)
+            chunks.append(data)
+
+    for chunk in out:
+        if "scalar" in chunk.tags:
+            mean, var = chunk.data
+        elif "samples" in chunk.tags:
+            data = chunks.pop(0)
+            assert_true(nx.array_equal((data.data - mean) / nx.sqrt(var), chunk.data))
+
+

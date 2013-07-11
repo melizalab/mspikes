@@ -49,7 +49,11 @@ class Node(object):
         (after filtering).
 
         """
+        from mspikes import DEBUG
+
         if not hasattr(self, "_targets"):
+            return
+        if not DEBUG and "debug" in data.tags:
             return
         for tgt, filt in self._targets:
             if filt is None or filt(data): tgt.send(data)

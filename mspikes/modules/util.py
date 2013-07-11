@@ -7,6 +7,7 @@ Created Tue Jul  9 17:00:11 2013
 """
 
 import logging
+import contextlib
 from mspikes.types import Node
 
 def coroutine(func):
@@ -20,14 +21,34 @@ def coroutine(func):
 
 
 @coroutine
-def collecter(sink):
-    """A simple Sink that collects data from a single id"""
+def visitor(func):
+    """A simple coroutine that calls func on each object passed to send()"""
     try:
         while True:
-            chunk = (yield)
-            sink.append(chunk)
+            func((yield))
     except GeneratorExit:
         pass
+
+
+@contextlib.contextmanager
+def chain_modules(*modules):
+    """A context manager that connects modules in sequence
+
+    Example:
+    >>> out = []
+    >>> with chain_modules(module1, module2, visitor(out.append)) as chain: chain.send(data)
+
+    """
+    from mspikes.util import pair_iter
+
+    for src,tgt in pair_iter(modules):
+        src.add_target(tgt)
+
+    yield modules[0]
+
+    for src,tgt in pair_iter(modules):
+        src._targets.remove((tgt, None))
+
 
 
 class splitter(Node):
@@ -117,40 +138,6 @@ def time_series_offsets(dset_time, dset_dt, start_time, stop_time, nframes):
 
     return int(start_idx), int(stop_idx)
 
-
-def run_modules(data, *modules):
-    """Run data chunk through a series of modules and collect the results"""
-    from mspikes.util import pair_iter
-
-    out = []
-    sink = collecter(out)
-    for src,tgt in pair_iter(modules + (sink,)):
-        src.add_target(tgt)
-
-    modules[0].send(data)
-
-    for src,tgt in pair_iter(modules + (sink,)):
-        src._targets.remove((tgt, None))
-
-    return out
-
-
-# def run_module(module, data, chunk_size=4096, dt=1):
-#     """Push an array of data to a module and collect the output"""
-#     from numpy import concatenate
-#     from mspikes.util import to_seconds
-
-#     out = []
-#     sink = collecter(out)
-#     module.add_target(sink)
-#     tags = frozenset(("samples",))
-
-#     for i in xrange(0, data.size, chunk_size):
-#         module.send(DataBlock(id='test', offset=to_seconds(i, dt),
-#                               dt=dt, data=data[i:i + chunk_size], tags=tags))
-
-#     module._targets.remove((sink, None)) # not in api
-#     return concatenate([x.data for x in out])
 
 # Variables:
 # End:
