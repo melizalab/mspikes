@@ -4,3 +4,5 @@
 /mspikes.egg-info/
 /build/
 /dist/
+/examples/
+/setuptools*
