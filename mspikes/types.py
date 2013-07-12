@@ -63,8 +63,9 @@ class Node(object):
         They may raise an exception (e.g., RequiresAdditionalPass) to indicate
         that the caller needs to take additional action.
 
-        The default implementation is to call close() on all connected targets,
-        which all non-terminal Nodes must do.
+        All non-terminal Nodes must call close() on all connected targets (this
+        is the implementation in the base class). Nodes must allow close() to be
+        called multiple times as they may have multiple upstream sources.
 
         """
         for tgt, filt in getattr(self, "_targets", ()):
@@ -78,6 +79,9 @@ class Node(object):
         propagating it to connected targets, or propagating it back to the
         caller (with raise). The default implementation is to call
         throw(exception) on all connected targets.
+
+        Nodes must handle throw() being called with the same argument multiple
+        times, as they may have multiple upstream sources.
 
         """
         for tgt, filt in getattr(self, "_targets", ()):

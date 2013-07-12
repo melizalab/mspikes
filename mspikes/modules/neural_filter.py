@@ -115,9 +115,7 @@ class _smoother(Node):
         raise NotImplementedError
 
     def datafun(self, chunk):
-        """Process the data in chunk, updating self.state as needed
-
-        """
+        """Process the data in chunk, updating self.state as needed"""
         raise NotImplementedError
 
     def send(self, chunk):
