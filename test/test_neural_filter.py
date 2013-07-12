@@ -54,7 +54,7 @@ def test_zscale():
 
     out = []
     chunks = []
-    data = _randg.randn(chunk_size * 10) * 5
+    data = _randg.randn(chunk_size * 100) * 5
     with util.chain_modules(zscaler, util.visitor(out.append)) as chain:
         for chunk in util.array_reader(data, 1, chunk_size):
             chain.send(chunk)
@@ -62,10 +62,10 @@ def test_zscale():
 
     for i,chunk in enumerate(out):
         if "scalar" in chunk.tags:
-            mean, var = chunk.data
+            mean, rms, rms_ratio = chunk.data
         elif "samples" in chunk.tags:
             data = chunks.pop(0)
-            assert_true(nx.array_equal((data.data - mean) / nx.sqrt(var), chunk.data))
+            assert_true(nx.array_equal((data.data - mean) / rms, chunk.data))
 
 
 def test_rms_exclude():
@@ -78,7 +78,7 @@ def test_rms_exclude():
     t_mindur = 200.
     n_window = int(t_window * ds)
 
-    excluder = neural_filter.rms_exclude(window=t_window, min_duration=t_mindur)
+    excluder = neural_filter.zscale(exclude=True, window=t_window, min_duration=t_mindur)
 
     data = _randg.randn(n_window * 2)
     noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(t_mindur * 3 * ds / 1000))

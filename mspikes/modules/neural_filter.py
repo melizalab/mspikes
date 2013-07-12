@@ -153,57 +153,37 @@ class _smoother(Node):
             self.datafun(chunk)
 
 
+@dispatcher.parallel_id
 class zscale(_smoother):
-    """Center and rescale time series with a sliding window.
+    """Center and rescale time series, optionally excluding intervals when power
+    exceeds a threshold.
 
-    Data are z-scaled by subtracting the mean and dividing by the standard
-    deviation. The mean and SD of the data are calculated using a moving
-    exponential smoother.
+    Data tagged 'samples' are z-scaled by subtracting the mean and dividing by
+    the standard deviation.  Data lacking this tag is passed unaltered.
+
+    Exclusion: movement artifacts are characterized by large transient increases
+    in signal power and intervals with strong artifacts should be excluded from
+    spike detection or clustering. Exclusion is based on the power relative to
+    the sliding window average, which allows a single criterion to be used for
+    different channels and accounts for slow drifts in noise power over time.
+
+    The exclusion algorithm is primarily designed for single channels. For
+    multiple electrodes, it may be more effective to remove artifacts by
+    subtracting a common average reference.
 
     """
-    stat_type = namedtuple('chunk_stats', ('mean', 'var'))
-
+    window = 60.
+    stat_type = namedtuple('chunk_stats', ('mean','rms','rms_ratio',))
 
     @classmethod
     def options(cls, addopt_f, **defaults):
         _smoother.options(addopt_f, **defaults)
-
-    def __init__(self, **options):
-        _smoother.__init__(self, **options)
-
-    def statefun(self, chunk, nsamples, state):
-        return moving_meanvar(chunk.data, nsamples, state)
-
-    def datafun(self, chunk):
-        mean, var = self.state = self.statefun(chunk, self.nsamples, self.state)
-        Node.send(self, chunk._replace(data=self.stat_type(mean, var), tags=tag_set("scalar")))
-        Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
-
-
-@dispatcher.parallel_id
-class rms_exclude(zscale):
-    """Exclude intervals when power exceeds a threshold.
-
-    Movement artifacts are characterized by large transient increases in signal
-    power and intervals with strong artifacts should be excluded from spike
-    detection or clustering. Power may vary across channels and on slow
-    timescales (minutes), so this module estimates power using a long-window
-    moving average, and marks intervals for exclusion that deviate from this
-    average by too much for too long.
-
-    This algorithm is primiarily designed for single channels. For multiple
-    electrodes, it may be more effective to remove artifacts by subtracting a
-    common average reference.
-
-    """
-    window = 60.
-    stat_type = namedtuple('chunk_stats', ('base_rms','rms_ratio',))
-
-    @classmethod
-    def options(cls, addopt_f, **defaults):
-        zscale.options(addopt_f, **defaults)
+        if "exclude" not in defaults:
+            addopt_f("--exclude",
+                     help="drop intervals where relative RMS exceeds a threshold",
+                     action="store_true")
         addopt_f("--max-rms",
-                 help="if set, exclude intervals where relative RMS > %(metavar)s (default=%(default).1f)",
+                 help="set exclusions threshhold (default=%(default).1f)",
                  type=float,
                  default=defaults.get('max_rms', 1.15),
                  metavar='F')
@@ -214,20 +194,26 @@ class rms_exclude(zscale):
                  metavar='MS')
 
     def __init__(self, **options):
-        zscale.__init__(self, **options)
-        util.set_option_attributes(self, options, max_rms=1.15, min_duration=200.)
+        _smoother.__init__(self, **options)
+        util.set_option_attributes(self, options, exclude=False, max_rms=1.15, min_duration=200.)
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
+
+    def statefun(self, chunk, nsamples, state):
+        return moving_meanvar(chunk.data, nsamples, state)
 
     def datafun(self, chunk):
         """Drop chunks that exceed the threshold"""
         from mspikes.util import to_samples
 
         mean, var = self.statefun(chunk, self.nsamples, self.state)
+        rms = nx.sqrt(var)
         rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
-        Node.send(self, chunk._replace(data=self.stat_type(var, rms_ratio), tags=tag_set("scalar")))
+        Node.send(self, chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar")))
 
-        if rms_ratio > self.max_rms:
+        # rescale data first, then decide if to queue it
+        chunk = chunk._replace(data=(chunk.data - mean) / rms)
+        if self.exclude and rms_ratio > self.max_rms:
             self.excl_queue.append(chunk)
             return
 
