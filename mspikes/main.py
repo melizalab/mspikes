@@ -39,6 +39,22 @@ def print_filters():
     print_descriptions(filters._all(), graph.node_descr)
 
 
+def print_options(cls):
+    """pretty-print options for a module"""
+    # this is pretty hacky
+    import re
+    import argparse
+
+    rx = re.compile(r"(positional|optional)")
+    p = argparse.ArgumentParser(add_help=False)
+    cls.options(p.add_argument)
+    help = p.format_help()
+    m = rx.search(help)
+    if m:
+        print ""
+        print help[m.start():]
+
+
 def print_doc(arg):
     """print full documentation for a toolchain, module, or filter"""
     from inspect import getdoc
@@ -55,8 +71,10 @@ def print_doc(arg):
         sdoc,defs = getattr(toolchains, arg)
         print "{}:  {}\n\n{}".format(arg, sdoc, defs)
     elif hasattr(modules, arg):
-        doc = getdoc(getattr(modules, arg))
+        cls = getattr(modules, arg)
+        doc = getdoc(cls)
         print "{}:  {}".format(arg, doc)
+        print_options(cls)
     elif hasattr(filters, arg):
         doc = getdoc(getattr(filters, arg))
         print "{}:  {}".format(arg, doc)

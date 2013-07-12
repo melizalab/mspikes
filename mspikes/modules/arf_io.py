@@ -19,19 +19,14 @@ _log = logging.getLogger(__name__)
 class arf_reader(RandomAccessSource):
     """Source data from an ARF/HDF5 file
 
-    Produces data by iterating through entries of the file in temporal order,
-    emitting chunks separately for each dataset in the entries. By default the
-    timestamp of the entries is used to calculate offsets for the chunks, but
-    for ARF files created by 'arfxplog' and 'jrecord' the sample clock can be
-    used as well.
+    emits:  _events (point process datasets)
+            _samples (time series datasets)
+            _structure (entry start times)
 
-    emits: data blocks from ARF file (_events and _samples)
-           entry start times (_structure)
-
-    Note: using sample-based offsets with files that were recorded at different
-    sampling rates or with different instances of the data collection program
-    will lead to undefined behavior because the sample counts will not be
-    consistent within the file.
+    Iterates through entries of the file in temporal order, emitting chunks
+    separately for each dataset in the entries. By default the timestamp of the
+    entries is used to calculate offsets for the chunks, but for ARF files
+    created by 'arfxplog' and 'jrecord' the sample clock can be used as well.
 
     """
     _log = logging.getLogger(__name__ + ".arf_reader")
@@ -45,26 +40,28 @@ class arf_reader(RandomAccessSource):
                  metavar='CH',
                  nargs='+')
         addopt_f("--start",
-                 help="time (in s) to start reading (default 0)",
+                 help="exclude entries before this time (in s; default 0)",
                  type=float,
                  default=0,
                  metavar='FLOAT')
         addopt_f("--stop",
-                 help="time (in s) to stop reading (default None)",
+                 help="exclude entries after this time (in s; default None)",
                  type=float,
                  metavar='FLOAT')
         addopt_f("--entries",
                  help="names or regexps of entries to read (default all)",
                  metavar='P',
                  nargs="+")
-        addopt_f("--use-timestamp",
-                 help="use entry timestamp for timebase and ignore other fields",
+        addopt_f("--use-timestamp", help=""" use entry timestamp for timebase and ignore other fields. May lead to
+        warnings about data overlap because of jitter in the system clock. Using
+        sample-based times from files recorded at multiple sampling rates or
+        different clock start times may lead to undefined behavior""",
                  action='store_true')
         addopt_f("--ignore-xruns",
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
-        addopt_f("--skip-sort",
-                 help="skip initial sort of entries",
+        addopt_f("--skip-sort", help="""skip initial sort of entries. only use
+        this if the entries are already in the correct order""",
                  action='store_true')
 
 

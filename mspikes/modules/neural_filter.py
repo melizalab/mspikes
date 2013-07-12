@@ -155,11 +155,11 @@ class _smoother(Node):
 
 @dispatcher.parallel_id
 class zscale(_smoother):
-    """Center and rescale time series, optionally excluding intervals when power
-    exceeds a threshold.
+    """Center and rescale time series, optionally excluding noisy intervals
 
-    Data tagged 'samples' are z-scaled by subtracting the mean and dividing by
-    the standard deviation.  Data lacking this tag is passed unaltered.
+    modifies: _samples [(data - mean) / rms]
+    emits:    _scalar (mean, rms, relative rms),
+              _exclusions (intervals when relative rms > threshold)
 
     Exclusion: movement artifacts are characterized by large transient increases
     in signal power and intervals with strong artifacts should be excluded from
@@ -180,10 +180,10 @@ class zscale(_smoother):
         _smoother.options(addopt_f, **defaults)
         if "exclude" not in defaults:
             addopt_f("--exclude",
-                     help="drop intervals where relative RMS exceeds a threshold",
+                     help="if set, drop intervals where relative RMS exceeds threshold",
                      action="store_true")
         addopt_f("--max-rms",
-                 help="set exclusions threshhold (default=%(default).1f)",
+                 help="exclusion threshhold (default=%(default).1f)",
                  type=float,
                  default=defaults.get('max_rms', 1.15),
                  metavar='F')
