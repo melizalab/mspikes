@@ -8,7 +8,6 @@ Created Wed Jul  3 13:22:29 2013
 from __future__ import division
 import logging
 import numpy as nx
-from fractions import Fraction
 from collections import namedtuple
 
 from mspikes import util
