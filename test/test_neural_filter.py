@@ -71,24 +71,30 @@ def test_zscale():
 def test_rms_exclude():
 
     _randg = nx.random.RandomState(1)
-    excluder = neural_filter.rms_exclude()
+
     chunk_size = 4096
     ds = 4096
+    t_window = 60.
+    t_mindur = 200.
+    n_window = int(t_window * ds)
 
-    n_window = int(excluder.window * ds)
+    excluder = neural_filter.rms_exclude(window=t_window, min_duration=t_mindur)
+
     data = _randg.randn(n_window * 2)
-    noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(excluder.min_duration * ds / 1000))
-    data[noise_idx] *= 1.7        # doubles rms
+    noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(t_mindur * 3 * ds / 1000))
+    data[noise_idx] *= 1.7
 
     out = []
-    with util.chain_modules(excluder, util.visitor(out.append, lambda x: "exclusions" in x.tags)) as chain:
+    with util.chain_modules(excluder, util.visitor(out.append)) as chain:
         for chunk in util.array_reader(data, ds, chunk_size):
             chain.send(chunk)
 
-    assert_equal(len(out), 1)
-    assert_equal(out[0].offset, excluder.window * 1.5)
-    assert_equal(out[0].data.size, 1)
-    assert_equal(out[0].data[0]['stop'], max(int(excluder.min_duration * ds / 1000), chunk_size))
+    return data, out
+    excl = filter(lambda x: "exclusions" in x.tags, out)
+    assert_equal(len(excl), 1)
+    assert_equal(excl[0].offset, t_window * 1.5)
+    assert_equal(excl[0].data.size, 1)
+    assert_equal(excl[0].data[0]['stop'], max(int(t_mindur * ds / 1000), chunk_size))
 
 
 

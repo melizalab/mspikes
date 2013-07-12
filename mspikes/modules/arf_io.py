@@ -81,15 +81,21 @@ class arf_reader(RandomAccessSource):
 
         channels = options.get("channels", None)
         if channels:
-            rx = (re.compile(p).search for p in channels)
-            self.chanp = util.chain_predicates(*rx)
+            try:
+                rx = (re.compile(p).search for p in channels)
+                self.chanp = util.chain_predicates(*rx)
+            except re.error, e:
+                raise ValueError("bad channel regex: %s" % e.message)
         else:
             self.chanp = true_p
 
         entries = options.get("entries", None)
         if entries:
-            rx = (re.compile(p).search for p in entries)
-            self.entryp = util.chain_predicates(*rx)
+            try:
+                rx = (re.compile(p).search for p in entries)
+                self.entryp = util.chain_predicates(*rx)
+            except re.error, e:
+                raise ValueError("bad entries regex: %s" % e.message)
         else:
             self.entryp = true_p
 

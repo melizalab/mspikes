@@ -13,6 +13,7 @@ from collections import namedtuple
 
 from mspikes import util
 from mspikes.types import Node, DataBlock, tag_set
+from mspikes.modules import dispatcher
 from mspikes.modules.util import coroutine
 
 _log = logging.getLogger(__name__)
@@ -165,10 +166,10 @@ class zscale(_smoother):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        super(zscale, cls).options(addopt_f, **defaults)
+        _smoother.options(addopt_f, **defaults)
 
     def __init__(self, **options):
-        super(zscale, self).__init__(**options)
+        _smoother.__init__(self, **options)
 
     def statefun(self, chunk, nsamples, state):
         return moving_meanvar(chunk.data, nsamples, state)
@@ -179,6 +180,7 @@ class zscale(_smoother):
         Node.send(self, chunk._replace(data=(chunk.data - mean) / nx.sqrt(var)))
 
 
+@dispatcher.parallel_id
 class rms_exclude(zscale):
     """Exclude intervals when power exceeds a threshold.
 
@@ -199,7 +201,7 @@ class rms_exclude(zscale):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        super(rms_exclude, cls).options(addopt_f, **defaults)
+        zscale.options(addopt_f, **defaults)
         addopt_f("--max-rms",
                  help="if set, exclude intervals where relative RMS > %(metavar)s (default=%(default).1f)",
                  type=float,
@@ -212,7 +214,7 @@ class rms_exclude(zscale):
                  metavar='MS')
 
     def __init__(self, **options):
-        super(rms_exclude, self).__init__(**options)
+        zscale.__init__(self, **options)
         util.set_option_attributes(self, options, max_rms=1.15, min_duration=200.)
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration

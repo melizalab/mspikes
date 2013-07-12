@@ -5,21 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jul 11 17:13:34 2013
 """
-
-class parallel(object):
-
-    def __init__(self, dispatch_attr):
-        from collections import defaultdict
-
-        self.workers = defaultdict(module_initializer)
-        self.keyfun = attrgetter(dispatch_attr)
-
-    def send(self, chunk):
-        key = self.keyfun(chunk)
-        self.workers[key].send(chunk)
-
-
-
+import operator
 
 def parallel(keyfun):
     """Decorate a Node to operate in parallel over chunks with different
@@ -30,6 +16,10 @@ def parallel(keyfun):
     instances of the base class. The worker classes have their own state, but do
     share a list of targets, so that calls to add_target on the derived class
     affect all workers.
+
+    Important: decorated classes must not use super() to look up methods in base
+    classes, because this will resolve to the class itself. Instead, directly
+    access the method of the base class.
 
     """
     from collections import defaultdict
@@ -66,11 +56,14 @@ def parallel(keyfun):
 
         name = cls.__name__ + "_p"
         return type(name, (cls,), dict(__init__=__init__,
+                                       __doc__=cls.__doc__,
                                        __keyfun__=keyfun,
                                        send=send,
                                        close=close,
                                        throw=throw))
     return decorate
+
+parallel_id = parallel(operator.attrgetter('id'))
 
 # Variables:
 # End:
