@@ -43,8 +43,43 @@ class spike_extract(Node):
         pass
 
 
+class detect_spikes(object):
+    """ state machine implementation - 955 ms"""
+
+    BelowThreshold = 1
+    BeforePeak = 2
+    AfterPeak = 3
+
+    def __init__(self, thresh, n_after):
+        self.thresh = thresh
+        self.n_after = n_after
+        self.state = self.BelowThreshold
+
+    def send(self, samples):
+        out = []
+        for i, x in enumerate(samples):
+            if self.state is self.BelowThreshold:
+                if (x - self.thresh) > 0:
+                    self.prev_val = x
+                    self.n_after_crossing = 0
+                    self.state = self.BeforePeak
+            elif self.state is self.BeforePeak:
+                if (x - self.prev_val) < 0:
+                    out.append(i - 1)
+                    self.state = self.AfterPeak
+                elif self.n_after_crossing > self.n_after:
+                    self.state = self.BelowThreshold
+                else:
+                    self.prev_val = x
+                    self.n_after_crossing += 1
+            elif self.state is self.AfterPeak:
+                if (x - self.thresh) < 0:
+                    self.state = self.BelowThreshold
+        return out
+
+
 def extract_spikes(samples, thresh, before, after):
-    """slow pure python implementation"""
+    """slow pure python implementation - 1.37 s"""
     from numpy import argmax, argmin
 
     i = 0
