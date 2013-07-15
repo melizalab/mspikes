@@ -10,9 +10,11 @@ import logging
 import numpy as nx
 
 from mspikes import util
-from mspikes.types import Node, DataBlock, tag_set
+from mspikes.modules import dispatcher
+from mspikes.types import Node, tag_set
 
 _log = logging.getLogger(__name__)
+
 
 class spike_extract(Node):
     """Detect spike times in time series and extract waveforms
@@ -27,46 +29,68 @@ class spike_extract(Node):
     def options(cls, addopt_f, **defaults):
         addopt_f("--thresh",
                  help="detection threshold (negative values imply negative-going crossings)",
-                 type=float,)
+                 type=float,
+                 metavar='FLOAT')
         addopt_f("--interval",
-                 help="the interval around the peak to extract (in ms; default=%(default)s)",
+                 help="the interval around the peak to extract (default=%(default)s)",
                  type=float,
                  default=(1.0, 2.0),
-                 nargs=2,)
-        addopt_f("--resamp",
-                 help="resampling factor to use in finding peaks (default=%(default)d)",
-                 type=int,
-                 default=3)
+                 nargs=2,
+                 metavar='MS')
 
     def __init__(self, **options):
-        util.set_option_attributes(self, options, thresh=None, interval=(1.0, 2.0), resamp=3)
-        self.last_sample_t = 0
-        self.last_ds = 0
+        util.set_option_attributes(self, options, thresh=None, interval=(1.0, 2.0))
+        self.reset()
+
+    def reset(self):
+        self.detector = None
+        self.spike_queue = []
+        self.last_chunk = None  # store last chunk in case spike splits across boundary
 
     def send(self, chunk):
+        from mspikes.util import repeatedly
+        from itertools import chain
+
         # pass non-time series data
         if not "samples" in chunk.tags:
             Node.send(self, chunk)
             return
 
-        # reset the detector if there's a gap or ds changes
-        gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
-        if gap > 1 or self.last_ds != chunk.ds:
-            self.detector = None
-
         n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
 
+        # reset the detector if there's a gap or ds changes
+        if self.last_chunk is not None:
+            last_sample_t = util.to_seconds(self.last_chunk.data.size, self.last_chunk.ds, self.last_chunk.offset)
+            gap = util.to_samples(chunk.offset - last_sample_t, chunk.ds)
+            if gap > 1 or self.last_chunk.ds != chunk.ds:
+                self.reset()
         if self.detector is None:
             self.detector = detect_spikes(self.thresh, util.to_samples(self.interval[1], chunk.ds))
 
+        spike_it = chain(repeatedly(self.spike_queue.pop, 0),
+                         ((t - n_before, t + n_after) for t in self.detector.send(chunk.data)))
         dt = nx.dtype([('start', nx.int32), ('spike', chunk.data.dtype, n_before + n_after)])
-        spikes = ((t - n_before, chunk.data[slice(t - n_before, t + n_after)])
-                   for t in self.detector.send(chunk.data))
+        spikes = nx.fromiter(self.get_spikes(chunk, spike_it), dt)
 
-        Node.send(self, chunk._replace(data=nx.fromiter(spikes, dtype=dt), tags=tag_set("events")))
+        if len(spikes):
+            Node.send(self, chunk._replace(data=nx.fromiter(spikes, dtype=dt), tags=tag_set("events")))
 
-        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
-        self.last_ds = chunk.ds
+        self.last_chunk = chunk
+
+    def get_spikes(self, chunk, times):
+        data = chunk.data
+
+        for start, stop in times:
+            if stop > data.size:
+                # queue the spike until the next data chunk arrives
+                self.spike_queue.append((start - data.size, stop - data.size))
+                continue
+            if start < 0 and self.last_chunk is not None:
+                spk = nx.concatenate((self.last_chunk.data[slice(start, None)], data[slice(0, stop)]))
+            else:
+                spk = data[start:stop]
+
+            yield (start, spk)
 
 
 class detect_spikes(object):
