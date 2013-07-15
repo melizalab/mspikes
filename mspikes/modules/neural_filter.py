@@ -240,10 +240,3 @@ class zscale(_smoother):
 # Variables:
 # End:
 
-
-
-
-
-
-
-

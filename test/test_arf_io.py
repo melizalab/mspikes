@@ -7,7 +7,7 @@ Created Thu Jun 27 10:47:24 2013
 """
 from nose.tools import *
 from nose.plugins.skip import SkipTest
-import inspect
+
 import itertools
 import h5py
 import arf

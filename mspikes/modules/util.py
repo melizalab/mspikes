@@ -101,9 +101,7 @@ class splitter(Node):
 
     def __init__(self, **options):
         from mspikes import util
-        from collections import defaultdict
         util.set_option_attributes(self, options, start=0., stop=None)
-
         self.last_time = 0
 
     def send(self, chunk):
@@ -114,7 +112,7 @@ class splitter(Node):
             if self.start or self.stop:
                 # filter out events outside requested times
                 data_seconds = ((chunk.data['start'] if chunk.data.dtype.names else chunk.data[:])
-                                * (chunk.ds or 1.0) + dset_time)
+                                * (chunk.ds or 1.0) + chunk.offset)
                 idx = data_seconds >= self.start
                 if self.stop:
                     idx &= data_seconds <= self.stop
