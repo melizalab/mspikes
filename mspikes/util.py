@@ -11,11 +11,18 @@ def chain_predicates(*ps):
     return lambda x: all(p(x) for p in ps)
 
 
-def compose(f1, f2):
+def compose(f1, f2, unpack=False):
     """Return a function that calls f1(f2(*args, **kwargs))"""
-    def f(*args, **kwargs):
-        return f1(f2(*args, **kwargs))
-    return f
+    assert callable(f1)
+    assert callable(f2)
+
+    if unpack:
+        def composition(*args, **kwargs):
+            return f1(*f2(*args, **kwargs))
+    else:
+        def composition(*args, **kwargs):
+            return f1(f2(*args, **kwargs))
+    return composition
 
 
 def pair_iter(items):

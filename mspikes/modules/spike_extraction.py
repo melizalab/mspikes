@@ -73,7 +73,9 @@ class spike_extract(Node):
         spikes = nx.fromiter(self.get_spikes(chunk, spike_it), dt)
 
         if len(spikes):
-            Node.send(self, chunk._replace(data=nx.fromiter(spikes, dtype=dt), tags=tag_set("events")))
+            Node.send(self, chunk._replace(id=chunk.id + "_spikes",
+                                           data=nx.fromiter(spikes, dtype=dt),
+                                           tags=tag_set("events")))
 
         self.last_chunk = chunk
 

@@ -5,32 +5,108 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
-import h5py
-import numpy
 import logging
-import functools
-import operator
 from fractions import Fraction
+
+import h5py
+import arf
+
 from mspikes import util
+from mspikes import filters
 from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set
 
 _log = logging.getLogger(__name__)
 
-class arf_reader(RandomAccessSource):
+
+class _base_arf(object):
+    """Base class for arf reader and writer"""
+
+    @classmethod
+    def _log(cls):
+        return logging.getLogger("%s.%s" % (__name__, cls.__name__))
+
+    def __init__(self, filename, mode='r'):
+        if isinstance(filename, h5py.File):
+            self.file = filename
+        else:
+            self.file = h5py.File(filename, "r")
+
+    @property
+    def creator(self):
+        """The program that created the file, or None if unknown"""
+        if self.file.attrs.get('program', None) == 'arfxplog':
+            return 'arfxplog'
+        elif "jill_log" in self.file:  # maybe check for jack_sample attribute?
+            return "jill"
+        else:
+            return None
+
+    def get_offset_function(self, use_timestamp=False):
+        """Return a function that extracts offsets from entries
+
+        use_timestamp -- force use of timestamp attribute even if sample count
+                         attributes are present
+
+        """
+        from arf import timestamp_to_float
+        keyname = "timestamp"
+        fun = util.compose(timestamp_to_float, attritemgetter(keyname))
+
+        if self.creator is None:
+            self._log().info("couldn't determine ARF file source, using default sort method")
+        elif use_timestamp:
+            pass
+        elif self.creator == 'arfxplog':
+            keyname = "sample_count"
+            fun = attritemgetter(keyname)
+        elif self.creator == 'jill':
+            keyname = "jack_frame"
+            fun = corrected_jack_frame()
+        self._log().info("sorting entries by '%s'", keyname)
+        return fun
+
+    def _make_entry_table(self, keyfun, presorted=True):
+        """Generate a table of entries and start times.
+
+        sort -- sort the entries based on key. can be set to False if it's
+                already known that the entries were created in order
+
+        """
+        from arf import keys_by_creation
+        from operator import itemgetter
+        from itertools import izip, imap
+
+        try:
+            # try to get entries sorted by creation time; this may fail if the
+            # creation order wasn't tracked
+            entries = [self.file[name] for name in keys_by_creation(self.file)
+                       if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group]
+        except RuntimeError:
+            presorted = False
+            entries = [self.file[name] for name in self.file
+                       if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group]
+
+        if not presorted and self.creator == 'jill':
+            entries.sort(key=attritemgetter('jack_usec'))
+
+        out = [(t,e) for t, e in izip(imap(keyfun, entries), entries) if t is not None]
+        if not presorted:
+            out.sort(key=itemgetter(0))
+        return out
+
+class arf_reader(_base_arf, RandomAccessSource):
     """Source data from an ARF/HDF5 file
 
     emits:  _events (point process datasets)
             _samples (time series datasets)
             _structure (entry start times)
 
-    Iterates through entries of the file in temporal order, emitting chunks
-    separately for each dataset in the entries. By default the timestamp of the
-    entries is used to calculate offsets for the chunks, but for ARF files
+    Iterates through _entries of the file in temporal order, emitting chunks
+    separately for each dataset in the _entries. By default the timestamp of the
+    _entries is used to calculate offsets for the chunks, but for ARF files
     created by 'arfxplog' and 'jrecord' the sample clock can be used as well.
 
     """
-    _log = logging.getLogger(__name__ + ".arf_reader")
-
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("filename",
@@ -61,20 +137,20 @@ class arf_reader(RandomAccessSource):
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
         addopt_f("--skip-sort", help="""skip initial sort of entries. only use
-        this if the entries are already in the correct order""",
+        this if creation order was tracked and the entries are already in the correct order""",
                  action='store_true')
 
 
     def __init__(self, filename, **options):
         import re
         util.set_option_attributes(self, options,
-                                   start=0, stop=None, use_timestamp=False, use_xruns=False)
+                                   start=0, stop=None,
+                                   use_timestamp=False,
+                                   ignore_xruns=False,
+                                   skip_sort=False)
 
-        if isinstance(filename, h5py.File):
-            self.file = filename
-        else:
-            self.file = h5py.File(filename, "r")
-        self._log.info("input file: %s", self.file.filename)
+        _base_arf.__init__(self, filename, "r")
+        self._log().info("input file: %s", self.file.filename)
 
         channels = options.get("channels", None)
         if channels:
@@ -88,65 +164,18 @@ class arf_reader(RandomAccessSource):
 
         entries = options.get("entries", None)
         if entries:
-            try:
+           try:
                 rx = (re.compile(p).search for p in entries)
                 self.entryp = util.chain_predicates(*rx)
-            except re.error, e:
+           except re.error, e:
                 raise ValueError("bad entries regex: %s" % e.message)
         else:
             self.entryp = true_p
 
-        self.entries = self._entry_table()
+        self._entries = self._make_entry_table(self.get_offset_function(self.use_timestamp), self.skip_sort)
         self.sampling_rate = self._sampling_rate()
         if self.sampling_rate:
-            self._log.info("file sampling rate (nominal): %d Hz", self.sampling_rate)
-
-    @property
-    def creator(self):
-        """The program that created the file, or None if unknown"""
-        if self.file.attrs.get('program', None) == 'arfxplog':
-            return 'arfxplog'
-        elif "jill_log" in self.file:  # maybe check for jack_sample attribute?
-            return "jill"
-        else:
-            return None
-
-    def _entry_table(self):
-        """ Generate a table of entries and start times """
-        from arf import timestamp_to_float
-
-        if self.use_timestamp or self.creator is None:
-            keyname = "timestamp"
-            keyiter = functools.partial(keyiter_attr, name='timestamp', fun=timestamp_to_float)
-            if self.creator is None:
-                self._log.info("couldn't determine ARF file source, using default sort method")
-        elif self.creator == 'arfxplog':
-            keyname = "sample_count"
-            keyiter = functools.partial(keyiter_attr, name=keyname)
-        elif self.creator == 'jill':
-            keyname = "jack_frame"
-            keyiter = keyiter_jack_frame
-        self._log.info("sorting entries by '%s'", keyname)
-
-        # filter by name and type
-        entries = (entry for name, entry in self.file.iteritems()
-                   if self.entryp(name) and isinstance(entry, h5py.Group))
-        # keyiter extracts key, entry pairs; then we sort by key
-        return sorted(keyiter(entries), key=operator.itemgetter(0))
-
-    def _sampling_rate(self):
-        """Infer sampling rate from file"""
-        if self.use_timestamp or self.creator is None:
-            return None
-        elif self.creator == 'arfxplog':
-            return self.file.attrs['sampling_rate']
-        elif self.creator == 'jill':
-            # returns sampling rate of first dataset
-            def srate_visitor(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    # if None is returned the iteration will continue
-                    return obj.attrs.get("sampling_rate", None)
-            return self.file.visititems(srate_visitor)
+            self._log().info("file sampling rate (nominal): %d Hz", self.sampling_rate)
 
     def __iter__(self):
         """Iterate through the datasets.
@@ -158,12 +187,11 @@ class arf_reader(RandomAccessSource):
         file.
 
         """
-
-        time_0 = self.entries[0][0]
-        for entry_time, entry in self.entries:
+        time_0 = self._entries[0][0]
+        for entry_time, entry in self._entries:
             # check for marked errors
             if "jill_error" in entry.attrs:
-                self._log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
+                self._log().warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
                           " (skipping)" if not self.use_xruns else "")
                 if not self.use_xruns:
                     continue
@@ -179,7 +207,7 @@ class arf_reader(RandomAccessSource):
             chunk = DataBlock(id=entry.name,
                               offset=entry_time,
                               ds=self.sampling_rate,
-                              data=(),
+                              data=entry.attrs,
                               tags=tag_set("structure"))
             Node.send(self, chunk)
             yield chunk
@@ -192,7 +220,7 @@ class arf_reader(RandomAccessSource):
 
                 dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
                 if isinstance(dset_time, Fraction) and (dset_time * self.sampling_rate).denominator != 1:
-                    self._log.warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
+                    self._log().warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
                               dset.name, dset_ds, self.sampling_rate)
                     continue
 
@@ -205,6 +233,111 @@ class arf_reader(RandomAccessSource):
                 Node.send(self, chunk)
                 yield chunk
 
+    def _sampling_rate(self):
+        """Infer sampling rate from file"""
+        if self.use_timestamp or self.creator is None:
+            return None
+        elif self.creator == 'arfxplog':
+            return self.file.attrs['sampling_rate']
+        elif self.creator == 'jill':
+            # returns sampling rate of first dataset
+            def srate_visitor(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    # if None is returned the iteration will continue
+                    return obj.attrs.get("sampling_rate", None)
+            return self.file.visititems(srate_visitor)
+
+
+class arf_writer(_base_arf, Node):
+    """Write chunks to an ARF/HDF5 file. """
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("filename",
+                 help="the file to write (created if it doesn't exist)")
+        addopt_f("--target-entry",
+                 help=""" specify a target entry for data. If not supplied, tries to guess based on
+                 structure of source file or timestamps in target file. An error
+                 will be thrown if the data can't be placed""",
+                 metavar='NAME',)
+
+    def __init__(self, filename, **options):
+        util.set_option_attributes(self, options, default_entry=None)
+        _base_arf.__init__(self, filename, "a")
+        self._log().info("output file: %s", self.file.filename)
+        self._entry = None
+
+    def send(self, chunk):
+        if "structure" in chunk.tags and self.default_entry is not None:
+            self._set_entry(chunk)
+        elif filters.any_tag("samples", "events")(chunk):
+            entry = self._get_entry(chunk)
+            dset  = self._get_dset(entry, chunk)
+
+    def _create_entry(self, name, offset, **attributes):
+        """Create a new entry in the target file
+
+        name -- the name of the entry
+        offset -- the offset of the entry in the data stream
+
+        Optional arguments:
+
+        timestamp -- if supplied, the timestamp of the new entry in the arf file
+                     is set to this. If not supplied, inferred from the
+                     difference in seconds between offset and the previous
+                     entry. If no previous entry, the current time is used.
+
+        """
+        import datetime
+        try:
+            timestamp = attributes.pop('timestamp')
+        except KeyError:
+            # infer timestamp from earlier entry
+            if self._entry:
+                timestamp = (self._entry.attrs['timestamp'] +
+                             offset - self.keyfun(self._entry))
+            else:
+                timestamp = datetime.datetime.now()
+        self._entry = arf.create_entry(self.file, name, timestamp, **attributes)
+        self._datasets = {}
+
+    def _set_entry(self, chunk):
+        """ Set the target _entry based on a structure chunk """
+        if chunk.id in self.file:
+            self._entry = self.file[chunk.id]
+            if arf.get_uuid(self._entry) != chunk.data['uuid']:
+                self._log().warn("an _entry named '%s' exists in the target file, but has the wrong uuid",
+                               chunk.id)
+                # ask the user to decide?
+        else:
+            self._create_entry(chunk.id, chunk.offset, **chunk.data)
+
+    def _get_entry(self, chunk):
+        """ Look up target _entry for chunk. For structure chunks, may create target. """
+        if self._entry:
+            return self._entry
+        elif self.default_entry is not None:
+            # create default target (here to delay until needed)
+            self._create_entry(self.default_entry, type(chunk.offset)(0), creator='mspikes.arf_writer')
+            return self._entry
+        else:
+            # fallback is to try to look up by time, finding the closest entry
+            # with a time less than the offset. of course, we have to do this
+            # for every chunk
+            if self._entry_table is None:
+                self._entries = self._entry_table(sort=True)
+            try:
+                etime, entry = dropwhile(lambda x: x[0] < chunk.offset, self._entries).next()
+                return entry
+            except StopIteration:
+                raise LookupError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
+
+    def _get_dset(self, entry, chunk):
+        """ Look up target dataset for chunk in entry. Creates new datasets as needed. """
+        from mspikes.types import DataError
+        if chunk.offset < self._chunk_times[chunk.id]:
+            raise DataError("data stream for %s is not ordered! (offset=%.3f)", chunk.id, float(chunk.offset))
+
 
 def true_p(*args):
     return True
@@ -212,58 +345,36 @@ def true_p(*args):
 
 def attritemgetter(name):
     """Return a function that extracts arg.attr['name']"""
-    return lambda arg: arg.attrs[name]
-
-
-def keyiter_attr(entries, name, fun=None):
-    """Iterate entries producing (key, entry) pairs.
-
-    key is entry.attrs['name'], or if fun is defined, fun(entry.attrs['name'])
-
-    Skips entries with no 'name' attribute
-
-    """
-    keyfun = attritemgetter(name)
-    if fun is not None:
-        keyfun = util.compose(fun, keyfun)
-    for entry in entries:
+    def fun(arg):
         try:
-            yield keyfun(entry), entry
+            return arg.attrs[name]
         except KeyError:
-            _log.info("'%s' skipped (missing '%s' attribute)", entry.name, name)
+            _log.info("'%s' skipped (missing '%s' attribute)", arg.name, name)
+    return fun
 
 
-def keyiter_jack_frame(entries, do_sort=True):
-    """Iterate entries producing (key, entry), with key = jack_frame
+class corrected_jack_frame(object):
+    """Extracts frame counts from entries using jack_frame attribute.
 
-    jack_frame values are converted from uint32 values (which may overflow) to
-    uint64 values
+    The jack_frame attribute is a 32-bit unsigned integer. This class converts
+    this to an unsigned 64-bit integer, handling overflows. In order to do this
+    correctly, entries must be called in order.
 
     """
-    from operator import itemgetter
-    from numpy import uint64, seterr
-    orig = seterr(over='ignore')   # ignore overflow warning
 
-    # first sort by jack_usec, a uint64
-    usec = keyiter_attr(entries, "jack_usec")
-    if do_sort:
-        usec = iter(sorted(usec, key=itemgetter(0)))
+    def __init__(self):
+        from numpy import uint64, seterr
+        seterr(over='ignore')   # ignore overflow warning
+        self.frame = uint64()
+        self.last = None
 
-    # then convert the jack_frame uint32's to uint64's by incrementing. this may
-    # not be very efficient, and won't work if there's a gap longer than the
-    # size of the frame counter; could potentially do some kind of arithmetic
-    # with the usec variable and the sample rate.
-    _, entry = usec.next()
-    last = entry.attrs['jack_frame']
-    frame = uint64(0)
-    yield (frame, entry)
-    for _, entry in usec:
-        current = entry.attrs['jack_frame']
-        frame += current - last
-        last = current
-        yield (frame, entry)
-
-    seterr(**orig)              # restore numpy error settings
+    def __call__(self, entry):
+        """Return entry.attrs['jack_frame'] - first_entry.attrs['jack_frame']"""
+        offset = entry.attrs['jack_frame']
+        if self.last is not None:
+            self.frame += offset - self.last
+        self.last = offset
+        return self.frame
 
 
 def corrected_sampling_rate(keyed_entries):
@@ -277,8 +388,6 @@ def corrected_sampling_rate(keyed_entries):
 
 def data_offset(entry_time, entry_ds, dset_time=0, dset_ds=None):
     """Return offset of a dataset in seconds, as either a float or a Fraction"""
-    dsype = type(entry_time)
-
     if dset_ds is not None:
         dset_time = Fraction(int(dset_time), int(dset_ds))
 

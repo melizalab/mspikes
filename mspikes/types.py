@@ -14,6 +14,21 @@ def tag_set(*args):
     return frozenset(intern(s) for s in args)
 
 
+class MspikesError(Exception):
+    """Base class for mspikes-specific errors"""
+    pass
+
+
+class DataError(MspikesError):
+    """Raised when data streams are inconsistent or otherwise in error"""
+    pass
+
+
+class GraphError(MspikesError):
+    """Raised for errors creating graphs or propagating data through them"""
+    pass
+
+
 class Node(object):
     """A node in a processing graph."""
 
