@@ -15,7 +15,7 @@ def test_rand_samples():
     from mspikes.modules.random_sources import rand_samples
 
     src = rand_samples()
-    is_sampled = filters._has_tag('samples')
+    is_sampled = filters.all_tags('samples')
 
     class test_module(types.Node):
         """Wrapper class for testing the output of a module"""
