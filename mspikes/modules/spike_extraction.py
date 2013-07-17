@@ -30,6 +30,7 @@ class spike_extract(Node):
         addopt_f("--thresh",
                  help="detection threshold (negative values imply negative-going crossings)",
                  type=float,
+                 required=True,
                  metavar='FLOAT')
         addopt_f("--interval",
                  help="the interval around the peak to extract (default=%(default)s)",

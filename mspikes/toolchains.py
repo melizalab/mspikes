@@ -11,10 +11,10 @@ view_raw = ("Inspect raw sampled data",
             "output = stream_sink(input)")
 
 spk_extract = ("Extract spikes from raw neural recordings",
-                 "input = arf_reader()\n"
-                 "scaled = zscale(input)\n")
-                 # "spikes = spike_detect(hpass)\n"
-                 # "output = file_writer(spikes)")
+               "input = arf_reader()\n"
+               "scaled = zscale(input)\n"
+               "spikes = spike_extract(scaled)\n"
+               "output = arf_writer(spikes)")
 
 
 # Variables:

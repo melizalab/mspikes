@@ -86,6 +86,7 @@ def mspikes(argv=None):
     import argparse
     import logging
     from itertools import chain
+    from mspikes.modules import util
     from mspikes import __version__
 
     p = argparse.ArgumentParser(prog="mspikes",
@@ -150,7 +151,8 @@ def mspikes(argv=None):
         return 0
 
     opts = p.parse_args(args, opts) # parse remaining args
-    print opts
+    log.debug("options: %s", opts)
+
     try:
         root = graph.build_node_graph(toolchain.items(), opts)
     except AttributeError,e:
@@ -165,8 +167,9 @@ def mspikes(argv=None):
 
     # run the graph
     log.info("starting graph")
+    progbar = util.print_progress()
     for chunk in chain(*root):
-        pass
+        progbar.send(chunk)
 
 
 # Variables:

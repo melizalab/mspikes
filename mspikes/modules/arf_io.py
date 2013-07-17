@@ -34,7 +34,7 @@ class _base_arf(object):
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
-            self.file = arf.open_file(filename, "r")
+            self.file = arf.open_file(filename, mode)
 
     @property
     def creator(self):
@@ -456,8 +456,12 @@ def matches_entry(chunk, entry):
     """True if the timestamp and uuid attributes in chunk.data match entry"""
     from numpy import array_equal
     from uuid import UUID
-    return (array_equal(chunk.data.get('timestamp', None), entry.attrs['timestamp']) and
-            arf.get_uuid(entry) == UUID(chunk.data.get('uuid', None)))
+    ret = array_equal(chunk.data.get('timestamp', None), entry.attrs['timestamp'])
+    # COMPAT pre-2.0 doesn't have uuid
+    try:
+        ret &= arf.get_uuid(entry) == UUID(chunk.data['uuid'])
+    except KeyError:
+        pass
 
 
 def dset_tags(dset):
@@ -465,11 +469,13 @@ def dset_tags(dset):
     units = dset.attrs.get("units", None)
     if dset.dtype.names is not None:
         idx = dset.dtype.names.index("start")
-        if idx < 0 or isinstance(units, basestring) or units[idx] not in ("s", "samples", "ms"):
-            raise ArfError("ARF compound dataset '%s' is missing a 'start' field"
-                            " with the right units" % dset.name)
-        return tag_set("events")
-    elif units in ("s", "samples", "ms"):
+        if idx < 0:
+            raise ArfError("ARF compound dataset '%s' is missing a 'start' field" % dset.name)
+        # 2.0 spec requires units for all fields, but older files only have one
+        if not isinstance(units, basestring):
+            units = units[idx]
+
+    if units in ("s", "samples", "ms"):
         return tag_set("events")
     else:
         return tag_set("samples")
