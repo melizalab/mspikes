@@ -13,9 +13,14 @@ import arf
 
 from mspikes import util
 from mspikes import filters
-from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set
+from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set, MspikesError
 
 _log = logging.getLogger(__name__)
+
+
+class ArfError(MspikesError):
+    """Raised for errors reading or writing ARF files"""
+    pass
 
 
 class _base_arf(object):
@@ -29,7 +34,7 @@ class _base_arf(object):
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
-            self.file = h5py.File(filename, "r")
+            self.file = arf.open_file(filename, "r")
 
     @property
     def creator(self):
@@ -224,7 +229,8 @@ class arf_reader(_base_arf, RandomAccessSource):
                               dset.name, dset_ds, self.sampling_rate)
                     continue
 
-                if "units" in dset.attrs and dset.attrs["units"] in ("s", "samples","ms"):
+                if "units" in dset.attrs and (len(dset.attrs["units"]) > 1 or
+                                              dset.attrs["units"] in ("s", "samples", "ms")):
                     tag = "events"
                 else:
                     tag = "samples"
@@ -255,6 +261,12 @@ class arf_writer(_base_arf, Node):
     def options(cls, addopt_f, **defaults):
         addopt_f("filename",
                  help="the file to write (created if it doesn't exist)")
+        addopt_f("--compress",
+                 help="the compression level to use (default=%(default)d)",
+                 default=9,
+                 choices=range(10),
+                 type=int,
+                 metavar='INT')
         addopt_f("--target-entry",
                  help=""" specify a target entry for data. If not supplied, tries to guess based on
                  structure of source file or timestamps in target file. An error
@@ -262,17 +274,18 @@ class arf_writer(_base_arf, Node):
                  metavar='NAME',)
 
     def __init__(self, filename, **options):
-        util.set_option_attributes(self, options, default_entry=None)
+        util.set_option_attributes(self, options, compress=9, default_entry=None)
         _base_arf.__init__(self, filename, "a")
         self._log().info("output file: %s", self.file.filename)
         self._entry = None
+        self._offset_fun = self.get_offset_function()
 
     def send(self, chunk):
-        if "structure" in chunk.tags and self.default_entry is not None:
+        if "structure" in chunk.tags and self.default_entry is None:
             self._set_entry(chunk)
         elif filters.any_tag("samples", "events")(chunk):
             entry = self._get_entry(chunk)
-            dset  = self._get_dset(entry, chunk)
+            self._write_data(entry, chunk)
 
     def _create_entry(self, name, offset, **attributes):
         """Create a new entry in the target file
@@ -287,33 +300,38 @@ class arf_writer(_base_arf, Node):
                      difference in seconds between offset and the previous
                      entry. If no previous entry, the current time is used.
 
+        Additional keyword arguments are set as attributes of the new entry
+
         """
         import datetime
         try:
             timestamp = attributes.pop('timestamp')
         except KeyError:
-            # infer timestamp from earlier entry
+            raise               # FIXME no timestamp
             if self._entry:
-                timestamp = (self._entry.attrs['timestamp'] +
-                             offset - self.keyfun(self._entry))
+                # infer timestamp from previous entry
+                timestamp = (arf.timestamp_to_float(self._entry.attrs['timestamp']) +
+                             (offset - self._offset_fun(self._entry)))
             else:
                 timestamp = datetime.datetime.now()
         self._entry = arf.create_entry(self.file, name, timestamp, **attributes)
-        self._datasets = {}
+        self._datasets = {}     # dict of datasets by id
 
     def _set_entry(self, chunk):
-        """ Set the target _entry based on a structure chunk """
+        """ Set the target entry based on a structure chunk """
         if chunk.id in self.file:
             self._entry = self.file[chunk.id]
-            if arf.get_uuid(self._entry) != chunk.data['uuid']:
-                self._log().warn("an _entry named '%s' exists in the target file, but has the wrong uuid",
-                               chunk.id)
-                # ask the user to decide?
+            if not matches_entry(chunk, self._entry):
+                raise ArfError("an _entry named '%s' exists in the target file,"
+                               "but has the wrong timestamp or uuid", chunk.id)
+                # TODO ask the user to decide
+            self._datasets = {}
         else:
             self._create_entry(chunk.id, chunk.offset, **chunk.data)
 
     def _get_entry(self, chunk):
-        """ Look up target _entry for chunk. For structure chunks, may create target. """
+        """ Look up target entry for data chunk """
+        from itertools import dropwhile
         if self._entry:
             return self._entry
         elif self.default_entry is not None:
@@ -323,7 +341,7 @@ class arf_writer(_base_arf, Node):
         else:
             # fallback is to try to look up by time, finding the closest entry
             # with a time less than the offset. of course, we have to do this
-            # for every chunk
+            # for every chunk. TODO search a numpy array for speed
             if self._entry_table is None:
                 self._entries = self._entry_table(sort=True)
             try:
@@ -332,11 +350,43 @@ class arf_writer(_base_arf, Node):
             except StopIteration:
                 raise LookupError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
 
-    def _get_dset(self, entry, chunk):
-        """ Look up target dataset for chunk in entry. Creates new datasets as needed. """
+    def _write_data(self, entry, chunk):
+        """Look up target dataset for chunk in entry and write data.
+
+        Creates new datasets as needed.
+
+        """
         from mspikes.types import DataError
-        if chunk.offset < self._chunk_times[chunk.id]:
-            raise DataError("data stream for %s is not ordered! (offset=%.3f)", chunk.id, float(chunk.offset))
+        # compute offset relative to entry
+        offset = chunk.offset - arf.timestamp_to_float(entry.attrs['timestamp'])
+        if chunk.ds is not None:
+            offset = util.to_samples(offset, chunk.ds)
+        try:
+            dset = self._datasets[chunk.id]
+            if dset.attrs.get('sampling_rate', None) != chunk.ds:
+                raise DataError("sampling rate of '%s' (offset=%.3f) doesn't match target dataset '%s'" %
+                                (chunk.id, float(chunk.offset), dset.name))
+            if "samples" in chunk.tags:
+                # verify alignment for sampled data
+                if dset.size + dset.attrs.get('offset', 0) != offset:
+                    raise NotImplementedError("need to create a new entry for gaps/overlaps")
+            arf.append_data(dset, chunk.data)
+        except KeyError:
+            # set chunk size and max shape for new dataset
+            if "samples" in chunk.tags:
+                chunks = chunk.data.shape
+                units = ''
+            else:
+                chunks = True   # auto-chunk size
+                units = 's' if chunk.ds is None else 'samples'
+                if chunk.data.dtype.names is not None:
+                    # compound dtype requires units for each field
+                    units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
+            maxshape = (None,) + chunk.data.shape[1:]
+            dset = arf.create_dataset(entry, chunk.id, chunk.data, units=units,
+                                      chunks=chunks, maxshape=maxshape, compression=self.compress,
+                                      sampling_rate=chunk.ds, offset=offset)
+            self._datasets[chunk.id] = dset
 
 
 def true_p(*args):
@@ -404,6 +454,15 @@ def data_offset(entry_time, entry_ds, dset_time=0, dset_ds=None):
             if (val * entry_ds).denominator != 1:
                 raise ValueError("dataset timebase is incompatible with entry timebase")
             return val
+
+
+def matches_entry(chunk, entry):
+    """True if the timestamp and uuid attributes in chunk.data match entry"""
+    from numpy import array_equal
+    from uuid import UUID
+    return (array_equal(chunk.data.get('timestamp', None), entry.attrs['timestamp']) and
+            arf.get_uuid(entry) == UUID(chunk.data.get('uuid', None)))
+
 
 
 # Variables:

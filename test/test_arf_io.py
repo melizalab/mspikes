@@ -9,18 +9,24 @@ from nose.tools import *
 from nose.plugins.skip import SkipTest
 
 import itertools
-import h5py
+import numpy as nx
 import arf
 from fractions import Fraction
 
+from mspikes.modules import arf_io, util
 
-from mspikes.modules import arf_io
 
 class Entry:
-
     def __init__(self, jack_usec, jack_frame):
         self.attrs = dict(jack_usec=jack_usec, jack_frame=jack_frame)
         self.name = "dummy"
+
+
+def random_spikes(n):
+    """ generate a record array with marked point process structure """
+    dt = nx.dtype([('start', nx.int32), ('spike', nx.int16, 60)])
+    return nx.empty(n, dtype=dt)
+
 
 def test_attritemgetter():
 
@@ -30,7 +36,6 @@ def test_attritemgetter():
 
 
 def test_corrected_jack_frame():
-    import numpy as nx
 
     idx = nx.arange(100, dtype=nx.uint32)
     frames = idx * 1000
@@ -49,10 +54,8 @@ def test_corrected_jack_frame():
 
 
 def test_entry_iteration():
-    # this is pretty messy and overly fragile
-
     # create an in-memory hdf5 file
-    fp = h5py.File("tmp", driver="core", backing_store=False)
+    fp = arf.open_file("tmp", driver="core", backing_store=False)
 
     srate = 50000
     dset_times = (0., 100., 200.)
@@ -89,6 +92,64 @@ def test_entry_iteration():
 
     dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, [Fraction(t) for t in expected_times])
+
+
+def compare_entries(name, src, tgt):
+    assert_true(name in tgt)
+    src, tgt = (fp[name] for fp in (src, tgt))
+    src_attrs, tgt_attrs = (dict(entry.attrs) for entry in (src, tgt))
+    assert_true(nx.array_equal(src_attrs.pop('timestamp'), tgt_attrs.pop('timestamp')))
+    assert_dict_equal(src_attrs, tgt_attrs)
+    for dset in src:
+        compare_datasets(dset, src, tgt)
+
+def compare_datasets(name, src, tgt):
+    assert_true(name in tgt)
+    d1, d2 = (entry[name] for entry in (src, tgt))
+    assert_equal(d1.attrs.get('sampling_rate', None), d2.attrs.get('sampling_rate', None))
+    assert_equal(d1.attrs.get('offset', 0), d2.attrs.get('offset', 0))
+    if d1.dtype.names is None:
+        assert_true(nx.array_equal(d1, d2))
+    else:
+        assert_sequence_equal(d1.dtype.names, d2.dtype.names)
+        for name in d1.dtype.names:
+            assert_true(nx.array_equal(d1[name], d2[name]))
+
+
+
+
+def test_file_mirroring():
+    src = arf.open_file("src", driver="core", backing_store=False)
+    tgt = arf.open_file("tgt", driver="core", backing_store=False)
+
+    # populate the source file
+    for i in range(10):
+        e = arf.create_entry(src, "entry_%02d" % i, timestamp=i * 10., sample_count=i * 1000, an_attribute="a_value")
+        arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
+        for j in range(3):
+            arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=1000)
+
+
+    reader = arf_io.arf_reader(src)
+    writer = arf_io.arf_writer(tgt)
+    splitter = util.splitter(nsamples=100)
+
+    with util.chain_modules(splitter, writer) as chain:
+        for chunk in reader:
+            chain.send(chunk)
+
+    for entry in src:
+        compare_entries(entry, src, tgt)
+        assert_sequence_equal(src[entry].keys(), tgt[entry].keys())
+
+    # now copy data to tgt again to test writing to an existing file
+    for chunk in reader:
+        if "structure" not in chunk.tags:
+            chunk = chunk._replace(id=chunk.id + "_new")
+        writer.send(chunk)
+
+    for entry in src:
+        compare_entries(entry, src, tgt)
 
 
 def test_dset_timebase():
