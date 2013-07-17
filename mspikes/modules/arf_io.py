@@ -35,6 +35,8 @@ class _base_arf(object):
             self.file = filename
         else:
             self.file = arf.open_file(filename, mode)
+        self._offsets = []
+        self._entries = []
 
     @property
     def creator(self):
@@ -94,10 +96,13 @@ class _base_arf(object):
         if not presorted and self.creator == 'jill':
             entries.sort(key=attritemgetter('jack_usec'))
 
-        out = [(t,e) for t, e in izip(imap(keyfun, entries), entries) if t is not None]
+        entries = [(t,e) for t, e in izip(imap(keyfun, entries), entries) if t is not None]
         if not presorted:
-            out.sort(key=itemgetter(0))
-        return out
+            entries.sort(key=itemgetter(0))
+
+        if len(entries):
+            self._offsets, self._entries = izip(*entries)
+
 
 class arf_reader(_base_arf, RandomAccessSource):
     """Source data from an ARF/HDF5 file
@@ -177,7 +182,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         else:
             self.entryp = true_p
 
-        self._entries = self._make_entry_table(self.get_offset_function(self.use_timestamp), self.skip_sort)
+        self._make_entry_table(self.get_offset_function(self.use_timestamp), self.skip_sort)
         self.sampling_rate = self._sampling_rate()
         if self.sampling_rate:
             self._log().info("file sampling rate (nominal): %d Hz", self.sampling_rate)
@@ -192,8 +197,9 @@ class arf_reader(_base_arf, RandomAccessSource):
         file.
 
         """
-        time_0 = self._entries[0][0]
-        for entry_time, entry in self._entries:
+        from itertools import izip
+        time_0 = self._offsets[0]
+        for entry_time, entry in izip(self._offsets, self._entries):
             # check for marked errors
             if "jill_error" in entry.attrs:
                 self._log().warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
@@ -202,7 +208,6 @@ class arf_reader(_base_arf, RandomAccessSource):
                     continue
 
             entry_time = util.to_seconds(entry_time - time_0, self.sampling_rate)
-
             if self.start and entry_time < self.start:
                 continue
             if self.stop and entry_time > self.stop:
@@ -220,17 +225,13 @@ class arf_reader(_base_arf, RandomAccessSource):
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
-
                 dset_ds = dset.attrs.get('sampling_rate', None)
-
                 dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
                 if isinstance(dset_time, Fraction) and (dset_time * self.sampling_rate).denominator != 1:
                     self._log().warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
                               dset.name, dset_ds, self.sampling_rate)
                     continue
-
                 tags = dset_tags(dset)
-
                 chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
                 yield chunk
@@ -264,27 +265,43 @@ class arf_writer(_base_arf, Node):
                  type=int,
                  metavar='INT')
         addopt_f("--target-entry",
-                 help=""" specify a target entry for data. If not supplied, tries to guess based on
-                 structure of source file or timestamps in target file. An error
-                 will be thrown if the data can't be placed""",
+                 help="specify a target entry for data, ignoring any structure in the data or target file",
                  metavar='NAME',)
+
+    can_store = staticmethod(filters.any_tag("samples", "events"))
 
     def __init__(self, filename, **options):
         util.set_option_attributes(self, options, compress=9, default_entry=None)
         _base_arf.__init__(self, filename, "a")
         self._log().info("output file: %s", self.file.filename)
-        self._entry = None
+        # build entry table
         self._offset_fun = self.get_offset_function()
+        self._make_entry_table(self._offset_fun)
 
     def send(self, chunk):
+        from numpy import searchsorted
+
         if "structure" in chunk.tags and self.default_entry is None:
-            self._set_entry(chunk)
-        elif filters.any_tag("samples", "events")(chunk):
-            entry = self._get_entry(chunk)
+            if chunk.id in self.file:
+                entry = self.file[chunk.id]
+                if not matches_entry(chunk, entry):
+                    raise ArfError("an entry named '%s' exists in the target file,"
+                                   "but has the wrong timestamp or uuid", chunk.id)
+                    # TODO ask the user to decide
+            else:
+                entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
+                idx = searchsorted(self._offsets, chunk.offset)
+                self._offsets.insert(idx, chunk.offset)
+                self._entries.insert(idx, entry)
+
+        elif self.can_store(chunk):
+            entry = self._find_entry(chunk)
             self._write_data(entry, chunk)
 
     def _create_entry(self, name, offset, **attributes):
         """Create a new entry in the target file
+
+        Stores entry in the object's offset/entry table
 
         name -- the name of the entry
         offset -- the offset of the entry in the data stream
@@ -310,63 +327,52 @@ class arf_writer(_base_arf, Node):
                              (offset - self._offset_fun(self._entry)))
             else:
                 timestamp = datetime.datetime.now()
-        self._entry = arf.create_entry(self.file, name, timestamp, **attributes)
-        self._datasets = {}     # dict of datasets by id
+        return arf.create_entry(self.file, name, timestamp, **attributes)
 
-    def _set_entry(self, chunk):
-        """ Set the target entry based on a structure chunk """
-        if chunk.id in self.file:
-            self._entry = self.file[chunk.id]
-            if not matches_entry(chunk, self._entry):
-                raise ArfError("an _entry named '%s' exists in the target file,"
-                               "but has the wrong timestamp or uuid", chunk.id)
-                # TODO ask the user to decide
-            self._datasets = {}
-        else:
-            self._create_entry(chunk.id, chunk.offset, **chunk.data)
+    def _find_entry(self, chunk):
+        """ Look up target entry for data chunk, creating as needed """
+        from numpy import searchsorted
 
-    def _get_entry(self, chunk):
-        """ Look up target entry for data chunk """
-        from itertools import dropwhile
-        if self._entry:
-            return self._entry
-        elif self.default_entry is not None:
-            # create default target (here to delay until needed)
-            self._create_entry(self.default_entry, type(chunk.offset)(0), creator='mspikes.arf_writer')
-            return self._entry
+        idx = searchsorted(self._offsets, chunk.offset, side='right')
+        if idx == 0 and chunk.offset < self._offsets[0]:
+            if self.default_entry is None:
+                raise ArfError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
+            else:
+                raise NotImplementedError("need to use default_entry to create new entry")
         else:
-            # fallback is to try to look up by time, finding the closest entry
-            # with a time less than the offset. of course, we have to do this
-            # for every chunk. TODO search a numpy array for speed
-            if self._entry_table is None:
-                self._entries = self._entry_table(sort=True)
-            try:
-                etime, entry = dropwhile(lambda x: x[0] < chunk.offset, self._entries).next()
-                return entry
-            except StopIteration:
-                raise LookupError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
+            entry = self._entries[idx - 1]
+
+        return entry
+
 
     def _write_data(self, entry, chunk):
         """Look up target dataset for chunk in entry and write data.
 
-        Creates new datasets as needed.
+        Creates new datasets as needed, and may create a new entry if there is a gap.
 
         """
         from mspikes.types import DataError
         # compute offset relative to entry
-        offset = chunk.offset - arf.timestamp_to_float(entry.attrs['timestamp'])
+        dset_offset = chunk.offset - arf.timestamp_to_float(entry.attrs['timestamp'])
         if chunk.ds is not None:
-            offset = util.to_samples(offset, chunk.ds)
+            dset_offset = util.to_samples(dset_offset, chunk.ds)
         try:
-            dset = self._datasets[chunk.id]
+            dset = entry[chunk.id]
             if dset.attrs.get('sampling_rate', None) != chunk.ds:
-                raise DataError("sampling rate of '%s' (offset=%.3f) doesn't match target dataset '%s'" %
+                raise DataError("sampling rate of chunk (id='%s', offset=%.3f) doesn't match target dataset '%s'" %
                                 (chunk.id, float(chunk.offset), dset.name))
+                # TODO allow user intervention
             if "samples" in chunk.tags:
                 # verify alignment for sampled data
-                if dset.size + dset.attrs.get('offset', 0) != offset:
-                    raise NotImplementedError("need to create a new entry for gaps/overlaps")
+                gap = dset_offset - (dset.attrs.get('offset', 0) + dset.size)
+                if gap < 0:
+                    raise DataError("chunk (id='%s', offset=%.3f) overlaps with dataset '%s'" %
+                                    (chunk.id, float(chunk.offset), dset.name))
+                    # TODO allow user intervention?
+                elif gap > 0:
+                    raise NotImplementedError("need to create a new entry for gaps")
             arf.append_data(dset, chunk.data)
+
         except KeyError:
             # set chunk size and max shape for new dataset
             if "samples" in chunk.tags:
@@ -379,10 +385,9 @@ class arf_writer(_base_arf, Node):
                     # compound dtype requires units for each field
                     units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
             maxshape = (None,) + chunk.data.shape[1:]
-            dset = arf.create_dataset(entry, chunk.id, chunk.data, units=units,
-                                      chunks=chunks, maxshape=maxshape, compression=self.compress,
-                                      sampling_rate=chunk.ds, offset=offset)
-            self._datasets[chunk.id] = dset
+            arf.create_dataset(entry, chunk.id, chunk.data, units=units,
+                               chunks=chunks, maxshape=maxshape, compression=self.compress,
+                               sampling_rate=chunk.ds, offset=dset_offset)
 
 
 def true_p(*args):
@@ -457,11 +462,12 @@ def matches_entry(chunk, entry):
     from numpy import array_equal
     from uuid import UUID
     ret = array_equal(chunk.data.get('timestamp', None), entry.attrs['timestamp'])
-    # COMPAT pre-2.0 doesn't have uuid
+    # Compat pre-2.0 doesn't have uuid
     try:
         ret &= arf.get_uuid(entry) == UUID(chunk.data['uuid'])
     except KeyError:
         pass
+    return ret
 
 
 def dset_tags(dset):
