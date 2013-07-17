@@ -229,13 +229,9 @@ class arf_reader(_base_arf, RandomAccessSource):
                               dset.name, dset_ds, self.sampling_rate)
                     continue
 
-                if "units" in dset.attrs and (len(dset.attrs["units"]) > 1 or
-                                              dset.attrs["units"] in ("s", "samples", "ms")):
-                    tag = "events"
-                else:
-                    tag = "samples"
+                tags = dset_tags(dset)
 
-                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tag_set(tag))
+                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
                 yield chunk
 
@@ -463,6 +459,20 @@ def matches_entry(chunk, entry):
     return (array_equal(chunk.data.get('timestamp', None), entry.attrs['timestamp']) and
             arf.get_uuid(entry) == UUID(chunk.data.get('uuid', None)))
 
+
+def dset_tags(dset):
+    """Infer chunk tags based on dataset properties"""
+    units = dset.attrs.get("units", None)
+    if dset.dtype.names is not None:
+        idx = dset.dtype.names.index("start")
+        if idx < 0 or isinstance(units, basestring) or units[idx] not in ("s", "samples", "ms"):
+            raise ArfError("ARF compound dataset '%s' is missing a 'start' field"
+                            " with the right units" % dset.name)
+        return tag_set("events")
+    elif units in ("s", "samples", "ms"):
+        return tag_set("events")
+    else:
+        return tag_set("samples")
 
 
 # Variables:

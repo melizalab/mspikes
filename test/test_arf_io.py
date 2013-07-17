@@ -103,6 +103,7 @@ def compare_entries(name, src, tgt):
     for dset in src:
         compare_datasets(dset, src, tgt)
 
+
 def compare_datasets(name, src, tgt):
     assert_true(name in tgt)
     d1, d2 = (entry[name] for entry in (src, tgt))
@@ -116,8 +117,6 @@ def compare_datasets(name, src, tgt):
             assert_true(nx.array_equal(d1[name], d2[name]))
 
 
-
-
 def test_file_mirroring():
     src = arf.open_file("src", driver="core", backing_store=False)
     tgt = arf.open_file("tgt", driver="core", backing_store=False)
@@ -128,7 +127,6 @@ def test_file_mirroring():
         arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
         for j in range(3):
             arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=1000)
-
 
     reader = arf_io.arf_reader(src)
     writer = arf_io.arf_writer(tgt)
@@ -150,6 +148,31 @@ def test_file_mirroring():
 
     for entry in src:
         compare_entries(entry, src, tgt)
+    src.close()
+    tgt.close()
+
+
+def test_arf_writer_gap():
+    src = arf.open_file("src", driver="core", backing_store=False)
+    tgt = arf.open_file("tgt", driver="core", backing_store=False)
+
+    N = 1000
+    e = arf.create_entry(src, "entry", timestamp=0, sample_count=0)
+    arf.create_dataset(e, "pcm", nx.random.randn(N), units="mV", sampling_rate=N)
+
+    reader = arf_io.arf_reader(src)
+    writer = arf_io.arf_writer(tgt)
+
+    for chunk in reader:
+        # split data and introduce a chunk
+        if "samples" in chunk.tags:
+            writer.send(chunk._replace(data=chunk.data[:N/2]))
+            writer.send(chunk._replace(offset=2., data=chunk.data[N/2:]))
+        else:
+            writer.send(chunk)
+
+    src.close()
+    tgt.close()
 
 
 def test_dset_timebase():
