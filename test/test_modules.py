@@ -54,12 +54,16 @@ def test_splitter():
     from numpy import random, concatenate, array_equal
     from mspikes.modules import util
 
-    data = types.DataBlock(id='random', offset=0, ds=1, data=random.randn(10000), tags=types.tag_set("samples"))
-
-    splitter = util.splitter()
+    N = 100
+    data = types.DataBlock(id='random', offset=0, ds=1, data=random.randn(N * 10), tags=types.tag_set("samples"))
+    splitter = util.splitter(nsamples=100)
 
     x = []
-    with util.chain_modules(splitter, util.visitor(lambda chunk: x.append(chunk.data))) as chain:
+    def fun(chunk):
+        assert_true(chunk.data.size == N)
+        x.append(chunk.data)
+
+    with util.chain_modules(splitter, util.visitor(fun)) as chain:
         chain.send(data)
 
     assert_true(array_equal(concatenate(x), data.data))

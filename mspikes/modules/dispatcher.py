@@ -5,9 +5,8 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jul 11 17:13:34 2013
 """
-import operator
 
-def parallel(keyfun):
+def parallel(keyfun, *tags):
     """Decorate a Node to operate in parallel over chunks with different
     return values of keyfun(chunk)
 
@@ -21,11 +20,25 @@ def parallel(keyfun):
     classes, because this will resolve to the class itself. Instead, directly
     access the method of the base class.
 
+    keyfun - keyfun(chunk) should return key used to split data. can also be the
+             name of an attribute
+
+    tags - if not None, only chunks matching this list will be processed by
+           workers; other chunks will be passed to downstream targets without
+           processing
+
     """
     from collections import defaultdict
-    from functools import partial
+    from mspikes.filters import any_tag
+    import operator
+
+    if isinstance(keyfun, basestring):
+        keyfun = operator.attrgetter(keyfun)
+    tagfun = any_tag(*tags)
+
 
     def decorate(cls):
+        from mspikes.types import Node
 
         # replacement methods
         def __init__(self, *args, **kwargs):
@@ -42,8 +55,11 @@ def parallel(keyfun):
             self.__workers__ = defaultdict(init)
 
         def send(self, chunk):
-            key = keyfun(chunk)
-            self.__workers__[key].send(chunk)
+            if tagfun(chunk):
+                key = keyfun(chunk)
+                self.__workers__[key].send(chunk)
+            else:
+                Node.send(self, chunk)
 
         def close(self):
             # send close to all workers
@@ -62,8 +78,6 @@ def parallel(keyfun):
                                        close=close,
                                        throw=throw))
     return decorate
-
-parallel_id = parallel(operator.attrgetter('id'))
 
 # Variables:
 # End:

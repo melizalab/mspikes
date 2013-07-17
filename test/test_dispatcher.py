@@ -28,7 +28,7 @@ def test_parallel_wrapper():
 
 
 def test_parallel_dispatch():
-    from mspikes.types import Node, DataBlock
+    from mspikes.types import Node, DataBlock, tag_set
     from mspikes.modules.util import visitor, chain_modules
 
     counts = []
@@ -36,7 +36,7 @@ def test_parallel_dispatch():
     closed = [0]
 
     # this class counts the number of chunks it gets
-    @dispatcher.parallel(attrgetter('id'))
+    @dispatcher.parallel(attrgetter('id'), "samples")
     class counter(Node):
         def __init__(self, count):
             self.count = count
@@ -52,12 +52,14 @@ def test_parallel_dispatch():
     node = counter(1)
     node.add_target(visitor(chunks.append))
 
-    node.send(DataBlock(id='id_1', offset=0, ds=1, data=(), tags=()))
-    node.send(DataBlock(id='id_2', offset=0, ds=1, data=(), tags=()))
-    node.send(DataBlock(id='id_2', offset=0, ds=1, data=(), tags=()))
+    node.send(DataBlock(id='id_1', offset=0, ds=1, data=(), tags=tag_set("samples")))
+    node.send(DataBlock(id='id_2', offset=0, ds=1, data=(), tags=tag_set("samples")))
+    node.send(DataBlock(id='id_2', offset=0, ds=1, data=(), tags=tag_set("samples")))
+    # this will be skipped
+    node.send(DataBlock(id='id_2', offset=0, ds=1, data=(), tags=tag_set("structure")))
     node.close()
 
-    assert_equal(len(chunks), 3)
+    assert_equal(len(chunks), 4)
     assert_sequence_equal(counts, (2, 2, 3))
     assert_equal(closed[0], 2)
 

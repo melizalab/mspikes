@@ -152,7 +152,7 @@ class _smoother(Node):
             self.datafun(chunk)
 
 
-@dispatcher.parallel_id
+@dispatcher.parallel('id', "samples")
 class zscale(_smoother):
     """Center and rescale time series, optionally excluding noisy intervals
 

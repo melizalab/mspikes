@@ -9,6 +9,7 @@ Created Tue Jul  9 17:00:11 2013
 import logging
 import contextlib
 from mspikes.types import Node, tag_set
+from mspikes.modules import dispatcher
 
 def coroutine(func):
     from functools import wraps
@@ -45,11 +46,11 @@ def print_progress():
         while True:
             chunk = (yield)
             if chunk.offset > last_offset or chunk.id != last_id:
-                sys.stdout.write("\r progress: [ t:{: >15.3f}s id:{: >15s} ]".format(float(chunk.offset),
+                sys.stderr.write("\r progress: [ t:{: >15.3f}s id:{: >15s} ]".format(float(chunk.offset),
                                                                                        chunk.id))
-                sys.stdout.flush()
+                sys.stderr.flush()
     except GeneratorExit:
-        sys.stdout.write("\n")
+        sys.stderr.write("\n")
 
 
 @contextlib.contextmanager
@@ -72,6 +73,7 @@ def chain_modules(*modules):
         src._targets.remove((tgt, None))
 
 
+@dispatcher.parallel("id","events","samples")
 class splitter(Node):
     """Split chunks into smaller intervals
 
@@ -101,7 +103,7 @@ class splitter(Node):
 
     def __init__(self, **options):
         from mspikes import util
-        util.set_option_attributes(self, options, start=0., stop=None)
+        util.set_option_attributes(self, options, nsamples=4096, start=0., stop=None)
         self.last_time = 0
 
     def send(self, chunk):
@@ -125,7 +127,7 @@ class splitter(Node):
             # check for overlap (within channel).
             if chunk.offset < self.last_time:
                 self._log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
-                          chunk.id, chunk.offset, self.last_time)
+                               chunk.id, chunk.offset, self.last_time)
 
             # restrict by time
             nframes = chunk.data.shape[0]
@@ -138,9 +140,6 @@ class splitter(Node):
 
             self.last_time = to_seconds(nframes, chunk.ds, chunk.offset)
 
-        else:
-            # pass on structure and other non-data chunks
-            Node.send(self, chunk)
 
 
 def array_reader(array, ds, chunk_size, id='', tags=tag_set("samples")):

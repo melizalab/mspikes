@@ -7,6 +7,7 @@ Created Fri Jul 12 14:05:16 2013
 """
 
 import logging
+import operator
 import numpy as nx
 
 from mspikes import util
@@ -16,6 +17,7 @@ from mspikes.types import Node, tag_set
 _log = logging.getLogger(__name__)
 
 
+@dispatcher.parallel('id', "samples")
 class spike_extract(Node):
     """Detect spike times in time series and extract waveforms
 
@@ -51,11 +53,6 @@ class spike_extract(Node):
     def send(self, chunk):
         from mspikes.util import repeatedly
         from itertools import chain
-
-        # pass non-time series data
-        if not "samples" in chunk.tags:
-            Node.send(self, chunk)
-            return
 
         n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
 
