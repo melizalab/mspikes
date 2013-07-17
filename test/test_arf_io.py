@@ -21,6 +21,15 @@ class Entry:
         self.attrs = dict(jack_usec=jack_usec, jack_frame=jack_frame)
         self.name = "dummy"
 
+class ScratchFile(object):
+    def __init__(self):
+        self.idx = 0
+
+    def __call__(self, name, *args, **kwargs):
+        self.idx += 1
+        return arf.open_file("%s_%d" % (name, self.idx), *args, **kwargs)
+
+get_scratch_file = ScratchFile()
 
 def random_spikes(n):
     """ generate a record array with marked point process structure """
@@ -55,7 +64,7 @@ def test_corrected_jack_frame():
 
 def test_entry_iteration():
     # create an in-memory hdf5 file
-    fp = arf.open_file("tmp", driver="core", backing_store=False)
+    fp = get_scratch_file("tmp", driver="core", backing_store=False)
 
     srate = 50000
     dset_times = (0., 100., 200.)
@@ -84,12 +93,7 @@ def test_entry_iteration():
     fp.attrs['program'] = 'arfxplog'
     fp.attrs['sampling_rate'] = srate
 
-    # add some incompatible datasets - should be skipped
-    d = arf.create_dataset(e, "dset_bad", (), offset=10, sampling_rate=srate/3)
-
     r = arf_io.arf_reader(fp)
-    assert_equal(r.sampling_rate, srate)
-
     dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, [Fraction(t) for t in expected_times])
 
@@ -117,16 +121,20 @@ def compare_datasets(name, src, tgt):
             assert_true(nx.array_equal(d1[name], d2[name]))
 
 
-def test_file_mirroring():
-    src = arf.open_file("src", driver="core", backing_store=False)
-    tgt = arf.open_file("tgt", driver="core", backing_store=False)
+def mirror_file(sampled):
+    src = get_scratch_file("src", driver="core", backing_store=False)
+    tgt = get_scratch_file("tgt", driver="core", backing_store=False)
+    srate = 1000
 
     # populate the source file
     for i in range(10):
-        e = arf.create_entry(src, "entry_%02d" % i, timestamp=i * 10., sample_count=i * 1000, an_attribute="a_value")
+        t = i * 2.
+        e = arf.create_entry(src, "entry_%02d" % i, timestamp=t, sample_count=int(t * srate), an_attribute="a_value")
         arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
         for j in range(3):
-            arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=1000)
+            arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=srate)
+    if sampled:
+        arf.set_attributes(src, program='arfxplog', sampling_rate=srate)
 
     reader = arf_io.arf_reader(src)
     writer = arf_io.arf_writer(tgt)
@@ -148,13 +156,17 @@ def test_file_mirroring():
 
     for entry in src:
         compare_entries(entry, src, tgt)
-    src.close()
-    tgt.close()
 
 
+def test_file_mirroring():
+
+    for sampled in (False, True):
+        yield mirror_file, sampled
+
+@SkipTest
 def test_arf_writer_gap():
-    src = arf.open_file("src", driver="core", backing_store=False)
-    tgt = arf.open_file("tgt", driver="core", backing_store=False)
+    src = get_scratch_file("src", driver="core", backing_store=False)
+    tgt = get_scratch_file("tgt", driver="core", backing_store=False)
 
     N = 1000
     e = arf.create_entry(src, "entry", timestamp=0, sample_count=0)
@@ -170,9 +182,6 @@ def test_arf_writer_gap():
             writer.send(chunk._replace(offset=2., data=chunk.data[N/2:]))
         else:
             writer.send(chunk)
-
-    src.close()
-    tgt.close()
 
 
 def test_dset_timebase():

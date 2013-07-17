@@ -26,17 +26,12 @@ class ArfError(MspikesError):
 class _base_arf(object):
     """Base class for arf reader and writer"""
 
-    @classmethod
-    def _log(cls):
-        return logging.getLogger("%s.%s" % (__name__, cls.__name__))
-
     def __init__(self, filename, mode='r'):
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
             self.file = arf.open_file(filename, mode)
-        self._offsets = []
-        self._entries = []
+        self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
 
     @property
     def creator(self):
@@ -49,59 +44,38 @@ class _base_arf(object):
             return None
 
     def get_offset_function(self, use_timestamp=False):
-        """Return a function that extracts offsets from entries
+        """Return a function that extracts offsets (in seconds) from entries
+
+        Tries to use the most precise clock available
 
         use_timestamp -- force use of timestamp attribute even if sample count
                          attributes are present
 
         """
-        from arf import timestamp_to_float
         keyname = "timestamp"
-        fun = util.compose(timestamp_to_float, attritemgetter(keyname))
+        sampling_rate = None
+        fun = lambda entry: arf.timestamp_to_float(entry.attrs[keyname])
 
         if self.creator is None:
-            self._log().info("couldn't determine ARF file source, using default sort method")
+            self._log.info("couldn't determine ARF file source")
         elif use_timestamp:
             pass
         elif self.creator == 'arfxplog':
             keyname = "sample_count"
-            fun = attritemgetter(keyname)
+            sampling_rate = self.file.attrs['sampling_rate']
+            fun = lambda entry: util.to_seconds(entry.attrs[keyname], sampling_rate)
         elif self.creator == 'jill':
             keyname = "jack_frame"
-            fun = corrected_jack_frame()
-        self._log().info("sorting entries by '%s'", keyname)
+            def srate_visitor(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    # if None is returned the iteration will continue
+                    return obj.attrs.get("sampling_rate", None)
+            sampling_rate = self.file.visititems(srate_visitor)
+            fun = corrected_jack_frame(sampling_rate)
+        self._log.info("using '%s' attribute for time", keyname)
+        if sampling_rate:
+            self._log.info("file sampling rate (nominal): %d Hz", sampling_rate)
         return fun
-
-    def _make_entry_table(self, keyfun, presorted=True):
-        """Generate a table of entries and start times.
-
-        sort -- sort the entries based on key. can be set to False if it's
-                already known that the entries were created in order
-
-        """
-        from arf import keys_by_creation
-        from operator import itemgetter
-        from itertools import izip, imap
-
-        try:
-            # try to get entries sorted by creation time; this may fail if the
-            # creation order wasn't tracked
-            entries = [self.file[name] for name in keys_by_creation(self.file)
-                       if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group]
-        except RuntimeError:
-            presorted = False
-            entries = [self.file[name] for name in self.file
-                       if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group]
-
-        if not presorted and self.creator == 'jill':
-            entries.sort(key=attritemgetter('jack_usec'))
-
-        entries = [(t,e) for t, e in izip(imap(keyfun, entries), entries) if t is not None]
-        if not presorted:
-            entries.sort(key=itemgetter(0))
-
-        if len(entries):
-            self._offsets, self._entries = izip(*entries)
 
 
 class arf_reader(_base_arf, RandomAccessSource):
@@ -160,7 +134,7 @@ class arf_reader(_base_arf, RandomAccessSource):
                                    skip_sort=False)
 
         _base_arf.__init__(self, filename, "r")
-        self._log().info("input file: %s", self.file.filename)
+        self._log.info("input file: %s", self.file.filename)
 
         channels = options.get("channels", None)
         if channels:
@@ -182,10 +156,6 @@ class arf_reader(_base_arf, RandomAccessSource):
         else:
             self.entryp = true_p
 
-        self._make_entry_table(self.get_offset_function(self.use_timestamp), self.skip_sort)
-        self.sampling_rate = self._sampling_rate()
-        if self.sampling_rate:
-            self._log().info("file sampling rate (nominal): %d Hz", self.sampling_rate)
 
     def __iter__(self):
         """Iterate through the datasets.
@@ -197,17 +167,33 @@ class arf_reader(_base_arf, RandomAccessSource):
         file.
 
         """
-        from itertools import izip
-        time_0 = self._offsets[0]
-        for entry_time, entry in izip(self._offsets, self._entries):
+        to_seconds = self.get_offset_function(self.use_timestamp)
+        if self.skip_sort:
+            it = arf.keys_by_creation(self.file)
+        else:
+            it = sorted(self.file.keys(), key=lambda x: arf.timestamp_to_float(self.file[x].attrs.get('timestamp', 0)))
+
+        entries = (self.file[name] for name in it
+                   if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group)
+
+        time_0 = None
+        for entry in entries:
             # check for marked errors
+            try:
+                entry_time = to_seconds(entry)
+                if time_0 is None:
+                    time_0 = entry_time
+                entry_time -= time_0
+            except LookupError:
+                self._log.info("'%s' skipped (no time attribute)", entry.name)
+                continue
+
             if "jill_error" in entry.attrs:
-                self._log().warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
+                self._log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
                           " (skipping)" if not self.use_xruns else "")
                 if not self.use_xruns:
                     continue
 
-            entry_time = util.to_seconds(entry_time - time_0, self.sampling_rate)
             if self.start and entry_time < self.start:
                 continue
             if self.stop and entry_time > self.stop:
@@ -216,7 +202,7 @@ class arf_reader(_base_arf, RandomAccessSource):
             # emit structure blocks to indicate entry onsets
             chunk = DataBlock(id=entry.name,
                               offset=entry_time,
-                              ds=self.sampling_rate,
+                              ds=None,
                               data=entry.attrs,
                               tags=tag_set("structure"))
             Node.send(self, chunk)
@@ -227,28 +213,10 @@ class arf_reader(_base_arf, RandomAccessSource):
                     continue
                 dset_ds = dset.attrs.get('sampling_rate', None)
                 dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
-                if isinstance(dset_time, Fraction) and (dset_time * self.sampling_rate).denominator != 1:
-                    self._log().warn("'%s' sampling rate (%s) incompatible with file sampling rate (%d)",
-                              dset.name, dset_ds, self.sampling_rate)
-                    continue
                 tags = dset_tags(dset)
                 chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
                 yield chunk
-
-    def _sampling_rate(self):
-        """Infer sampling rate from file"""
-        if self.use_timestamp or self.creator is None:
-            return None
-        elif self.creator == 'arfxplog':
-            return self.file.attrs['sampling_rate']
-        elif self.creator == 'jill':
-            # returns sampling rate of first dataset
-            def srate_visitor(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    # if None is returned the iteration will continue
-                    return obj.attrs.get("sampling_rate", None)
-            return self.file.visititems(srate_visitor)
 
 
 class arf_writer(_base_arf, Node):
@@ -273,10 +241,10 @@ class arf_writer(_base_arf, Node):
     def __init__(self, filename, **options):
         util.set_option_attributes(self, options, compress=9, default_entry=None)
         _base_arf.__init__(self, filename, "a")
-        self._log().info("output file: %s", self.file.filename)
+        self._log.info("output file: %s", self.file.filename)
         # build entry table
         self._offset_fun = self.get_offset_function()
-        self._make_entry_table(self._offset_fun)
+        self._make_entry_table()
 
     def send(self, chunk):
         from numpy import searchsorted
@@ -288,15 +256,36 @@ class arf_writer(_base_arf, Node):
                     raise ArfError("an entry named '%s' exists in the target file,"
                                    "but has the wrong timestamp or uuid", chunk.id)
                     # TODO ask the user to decide
+                self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
+                                  chunk.id, chunk.offset, entry.name, chunk.offset)
             else:
                 entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
-                idx = searchsorted(self._offsets, chunk.offset)
-                self._offsets.insert(idx, chunk.offset)
+                entry_time = self._offset_fun(entry)
+                idx = searchsorted(self._times, entry_time)
+                self._times.insert(idx, entry_time)
                 self._entries.insert(idx, entry)
 
         elif self.can_store(chunk):
             entry = self._find_entry(chunk)
             self._write_data(entry, chunk)
+
+    def _make_entry_table(self):
+        """Generate a table of entries and start times."""
+        from operator import itemgetter
+        from itertools import izip, imap
+
+        names = sorted(self.file.keys(), key=lambda x: arf.timestamp_to_float(self.file[x].attrs.get('timestamp', 0)))
+
+        self._times = tt = []
+        self._entries = ee = []
+        for n in names:
+            e = self.file[e]
+            try:
+                t = self._offset_fun(e)
+                tt.append(t)
+                ee.append(e)
+            except LookupError:
+                pass
 
     def _create_entry(self, name, offset, **attributes):
         """Create a new entry in the target file
@@ -327,21 +316,24 @@ class arf_writer(_base_arf, Node):
                              (offset - self._offset_fun(self._entry)))
             else:
                 timestamp = datetime.datetime.now()
+        self._log.info("created new entry '%s' (offset=%.2fs)", name, float(offset))
         return arf.create_entry(self.file, name, timestamp, **attributes)
 
     def _find_entry(self, chunk):
         """ Look up target entry for data chunk, creating as needed """
         from numpy import searchsorted
-
-        idx = searchsorted(self._offsets, chunk.offset, side='right')
-        if idx == 0 and chunk.offset < self._offsets[0]:
+        idx = searchsorted(self._times, chunk.offset, side='right')
+        if idx == 0:
             if self.default_entry is None:
                 raise ArfError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
             else:
                 raise NotImplementedError("need to use default_entry to create new entry")
         else:
             entry = self._entries[idx - 1]
+            entry_time = self._times[idx - 1]
 
+        self._log.debug("chunk (id='%s', offset=%.2fs) matches  '%s' (offset=%.2fs)",
+                        chunk.id, float(chunk.offset), entry.name, entry_time)
         return entry
 
 
@@ -403,7 +395,6 @@ def attritemgetter(name):
             _log.info("'%s' skipped (missing '%s' attribute)", arg.name, name)
     return fun
 
-
 class corrected_jack_frame(object):
     """Extracts frame counts from entries using jack_frame attribute.
 
@@ -430,10 +421,9 @@ class corrected_jack_frame(object):
 
 def corrected_sampling_rate(keyed_entries):
     """Calculate the sampling rate relative to the system clock"""
-    from arf import timestamp_to_float
     kf = attritemgetter('timestamp')
     entries = (keyed_entries[0], keyed_entries[-1])
-    (s1, t1), (s2, t2) = ((s,timestamp_to_float(kf(e))) for s, e in entries)
+    (s1, t1), (s2, t2) = ((s, arf.timestamp_to_float(kf(e))) for s, e in entries)
     return (s2 - s1) / (t2 - t1)
 
 
