@@ -429,15 +429,6 @@ def true_p(*args):
     return True
 
 
-def attritemgetter(name):
-    """Return a function that extracts arg.attr['name']"""
-    def fun(arg):
-        try:
-            return arg.attrs[name]
-        except KeyError:
-            _log.info("'%s' skipped (missing '%s' attribute)", arg.name, name)
-    return fun
-
 class corrected_jack_frame(object):
     """Extracts frame counts from entries using jack_frame attribute.
 
@@ -460,34 +451,6 @@ class corrected_jack_frame(object):
             self.frame += offset - self.last
         self.last = offset
         return self.frame
-
-
-def corrected_sampling_rate(keyed_entries):
-    """Calculate the sampling rate relative to the system clock"""
-    kf = attritemgetter('timestamp')
-    entries = (keyed_entries[0], keyed_entries[-1])
-    (s1, t1), (s2, t2) = ((s, arf.timestamp_to_float(kf(e))) for s, e in entries)
-    return (s2 - s1) / (t2 - t1)
-
-
-def data_offset(entry_time, entry_ds, dset_time=0, dset_ds=None):
-    """Return offset of a dataset in seconds, as either a float or a Fraction"""
-    if dset_ds is not None:
-        dset_time = Fraction(int(dset_time), int(dset_ds))
-
-    if entry_ds is None:
-        # converts to float
-        return entry_time + dset_time
-    else:
-        entry_time = Fraction(long(entry_time), long(entry_ds))
-        if dset_ds is None:
-            # find nearest sample
-            return entry_time + Fraction(int(round(dset_time * entry_ds)), int(entry_ds))
-        else:
-            val = entry_time + dset_time
-            if (val * entry_ds).denominator != 1:
-                raise ValueError("dataset timebase is incompatible with entry timebase")
-            return val
 
 
 def matches_entry(chunk, entry):

@@ -37,13 +37,6 @@ def random_spikes(n):
     return nx.empty(n, dtype=dt)
 
 
-def test_attritemgetter():
-
-    obj = Entry(0,10)
-    assert_equal(arf_io.attritemgetter('jack_usec')(obj), 0)
-    assert_is_none(arf_io.attritemgetter('name2')(obj))
-
-
 def test_corrected_jack_frame():
 
     idx = nx.arange(100, dtype=nx.uint32)
@@ -264,24 +257,6 @@ def test_writeback():
             writer.send(chunk._replace(offset=0.1, data=chunk.data[:]))
         else:
             writer.send(chunk)
-
-
-def test_dset_timebase():
-
-    def f(msg, expected, *args):
-        assert_equal(arf_io.data_offset(*args), expected, msg)
-
-    f("real entry timebase", 100., 100., None)
-    f("sampled entry", Fraction(1000,10), 1000, 10)
-    f("real entry timebase, real dset", 110., 100., None, 10., None)
-    f("real entry, sampled dset", 110., 100., None, 100, 10)
-    f("sampled entry, real dset", Fraction(1100,10), 1000, 10, 10., None)
-    f("sampled entry, sampled dset (same rate)", Fraction(1100, 10), 1000, 10, 100, 10)
-    f("sampled entry, sampled dset (convertable rates)", Fraction(1100, 10), 1000, 10, 1000, 100)
-
-    # sampled entry, sampled dset (inconvertible rates)
-    with assert_raises(ValueError):
-        arf_io.data_offset(1000, 10, 1000, 66)
 
 
 # Variables:
