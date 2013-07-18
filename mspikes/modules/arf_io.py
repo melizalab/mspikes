@@ -250,12 +250,12 @@ class arf_writer(_base_arf, Node):
         if "structure" in chunk.tags and self.auto_entry is None:
             if chunk.id in self.file:
                 entry = self.file[chunk.id]
+                self._log.debug("structure chunk (id='%s', offset=%.2fs) matches existing entry '%s'",
+                                chunk.id, chunk.offset, entry.name)
                 if not matches_entry(chunk, entry):
                     raise ArfError("an entry named '%s' exists in the target file,"
                                    "but has the wrong timestamp or uuid", chunk.id)
                     # TODO ask the user to decide
-                self._log.debug("structure chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
-                                chunk.id, chunk.offset, entry.name, chunk.offset)
             else:
                 entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
 
@@ -268,10 +268,13 @@ class arf_writer(_base_arf, Node):
 
         self._offsets = []
         self._entries = []
+        t0 = None
         for entry in entries:
             try:
                 t = self._offset_fun(entry)
-                self._offsets.append(t)
+                if t0 is None:
+                    t0 = t
+                self._offsets.append(t - t0)
                 self._entries.append(entry)
             except LookupError:
                 pass
@@ -297,20 +300,23 @@ class arf_writer(_base_arf, Node):
         from numpy import searchsorted
         import datetime
 
-        # find the most recent entry
+        # match the entry against the entries in the file using the offset
         n_entries = len(self._offsets)
         idx = searchsorted(self._offsets, offset, side='right')
         try:
             timestamp = attributes.pop('timestamp')
         except KeyError:
             if n_entries == 0:
+                # first entry in the file gets timestamp of now
                 timestamp = datetime.datetime.now()
             else:
+                # calculate timestamp from offset with existing entry
                 other = self._entries[idx] if idx < n_entries else self._entries[n_entries - 1]
                 timestamp = (arf.timestamp_to_float(other.attrs['timestamp']) +
                              offset - self._offset_fun(other))
         self._log.info("created new entry '%s' (offset=%.2fs)", name, float(offset))
         entry = arf.create_entry(self.file, name, timestamp, **attributes)
+        # insert new entry in the table of entries
         self._offsets.insert(idx, offset)
         self._entries.insert(idx, entry)
         return entry
@@ -319,23 +325,26 @@ class arf_writer(_base_arf, Node):
         """Create the next entry in a series."""
         import re
 
+        idx = 0
         if self.auto_entry is not None:
+            # automatically generating numbered entries
             if entry is None:
                 idx = 0
             else:
-                idx = int(re.match(r"/%s_(\d+)" % self.auto_entry, entry.name).group(0))
+                idx = int(re.match(r"/%s_(\d+)" % self.auto_entry, entry.name).group(1))
             new_name = "%s_%05d" % (self.auto_entry, idx + 1)
             attrs = dict()
         else:
-            # this means we're generating an entry from the current one
+            # adding an additional entry because of a gap in a sampled data
+            # stream
             try:
                 base = entry.attrs['mspikes_base_entry']
                 idx = int(re.match(r"%s_(\d+)" % base, entry.name).group(1))
             except KeyError:
                 base = entry.name
                 idx = 0
-            new_name = "%s_%03d" % (base, idx + 1)
             attrs = dict(mspikes_base_entry=entry.name)
+            new_name = "%s_%03d" % (base, idx + 1)
         return self._create_entry(new_name, offset, **attrs)
 
     def _write_data(self, chunk):
@@ -346,8 +355,10 @@ class arf_writer(_base_arf, Node):
         """
         from mspikes.types import DataError
         from numpy import searchsorted
-        # TODO check most recently used entry first to avoid searching? use a
-        # dict for exact time lookups?
+
+        # Look up target entry. TODO more efficient algorithm? check most
+        # recently used entry first to avoid searching? use a dict for exact
+        # time lookups?
         idx = searchsorted(self._offsets, chunk.offset, side='right')
         if idx == 0:
             if self.auto_entry is None:
@@ -357,36 +368,45 @@ class arf_writer(_base_arf, Node):
         else:
             entry = self._entries[idx - 1]
             entry_time = self._offsets[idx - 1]
-
-        self._log.debug("chunk (id='%s', offset=%.2fs) matches  '%s' (offset=%.2fs)",
+        self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
                         chunk.id, float(chunk.offset), entry.name, entry_time)
 
-        dset_offset = chunk.offset - entry_time
+        # either append data to an existing dataset or create a new dataset
+        data_offset = chunk.offset - entry_time
         if chunk.ds is not None:
-            dset_offset = util.to_samples(dset_offset, chunk.ds)
+            data_offset = util.to_samples(data_offset, chunk.ds)
         try:
             dset = entry[chunk.id]
+            # make sure this is a good idea
             if dset.attrs.get('sampling_rate', None) != chunk.ds:
-                raise DataError("sampling rate of chunk (id='%s', offset=%.3f) doesn't match target dataset '%s'" %
+                raise DataError("sampling rate of (id='%s', offset=%.3fs) mismatches target dataset '%s'" %
                                 (chunk.id, float(chunk.offset), dset.name))
-                # TODO allow user intervention
+            dset_offset = dset.attrs.get('offset', 0)
+
+            if data_offset == dset_offset:
+                raise DataError("trying to write (id='%s', offset=%.3fs) to existing dataset '%s'" %
+                                (chunk.id, float(chunk.offset), dset.name))
+                # TODO allow user to override
+
+            # additional steps to verify alignment for sampled data
             if "samples" in chunk.tags:
-                # verify alignment for sampled data
-                gap = dset_offset - (dset.attrs.get('offset', 0) + dset.size)
+                gap = data_offset - (dset_offset + dset.size)
                 if gap < 0:
-                    raise DataError("chunk (id='%s', offset=%.3f) overlaps with dataset '%s'" %
+                    raise DataError("chunk (id='%s', offset=%.3f) overlaps with an existing dataset '%s'" %
                                     (chunk.id, float(chunk.offset), dset.name))
-                    # TODO allow user intervention?
+                    # TODO allow user to override?
                 elif gap > 0:
+                    # store data in a subsequent entry
                     self._log.info("gap in data '%s' (offset='%.3fs) requires new entry" %
                                    (chunk.id, float(chunk.offset)))
                     entry = self._next_entry(entry, chunk.offset)
-                    dset_offset = 0
+                    data_offset = 0
                     raise KeyError   # goto new dataset condition
+            # append data
             arf.append_data(dset, chunk.data)
 
         except KeyError:
-            # set chunk size and max shape for new dataset
+            # create a new dataset; set chunk size and max shape based on data
             if "samples" in chunk.tags:
                 chunks = chunk.data.shape
                 units = ''
@@ -399,7 +419,7 @@ class arf_writer(_base_arf, Node):
             maxshape = (None,) + chunk.data.shape[1:]
             arf.create_dataset(entry, chunk.id, chunk.data, units=units,
                                chunks=chunks, maxshape=maxshape, compression=self.compress,
-                               sampling_rate=chunk.ds, offset=dset_offset)
+                               sampling_rate=chunk.ds, offset=data_offset)
 
 
 def true_p(*args):
