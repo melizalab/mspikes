@@ -345,7 +345,10 @@ class arf_writer(_base_arf, Node):
                 idx = 0
             attrs = dict(mspikes_base_entry=entry.name)
             new_name = "%s_%03d" % (base, idx + 1)
-        return self._create_entry(new_name, offset, **attrs)
+        if new_name in self.file:
+            return self.file[new_name]
+        else:
+            return self._create_entry(new_name, offset, **attrs)
 
     def _write_data(self, chunk):
         """Look up target dataset for chunk and write data.
@@ -353,7 +356,6 @@ class arf_writer(_base_arf, Node):
         Creates new datasets as needed, and may create a new entry if there is a gap.
 
         """
-        from mspikes.types import DataError
         from numpy import searchsorted
 
         # Look up target entry. TODO more efficient algorithm? check most
@@ -377,32 +379,33 @@ class arf_writer(_base_arf, Node):
             data_offset = util.to_samples(data_offset, chunk.ds)
         try:
             dset = entry[chunk.id]
-            # make sure this is a good idea
-            if dset.attrs.get('sampling_rate', None) != chunk.ds:
-                raise DataError("sampling rate of (id='%s', offset=%.3fs) mismatches target dataset '%s'" %
-                                (chunk.id, float(chunk.offset), dset.name))
             dset_offset = dset.attrs.get('offset', 0)
-
-            if data_offset == dset_offset:
-                raise DataError("trying to write (id='%s', offset=%.3fs) to existing dataset '%s'" %
+            # make sure this is a good idea
+            if dset.maxshape[0] is not None:
+                raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible. " %
+                               (chunk.id, float(chunk.offset), dset.name))
+            if dset.attrs.get('sampling_rate', None) != chunk.ds:
+                raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
+                               (chunk.id, float(chunk.offset), dset.name))
+            if data_offset <= dset_offset:
+                raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
                                 (chunk.id, float(chunk.offset), dset.name))
-                # TODO allow user to override
 
             # additional steps to verify alignment for sampled data
             if "samples" in chunk.tags:
                 gap = data_offset - (dset_offset + dset.size)
                 if gap < 0:
-                    raise DataError("chunk (id='%s', offset=%.3f) overlaps with an existing dataset '%s'" %
+                    raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
                                     (chunk.id, float(chunk.offset), dset.name))
-                    # TODO allow user to override?
                 elif gap > 0:
-                    # store data in a subsequent entry
-                    self._log.info("gap in data '%s' (offset='%.3fs) requires new entry" %
-                                   (chunk.id, float(chunk.offset)))
+                    # store data in a subsequent entry if there's a gap
+                    self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
+                                   chunk.id, float(chunk.offset))
                     entry = self._next_entry(entry, chunk.offset)
                     data_offset = 0
                     raise KeyError   # goto new dataset condition
-            # append data
+
+            # finally it is safe to append data
             arf.append_data(dset, chunk.data)
 
         except KeyError:
