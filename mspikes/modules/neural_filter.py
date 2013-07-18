@@ -91,18 +91,9 @@ class _smoother(Node):
     datafun()
 
     """
-    window = 2.0                # duration of sliding window, in seconds
-
-    @classmethod
-    def options(cls, addopt_f, **defaults):
-        addopt_f("--window",
-                 help="duration of sliding window (s) (default=%(default).1f)",
-                 default=defaults.get('window', cls.window),
-                 type=float,
-                 metavar='SEC')
-
     def __init__(self, **options):
-        util.set_option_attributes(self, options, window=self.window)
+        util.set_option_attributes(self, options, window=2.0)
+        self._log.info("window size: %.2f s", self.window)
         self.last_sample_t = 0    # time of last sample
         self.state = None         # statistics from sliding window
         self.nsamples = 0         # number of samples for which we have data
@@ -175,7 +166,11 @@ class zscale(_smoother):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        _smoother.options(addopt_f, **defaults)
+        addopt_f("--window",
+                 help="duration of sliding window (s) (default=%(default).1f)",
+                 default=defaults.get('window', cls.window),
+                 type=float,
+                 metavar='SEC')
         if "exclude" not in defaults:
             addopt_f("--exclude",
                      help="if set, drop intervals where relative RMS exceeds threshold",
@@ -194,6 +189,8 @@ class zscale(_smoother):
     def __init__(self, **options):
         _smoother.__init__(self, **options)
         util.set_option_attributes(self, options, exclude=False, max_rms=1.15, min_duration=200.)
+        if self.exclude:
+            self._log.info("excluding intervals with RMS %.3f times baseline", self.max_rms)
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
 
@@ -208,6 +205,7 @@ class zscale(_smoother):
         rms = nx.sqrt(var)
         rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
         Node.send(self, chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar")))
+        # self._log.debug("offset=%s, mean=%.3f, rms=%.3f, rms_ratio=%.3f", chunk.offset, mean, rms, rms_ratio)
 
         # rescale data first, then decide if to queue it
         chunk = chunk._replace(data=(chunk.data - mean) / rms)
@@ -220,13 +218,13 @@ class zscale(_smoother):
             duration = chunk.offset - first.offset
             if (duration > self.min_duration / 1000):
                 # too much bad data - drop
-                rec = ((to_samples(0, first.ds), to_samples(duration, first.ds), 'rms'),)
-                excl = DataBlock(chunk.id, first.offset, first.ds,
-                                 nx.rec.fromrecords(rec, names=('start', 'stop', 'reason')),
+                rec = ((to_samples(0, first.ds), to_samples(duration, first.ds), bytes(chunk.id), 'rms'),)
+                excl = DataBlock('exclusions', first.offset, first.ds,
+                                 nx.rec.fromrecords(rec, names=('start', 'stop', 'dataset', 'reason')),
                                  tag_set("events", "exclusions"))
                 Node.send(self, excl)
-                self._log.info("excluded data in '%s' from %d to %d samples",
-                          chunk.id, first.offset, chunk.offset)
+                self._log.info("excluded data in '%s' from %.2f to %.2f s",
+                               chunk.id, first.offset, chunk.offset)
             else:
                 # release chunks
                 for c in self.excl_queue:

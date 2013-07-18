@@ -98,7 +98,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         addopt_f("--channels",
                  help="names or regexps of channels to read (default all)",
                  metavar='CH',
-                 nargs='+')
+                 action='append')
         addopt_f("--start",
                  help="exclude entries before this time (in s; default 0)",
                  type=float,
@@ -111,7 +111,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         addopt_f("--entries",
                  help="names or regexps of entries to read (default all)",
                  metavar='P',
-                 nargs="+")
+                 action='append')
         addopt_f("--use-timestamp", help=""" use entry timestamp for timebase and ignore other fields. May lead to
         warnings about data overlap because of jitter in the system clock. Using
         sample-based times from files recorded at multiple sampling rates or
@@ -134,25 +134,22 @@ class arf_reader(_base_arf, RandomAccessSource):
         _base_arf.__init__(self, filename, "r")
         self._log.info("input file: %s", self.file.filename)
 
-        channels = options.get("channels", None)
-        if channels:
-            try:
-                rx = (re.compile(p).search for p in channels)
-                self.chanp = util.chain_predicates(*rx)
-            except re.error, e:
-                raise ValueError("bad channel regex: %s" % e.message)
-        else:
+        try:
+            self.chanp = util.any_regex(*options['channels'])
+            self._log.info("only using channels that match %s", self.chanp.__doc__)
+        except re.error, e:
+            raise ValueError("bad channel regex: %s" % e.message)
+        except (KeyError, TypeError):
             self.chanp = true_p
 
-        entries = options.get("entries", None)
-        if entries:
-           try:
-                rx = (re.compile(p).search for p in entries)
-                self.entryp = util.chain_predicates(*rx)
-           except re.error, e:
-                raise ValueError("bad entries regex: %s" % e.message)
-        else:
+        try:
+            self.entryp = util.any_regex(*options['entries'])
+            self._log.info("only using entries that match %s", self.entryp.__doc__)
+        except re.error, e:
+            raise ValueError("bad entries regex: %s" % e.message)
+        except (KeyError, TypeError):
             self.entryp = true_p
+
 
     def __iter__(self):
         """Iterate through the datasets.

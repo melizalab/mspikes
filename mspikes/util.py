@@ -10,6 +10,15 @@ def chain_predicates(*ps):
     """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
     return lambda x: all(p(x) for p in ps)
 
+def any_regex(*regexes):
+    """Return closure that tests for match against any of the arguments"""
+    import re
+    rx = [re.compile(regex).search for regex in regexes]
+    def multimatch(x):
+        return any(p(x) for p in rx)
+    multimatch.__doc__ = " | ".join(regexes)
+    return multimatch
+
 
 def compose(f1, f2, unpack=False):
     """Return a function that calls f1(f2(*args, **kwargs))"""

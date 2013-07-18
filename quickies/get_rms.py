@@ -25,5 +25,5 @@ if __name__ == '__main__':
     # stats = get_stats(util.array_reader(data, 10000, 5000), neural_filter.zscale(max_rms=2, window=60))
 
     scaler = neural_filter.zscale(exclude=True)
-    reader = arf_io.arf_reader("examples/st445_1_5.arf", channels=("st445_(8|9)$",))
-    reader.add_target(util.print_progress())
+    reader = arf_io.arf_reader("examples/st445_1_5.arf", channels=("st445_8$",))
+    # reader.add_target(util.print_progress())
