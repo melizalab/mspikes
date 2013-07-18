@@ -6,8 +6,6 @@ Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
 import logging
-from fractions import Fraction
-
 import h5py
 import arf
 

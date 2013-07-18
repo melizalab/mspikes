@@ -5,17 +5,12 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Fri Jul 12 14:05:16 2013
 """
-
 import logging
-import operator
 import numpy as nx
 
 from mspikes import util
 from mspikes.modules import dispatcher
 from mspikes.types import Node, tag_set
-
-_log = logging.getLogger(__name__)
-
 
 @dispatcher.parallel('id', "samples")
 class spike_extract(Node):
@@ -26,6 +21,7 @@ class spike_extract(Node):
     passes:  all other tags
 
     """
+    _log = logging.getLogger("%s.spike_extract" % __name__)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -37,12 +33,12 @@ class spike_extract(Node):
         addopt_f("--interval",
                  help="the interval around the peak to extract (default=%(default)s)",
                  type=float,
-                 default=(1.0, 2.0),
+                 default=(1.5, 2.5),
                  nargs=2,
                  metavar='MS')
 
     def __init__(self, **options):
-        util.set_option_attributes(self, options, thresh=None, interval=(1.0, 2.0))
+        util.set_option_attributes(self, options, thresh=None, interval=(1.5, 2.5))
         self.reset()
 
     def reset(self):
@@ -91,6 +87,81 @@ class spike_extract(Node):
                 spk = data[start:stop]
 
             yield (start, spk)
+
+
+class spike_features(Node):
+    """Calculate spike features using PCA and raw measurements
+
+    accepts:  _events (marked point process, start=time, spike=waveform)
+    emits:    _events (marked point process, start=time, spike=waveform, feats=array)
+    passes:   all other tags
+
+    """
+    _log = logging.getLogger("%s.spike_features" % __name__)
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("--interval",
+                 help="interval around the spike peak to use (default=%(default)s)",
+                 type=float,
+                 default=(1.0, 2.0),
+                 nargs=2,
+                 metavar='MS')
+        addopt_f("--feats",
+                 help="include %(metavar)s features from PCA (default=%(default)d)",
+                 default=3,
+                 type=int,
+                 metavar='INT')
+        addopt_f("--raw",
+                 help="include raw spike measurements as features",
+                 action='store_true')
+        addopt_f("--resample",
+                 help="factor to upsample spikes for alignment (default=%(default)d)",
+                 default=3,
+                 type=int,
+                 metavar='INT')
+        addopt_f("--spikes",
+                 help="accumulate %(metavar)s spikes before calculating statistics (default=%(default)d)",
+                 default=1000,
+                 type=int,
+                 metavar='INT')
+
+    def __init__(self, **options):
+        util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
+                                   resample=3, spikes=1000)
+        self._times = []
+        self._spikes = []
+        self._nspikes = 0
+
+    def send(self, chunk):
+        """ align spikes, compute features """
+
+        # drop data we can't use
+        if "events" not in chunk.tags or chunk.data.dtype.names is None or "spike" not in chunk.dtype.names:
+            return
+
+        self._times.append(chunk.data['start'] + util.to_samples(chunk.offset, chunk.ds))
+        self._spikes.append(chunk.data['spike'])
+        self._nspikes += chunk.data.size
+
+        if self._nspikes < self.spikes:
+            return
+
+        times = nx.concatenate(self._times)
+        spikes = nx.concatenate(self._spikes)
+
+        times, spikes = realign_spikes(times, spikes, self.interval, self.resample)
+        features = []
+
+        if self.feats > 0:
+            if self._eigenvectors is None:
+                self._eigenvectors = get_eigenvectors(spikes, self.feats)
+            features.append(projections(spikes, self._eigenvectors))
+
+        if self.raw:
+            features.append(measurements(spikes))
+
+        # don't downsample to ensure that spikes and times have the same ds
 
 
 class detect_spikes(object):
