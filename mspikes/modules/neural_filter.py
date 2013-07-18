@@ -226,7 +226,7 @@ class zscale(_smoother):
                                  tag_set("events", "exclusions"))
                 Node.send(self, excl)
                 self._log.info("excluded data in '%s' from %d to %d samples",
-                          chunk.id, first.ofset, chunk.offset)
+                          chunk.id, first.offset, chunk.offset)
             else:
                 # release chunks
                 for c in self.excl_queue:
