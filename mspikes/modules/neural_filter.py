@@ -15,8 +15,6 @@ from mspikes.types import Node, DataBlock, tag_set
 from mspikes.modules import dispatcher
 from mspikes.modules.util import coroutine
 
-_log = logging.getLogger(__name__)
-
 def moving_meanvar(x, w=0, s=None):
     """Calculating moving mean and variance of a time series
 
@@ -173,6 +171,7 @@ class zscale(_smoother):
     """
     window = 60.
     stat_type = namedtuple('chunk_stats', ('mean','rms','rms_ratio',))
+    _log = logging.getLogger("%s.zscale" % __name__)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -182,7 +181,7 @@ class zscale(_smoother):
                      help="if set, drop intervals where relative RMS exceeds threshold",
                      action="store_true")
         addopt_f("--max-rms",
-                 help="exclusion threshhold (default=%(default).1f)",
+                 help="exclusion threshhold (default=%(default).2f)",
                  type=float,
                  default=defaults.get('max_rms', 1.15),
                  metavar='F')
@@ -226,7 +225,8 @@ class zscale(_smoother):
                                  nx.rec.fromrecords(rec, names=('start', 'stop', 'reason')),
                                  tag_set("events", "exclusions"))
                 Node.send(self, excl)
-                print excl
+                self._log.info("excluded data in '%s' from %d to %d samples",
+                          chunk.id, first.ofset, chunk.offset)
             else:
                 # release chunks
                 for c in self.excl_queue:

@@ -94,7 +94,7 @@ def mspikes(argv=None):
                                 description="Process time-varying data using configurable toolchains")
     p.add_argument("-h", "--help", help="show this message, or options for a toolchain", action='store_true')
     p.add_argument("--doc", help="print extended help information", nargs='?', const="")
-    p.add_argument("-v", "--verbose", help="verbose output", action='store_false') # FIXME
+    p.add_argument("-v", "--verbose", help="verbose output", action='store_true')
 
     p.add_argument("-t", help="use a predefined toolchain", metavar='NAME', dest="tchain_name")
     p.add_argument("-T", help="define or extend toolchain", action='append', default=[],
@@ -167,9 +167,10 @@ def mspikes(argv=None):
 
     # run the graph
     log.info("starting graph")
-    progbar = util.print_progress()
+    # progbar = util.print_progress()
     for chunk in chain(*root):
-        progbar.send(chunk)
+        pass
+        # progbar.send(chunk)
 
 
 # Variables:

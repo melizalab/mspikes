@@ -16,6 +16,5 @@ spk_extract = ("Extract spikes from raw neural recordings",
                "spikes = spike_extract(scaled)\n"
                "output = arf_writer(spikes)")
 
-
 # Variables:
 # End:

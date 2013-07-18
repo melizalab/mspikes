@@ -229,12 +229,6 @@ class arf_writer(_base_arf, Node):
                  choices=range(10),
                  type=int,
                  metavar='INT')
-        # addopt_f("--split-template",
-        #          help="""specify the template for naming entries created when there are gaps in
-        #          sampled data. ARF requries sampled data with gaps to be stored
-        #          in separate entries. Default is %(default)s""",
-        #          default=defaults.get('split_template', '%s_g%02d'),
-        #          metavar='TEMPL')
         addopt_f("--auto-entry",
                  help="""turn on automatic generation of entries for all data and specify the base
                  name for automatically created entries. If this is set,
@@ -253,6 +247,7 @@ class arf_writer(_base_arf, Node):
         # build entry table
         self._offset_fun = self.get_offset_function()
         self._make_entry_table()
+        arf.set_attributes(self.file, file_creator='mspikes.arf_writer')
 
     def send(self, chunk):
         if "structure" in chunk.tags and self.auto_entry is None:
