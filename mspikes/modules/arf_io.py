@@ -263,8 +263,7 @@ class arf_writer(_base_arf, Node):
                 entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
 
         elif self.can_store(chunk):
-            entry = self._find_entry(chunk)
-            self._write_data(entry, chunk)
+            self._write_data(chunk)
 
     def _make_entry_table(self):
         """Generate a table of entries and start times."""
@@ -342,8 +341,13 @@ class arf_writer(_base_arf, Node):
             attrs = dict(mspikes_base_entry=entry.name)
         return self._create_entry(new_name, offset, **attrs)
 
-    def _find_entry(self, chunk):
-        """ Look up target entry for data chunk, creating as needed """
+    def _write_data(self, chunk):
+        """Look up target dataset for chunk and write data.
+
+        Creates new datasets as needed, and may create a new entry if there is a gap.
+
+        """
+        from mspikes.types import DataError
         from numpy import searchsorted
         # TODO check most recently used entry first to avoid searching? use a
         # dict for exact time lookups?
@@ -359,17 +363,8 @@ class arf_writer(_base_arf, Node):
 
         self._log.debug("chunk (id='%s', offset=%.2fs) matches  '%s' (offset=%.2fs)",
                         chunk.id, float(chunk.offset), entry.name, entry_time)
-        return entry
 
-    def _write_data(self, entry, chunk):
-        """Look up target dataset for chunk in entry and write data.
-
-        Creates new datasets as needed, and may create a new entry if there is a gap.
-
-        """
-        from mspikes.types import DataError
-        # compute offset relative to entry
-        dset_offset = chunk.offset - arf.timestamp_to_float(entry.attrs['timestamp'])
+        dset_offset = chunk.offset - entry_time
         if chunk.ds is not None:
             dset_offset = util.to_samples(dset_offset, chunk.ds)
         try:
