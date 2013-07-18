@@ -54,7 +54,7 @@ class _base_arf(object):
         """
         keyname = "timestamp"
         sampling_rate = None
-        fun = lambda entry: arf.timestamp_to_float(entry.attrs[keyname])
+        fun = arf.entry_time
 
         if self.creator is None:
             self._log.info("couldn't determine ARF file source")
@@ -124,7 +124,6 @@ class arf_reader(_base_arf, RandomAccessSource):
         this if creation order was tracked and the entries are already in the correct order""",
                  action='store_true')
 
-
     def __init__(self, filename, **options):
         import re
         util.set_option_attributes(self, options,
@@ -132,7 +131,6 @@ class arf_reader(_base_arf, RandomAccessSource):
                                    use_timestamp=False,
                                    ignore_xruns=False,
                                    skip_sort=False)
-
         _base_arf.__init__(self, filename, "r")
         self._log.info("input file: %s", self.file.filename)
 
@@ -156,7 +154,6 @@ class arf_reader(_base_arf, RandomAccessSource):
         else:
             self.entryp = true_p
 
-
     def __iter__(self):
         """Iterate through the datasets.
 
@@ -171,7 +168,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         if self.skip_sort:
             it = arf.keys_by_creation(self.file)
         else:
-            it = sorted(self.file.keys(), key=lambda x: arf.timestamp_to_float(self.file[x].attrs.get('timestamp', 0)))
+            it = sorted(self.file.keys(), key=lambda x: arf.entry_time(self.file[x]))
 
         entries = (self.file[name] for name in it
                    if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group)
@@ -228,18 +225,29 @@ class arf_writer(_base_arf, Node):
                  help="the file to write (created if it doesn't exist)")
         addopt_f("--compress",
                  help="the compression level to use (default=%(default)d)",
-                 default=9,
+                 default=defaults.get('compress', 9),
                  choices=range(10),
                  type=int,
                  metavar='INT')
-        addopt_f("--target-entry",
-                 help="specify a target entry for data, ignoring any structure in the data or target file",
+        # addopt_f("--split-template",
+        #          help="""specify the template for naming entries created when there are gaps in
+        #          sampled data. ARF requries sampled data with gaps to be stored
+        #          in separate entries. Default is %(default)s""",
+        #          default=defaults.get('split_template', '%s_g%02d'),
+        #          metavar='TEMPL')
+        addopt_f("--auto-entry",
+                 help="""turn on automatic generation of entries for all data and specify the base
+                 name for automatically created entries. If this is set,
+                 arf_writer will ignore any structure in the data or target
+                 file.""",
+                 default=defaults.get('auto_entry', None),
                  metavar='NAME',)
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
 
     def __init__(self, filename, **options):
-        util.set_option_attributes(self, options, compress=9, default_entry=None)
+        util.set_option_attributes(self, options, compress=9, auto_entry=None,
+                                   split_entry_template='%s_g%02d')
         _base_arf.__init__(self, filename, "a")
         self._log.info("output file: %s", self.file.filename)
         # build entry table
@@ -247,23 +255,17 @@ class arf_writer(_base_arf, Node):
         self._make_entry_table()
 
     def send(self, chunk):
-        from numpy import searchsorted
-
-        if "structure" in chunk.tags and self.default_entry is None:
+        if "structure" in chunk.tags and self.auto_entry is None:
             if chunk.id in self.file:
                 entry = self.file[chunk.id]
                 if not matches_entry(chunk, entry):
                     raise ArfError("an entry named '%s' exists in the target file,"
                                    "but has the wrong timestamp or uuid", chunk.id)
                     # TODO ask the user to decide
-                self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
-                                  chunk.id, chunk.offset, entry.name, chunk.offset)
+                self._log.debug("structure chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
+                                chunk.id, chunk.offset, entry.name, chunk.offset)
             else:
                 entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
-                entry_time = self._offset_fun(entry)
-                idx = searchsorted(self._times, entry_time)
-                self._times.insert(idx, entry_time)
-                self._entries.insert(idx, entry)
 
         elif self.can_store(chunk):
             entry = self._find_entry(chunk)
@@ -271,19 +273,15 @@ class arf_writer(_base_arf, Node):
 
     def _make_entry_table(self):
         """Generate a table of entries and start times."""
-        from operator import itemgetter
-        from itertools import izip, imap
+        entries = sorted(self.file.values(), key=arf.entry_time)
 
-        names = sorted(self.file.keys(), key=lambda x: arf.timestamp_to_float(self.file[x].attrs.get('timestamp', 0)))
-
-        self._times = tt = []
-        self._entries = ee = []
-        for n in names:
-            e = self.file[e]
+        self._offsets = []
+        self._entries = []
+        for entry in entries:
             try:
-                t = self._offset_fun(e)
-                tt.append(t)
-                ee.append(e)
+                t = self._offset_fun(entry)
+                self._offsets.append(t)
+                self._entries.append(entry)
             except LookupError:
                 pass
 
@@ -299,43 +297,74 @@ class arf_writer(_base_arf, Node):
 
         timestamp -- if supplied, the timestamp of the new entry in the arf file
                      is set to this. If not supplied, inferred from the
-                     difference in seconds between offset and the previous
-                     entry. If no previous entry, the current time is used.
+                     difference in seconds between offset and the closest entry.
+                     If no entries in the file, the current time is used.
 
         Additional keyword arguments are set as attributes of the new entry
 
         """
+        from numpy import searchsorted
         import datetime
+
+        # find the most recent entry
+        n_entries = len(self._offsets)
+        idx = searchsorted(self._offsets, offset, side='right')
         try:
             timestamp = attributes.pop('timestamp')
         except KeyError:
-            raise               # FIXME no timestamp
-            if self._entry:
-                # infer timestamp from previous entry
-                timestamp = (arf.timestamp_to_float(self._entry.attrs['timestamp']) +
-                             (offset - self._offset_fun(self._entry)))
-            else:
+            if n_entries == 0:
                 timestamp = datetime.datetime.now()
+            else:
+                other = self._entries[idx] if idx < n_entries else self._entries[n_entries - 1]
+                timestamp = (arf.timestamp_to_float(other.attrs['timestamp']) +
+                             offset - self._offset_fun(other))
         self._log.info("created new entry '%s' (offset=%.2fs)", name, float(offset))
-        return arf.create_entry(self.file, name, timestamp, **attributes)
+        entry = arf.create_entry(self.file, name, timestamp, **attributes)
+        self._offsets.insert(idx, offset)
+        self._entries.insert(idx, entry)
+        return entry
+
+    def _next_entry(self, entry, offset):
+        """Create the next entry in a series."""
+        import re
+
+        if self.auto_entry is not None:
+            if entry is None:
+                idx = 0
+            else:
+                idx = int(re.match(r"/%s_(\d+)" % self.auto_entry, entry.name).group(0))
+            new_name = "%s_%05d" % (self.auto_entry, idx + 1)
+            attrs = dict()
+        else:
+            # this means we're generating an entry from the current one
+            try:
+                base = entry.attrs['mspikes_base_entry']
+                idx = int(re.match(r"%s_(\d+)" % base, entry.name).group(1))
+            except KeyError:
+                base = entry.name
+                idx = 0
+            new_name = "%s_%03d" % (base, idx + 1)
+            attrs = dict(mspikes_base_entry=entry.name)
+        return self._create_entry(new_name, offset, **attrs)
 
     def _find_entry(self, chunk):
         """ Look up target entry for data chunk, creating as needed """
         from numpy import searchsorted
-        idx = searchsorted(self._times, chunk.offset, side='right')
+        # TODO check most recently used entry first to avoid searching? use a
+        # dict for exact time lookups?
+        idx = searchsorted(self._offsets, chunk.offset, side='right')
         if idx == 0:
-            if self.default_entry is None:
+            if self.auto_entry is None:
                 raise ArfError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
             else:
-                raise NotImplementedError("need to use default_entry to create new entry")
+                raise NotImplementedError("need to use auto_entry to create new entry")
         else:
             entry = self._entries[idx - 1]
-            entry_time = self._times[idx - 1]
+            entry_time = self._offsets[idx - 1]
 
         self._log.debug("chunk (id='%s', offset=%.2fs) matches  '%s' (offset=%.2fs)",
                         chunk.id, float(chunk.offset), entry.name, entry_time)
         return entry
-
 
     def _write_data(self, entry, chunk):
         """Look up target dataset for chunk in entry and write data.
@@ -362,7 +391,11 @@ class arf_writer(_base_arf, Node):
                                     (chunk.id, float(chunk.offset), dset.name))
                     # TODO allow user intervention?
                 elif gap > 0:
-                    raise NotImplementedError("need to create a new entry for gaps")
+                    self._log.info("gap in data '%s' (offset='%.3fs) requires new entry" %
+                                   (chunk.id, float(chunk.offset)))
+                    entry = self._next_entry(entry, chunk.offset)
+                    dset_offset = 0
+                    raise KeyError   # goto new dataset condition
             arf.append_data(dset, chunk.data)
 
         except KeyError:

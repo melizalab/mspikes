@@ -120,7 +120,6 @@ def compare_datasets(name, src, tgt):
         for name in d1.dtype.names:
             assert_true(nx.array_equal(d1[name], d2[name]))
 
-
 def mirror_file(sampled):
     src = get_scratch_file("src", driver="core", backing_store=False)
     tgt = get_scratch_file("tgt", driver="core", backing_store=False)
@@ -159,30 +158,42 @@ def mirror_file(sampled):
 
 
 def test_file_mirroring():
-
     for sampled in (False, True):
         yield mirror_file, sampled
 
-@SkipTest
+
 def test_arf_writer_gap():
     src = get_scratch_file("src", driver="core", backing_store=False)
     tgt = get_scratch_file("tgt", driver="core", backing_store=False)
 
     N = 1000
+    gap = 2.0
     e = arf.create_entry(src, "entry", timestamp=0, sample_count=0)
     arf.create_dataset(e, "pcm", nx.random.randn(N), units="mV", sampling_rate=N)
 
     reader = arf_io.arf_reader(src)
     writer = arf_io.arf_writer(tgt)
 
+    blocks = range(0, 1000, 1000/4)
     for chunk in reader:
-        # split data and introduce a chunk
+        # split data into three parts
         if "samples" in chunk.tags:
-            writer.send(chunk._replace(data=chunk.data[:N/2]))
-            writer.send(chunk._replace(offset=2., data=chunk.data[N/2:]))
+            writer.send(chunk._replace(data=chunk.data[blocks[0]:blocks[1]]))
+            writer.send(chunk._replace(offset=gap, data=chunk.data[blocks[1]:blocks[2]]))
+            writer.send(chunk._replace(offset=gap + 0.25, data=chunk.data[blocks[2]:blocks[3]]))
+            writer.send(chunk._replace(offset=gap * 2, data=chunk.data[blocks[3]:]))
         else:
             writer.send(chunk)
 
+    assert_equal(len(tgt), 3)
+    entries = sorted(tgt.itervalues(), key=arf.entry_time)
+    assert_sequence_equal([arf.entry_time(entry) for entry in entries], [gap * i for i in range(3)])
+    nsamples = 0
+    for entry in entries:
+        assert_true('pcm' in entry)
+        assert_equal(entry['pcm'].attrs.get('offset', 0), 0)
+        nsamples += entry['pcm'].size
+    assert_equal(nsamples, N)
 
 def test_dset_timebase():
 
