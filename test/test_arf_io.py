@@ -126,7 +126,7 @@ def mirror_file(sampled):
     srate = 1000
 
     # populate the source file
-    for i in range(10):
+    for i in range(5):
         t = i * 2.
         e = arf.create_entry(src, "entry_%02d" % i, timestamp=t, sample_count=int(t * srate), an_attribute="a_value")
         arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
@@ -194,6 +194,39 @@ def test_arf_writer_gap():
         assert_equal(entry['pcm'].attrs.get('offset', 0), 0)
         nsamples += entry['pcm'].size
     assert_equal(nsamples, N)
+
+
+def test_early_structure():
+    src = get_scratch_file("src", driver="core", backing_store=False)
+    tgt = get_scratch_file("tgt", driver="core", backing_store=False)
+    srate = 1000
+
+    # populate the source file
+    for i in range(3):
+        t = i * 2.
+        e = arf.create_entry(src, "entry_%02d" % i, timestamp=t, sample_count=int(t * srate), an_attribute="a_value")
+        arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
+        for j in range(3):
+            arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=srate)
+    arf.set_attributes(src, program='arfxplog', sampling_rate=srate)
+
+    reader = arf_io.arf_reader(src)
+    writer = arf_io.arf_writer(tgt)
+
+    queue = []
+    for chunk in reader:
+        if "structure" in chunk.tags:
+            writer.send(chunk)
+        else:
+            queue.append(chunk)
+
+    for chunk in queue:
+        writer.send(chunk)
+
+    for entry in src:
+        compare_entries(entry, src, tgt)
+        assert_sequence_equal(src[entry].keys(), tgt[entry].keys())
+
 
 def test_dset_timebase():
 
