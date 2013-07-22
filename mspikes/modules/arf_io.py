@@ -356,9 +356,7 @@ class arf_writer(_base_arf, Node):
         """
         from numpy import searchsorted
 
-        # Look up target entry. TODO more efficient algorithm? check most
-        # recently used entry first to avoid searching? use a dict for exact
-        # time lookups?
+        # Look up target entry
         idx = searchsorted(self._offsets, chunk.offset, side='right')
         if idx == 0:
             if self.auto_entry is None:
@@ -368,59 +366,78 @@ class arf_writer(_base_arf, Node):
         else:
             entry = self._entries[idx - 1]
             entry_time = self._offsets[idx - 1]
+            next_entry_time = self._offsets[idx] if idx < len(self._offsets) else None
         self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
                         chunk.id, float(chunk.offset), entry.name, entry_time)
 
-        # either append data to an existing dataset or create a new dataset
+        # offset of data in entry
         data_offset = chunk.offset - entry_time
         if chunk.ds is not None:
             data_offset = util.to_samples(data_offset, chunk.ds)
-        try:
-            dset = entry[chunk.id]
-            dset_offset = dset.attrs.get('offset', 0)
-            # make sure this is a good idea
-            if dset.maxshape[0] is not None:
-                raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible. " %
-                               (chunk.id, float(chunk.offset), dset.name))
-            if dset.attrs.get('sampling_rate', None) != chunk.ds:
-                raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
-                               (chunk.id, float(chunk.offset), dset.name))
-            if data_offset <= dset_offset:
-                raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
-                                (chunk.id, float(chunk.offset), dset.name))
 
+        if chunk.id not in entry:
+            self._create_dataset(entry, chunk, data_offset)
+            return
+
+        # append data to existing dataset
+        dset = entry[chunk.id]
+        dset_offset = dset.attrs.get('offset', 0)
+        # make sure this is a good idea
+        if dset.maxshape[0] is not None:
+            raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
+                           (chunk.id, float(chunk.offset), dset.name))
+        if dset.attrs.get('sampling_rate', None) != chunk.ds:
+            raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
+                           (chunk.id, float(chunk.offset), dset.name))
+        if data_offset <= dset_offset:
+            raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
+                            (chunk.id, float(chunk.offset), dset.name))
+
+        if "samples" in chunk.tags:
             # additional steps to verify alignment for sampled data
-            if "samples" in chunk.tags:
-                gap = data_offset - (dset_offset + dset.size)
-                if gap < 0:
-                    raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
-                                    (chunk.id, float(chunk.offset), dset.name))
-                elif gap > 0:
-                    # store data in a subsequent entry if there's a gap
-                    self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
-                                   chunk.id, float(chunk.offset))
-                    entry = self._next_entry(entry, chunk.offset)
-                    data_offset = 0
-                    raise KeyError   # goto new dataset condition
-
-            # finally it is safe to append data
-            arf.append_data(dset, chunk.data)
-
-        except KeyError:
-            # create a new dataset; set chunk size and max shape based on data
-            if "samples" in chunk.tags:
-                chunks = chunk.data.shape
-                units = ''
+            gap = data_offset - (dset_offset + dset.size)
+            if gap < 0:
+                raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
+                                (chunk.id, float(chunk.offset), dset.name))
+            elif gap > 0:
+                # store data in a subsequent entry if there's a gap
+                self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
+                               chunk.id, float(chunk.offset))
+                entry = self._next_entry(entry, chunk.offset)
+                data_offset = 0
+                self._create_dataset(entry, chunk, data_offset)
             else:
-                chunks = True   # auto-chunk size
-                units = 's' if chunk.ds is None else 'samples'
-                if chunk.data.dtype.names is not None:
-                    # compound dtype requires units for each field
-                    units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
-            maxshape = (None,) + chunk.data.shape[1:]
-            arf.create_dataset(entry, chunk.id, chunk.data, units=units,
-                               chunks=chunks, maxshape=maxshape, compression=self.compress,
-                               sampling_rate=chunk.ds, offset=data_offset)
+                arf.append_data(dset, chunk.data)
+        elif "events" in chunk.tags:
+            # adjust times relative to dset offset
+            data = adjust_event_times(chunk.data, data_offset, dset_offset)
+            # store events that don't go in next entry; repackage other events as a
+            # separate chunk
+            d1, d2 = split_point_process(data, next_entry_time)
+            if d1.size > 0:
+                arf.append_data(dset, data)
+            if d2.size > 0:
+                self.send(chunk._replace(offset=next_entry_time,
+                                         data=adjust_event_times(data, dset_offset, next_entry_time)))
+
+
+    def _create_dataset(self, entry, chunk, data_offset):
+        """Create a new dataset and write chunk to it"""
+        # create a new dataset; set chunk size and max shape based on data
+        if "samples" in chunk.tags:
+            chunks = chunk.data.shape
+            units = ''
+        else:
+            chunks = True   # auto-chunk size
+            units = 's' if chunk.ds is None else 'samples'
+            if chunk.data.dtype.names is not None:
+                # compound dtype requires units for each field
+                units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
+        maxshape = (None,) + chunk.data.shape[1:]
+        arf.create_dataset(entry, chunk.id, chunk.data, units=units,
+                           chunks=chunks, maxshape=maxshape, compression=self.compress,
+                           sampling_rate=chunk.ds, offset=data_offset)
+
 
 
 def true_p(*args):
@@ -480,6 +497,31 @@ def dset_tags(dset):
     else:
         return tag_set("samples")
 
+
+def adjust_event_times(data, data_offset, tgt_offset):
+    """Adjust the times of a point process by difference in data_offset and tgt_offset
+
+    Returns a copy of the data.
+
+    """
+    is_struct = data.dtype.fields is not None
+    times = data['start'] if is_struct else data
+    # using one expression should guard against overflow for unsigned types
+    shifted = times + data_offset - tgt_offset
+    if not is_struct:
+        return shifted
+    else:
+        data = data.copy()
+        data['start'] = shifted
+        return data
+
+
+def split_point_process(data, split_time):
+    """Return subset of data before and after (inclusive) split_time """
+    is_struct = data.dtype.fields is not None
+    times = data['start'] if is_struct else data
+    idx = times < split_time
+    return data[idx], data[~idx]
 
 # Variables:
 # End:

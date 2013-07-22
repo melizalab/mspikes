@@ -13,6 +13,7 @@ import numpy as nx
 import arf
 from fractions import Fraction
 
+from mspikes.types import DataBlock
 from mspikes.modules import arf_io, util
 
 
@@ -31,10 +32,22 @@ class ScratchFile(object):
 
 get_scratch_file = ScratchFile()
 
-def random_spikes(n):
+a_spike = nx.array([-1290,  -483,  -136,  -148,  -186,   637,   328,    41,    63,
+                    42,   377,   872,   639,   -17,   538,   631,   530,   693,
+                    743,  3456,  6345,  5868,  4543,  3087,  1691,   830,   241,
+                    -350,  -567,  -996,  -877, -1771, -1659, -1968, -2013, -2290,
+                    -2143, -1715, -1526, -1108,  -500,   333,    25,  -388,  -368,
+                    -435,  -817,  -858,  -793, -1089,   -16,  -430,  -529,  -252,
+                    -3,  -786,   -47,  -266,  -963,  -365], dtype=nx.int16)
+
+def random_spikes(n, maxt, ds=None):
     """ generate a record array with marked point process structure """
     dt = nx.dtype([('start', nx.int32), ('spike', nx.int16, 60)])
-    return nx.empty(n, dtype=dt)
+    if ds is None:
+        t = nx.random.uniform(0, maxt, n)
+    else:
+        t = nx.random.randint(0, maxt * ds, n)
+    return nx.rec.fromarrays([t, nx.tile(a_spike, (n,1))], dtype=dt)
 
 
 def test_corrected_jack_frame():
@@ -109,9 +122,11 @@ def compare_datasets(name, src, tgt):
     if d1.dtype.names is None:
         assert_true(nx.array_equal(d1, d2))
     else:
+        # can't directly compare structured arrays
         assert_sequence_equal(d1.dtype.names, d2.dtype.names)
         for name in d1.dtype.names:
             assert_true(nx.array_equal(d1[name], d2[name]))
+
 
 def mirror_file(sampled):
     src = get_scratch_file("src", driver="core", backing_store=False)
@@ -122,7 +137,7 @@ def mirror_file(sampled):
     for i in range(5):
         t = i * 2.
         e = arf.create_entry(src, "entry_%02d" % i, timestamp=t, sample_count=int(t * srate), an_attribute="a_value")
-        arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
+        arf.create_dataset(e, "spikes", random_spikes(100, 2.0), units=('s','mV'))
         for j in range(3):
             arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=srate)
     if sampled:
@@ -133,7 +148,14 @@ def mirror_file(sampled):
     splitter = util.splitter(nsamples=100)
 
     with util.chain_modules(splitter, writer) as chain:
+        # send structure chunks first to make sure writer can slot data in later
+        queue = []
         for chunk in reader:
+            if "structure" in chunk.tags:
+                chain.send(chunk)
+            else:
+                queue.append(chunk)
+        for chunk in queue:
             chain.send(chunk)
 
     for entry in src:
@@ -145,7 +167,6 @@ def mirror_file(sampled):
         if "structure" not in chunk.tags:
             chunk = chunk._replace(id=chunk.id + "_new")
         writer.send(chunk)
-
     for entry in src:
         compare_entries(entry, src, tgt)
 
@@ -155,7 +176,35 @@ def test_file_mirroring():
         yield mirror_file, sampled
 
 
+def test_arf_writer_pproc():
+    """test writing point process data
+
+    Point process times need to be adjusted relative to the offset of the
+    dataset where they're stored. If some or all events in a chunk could be
+    stored in a later entry, they must be.
+
+    """
+    srate = 1000
+    tgt = get_scratch_file("tgt", driver="core", backing_store=False)
+    spikes = random_spikes(1000, 4.0, srate)
+
+    for i in range(2):
+        t = i * 2.
+        arf.create_entry(tgt, "entry_%d" % i, timestamp=t, sample_count=int(t * srate))
+
+    writer = arf_io.arf_writer(tgt)
+    writer.send(DataBlock("spikes", 1.0, srate, spikes, ("events",)))
+
+
+
 def test_arf_writer_gap():
+    """test whether data with gaps and other irregularities are stored correctly
+
+    If there's a gap in time series data, the writer should create another
+    entry, store the data in a dataset with the same name, and set the timestamp
+    of the entry so that the data have the correct temporal spacing.
+
+    """
     src = get_scratch_file("src", driver="core", backing_store=False)
     tgt = get_scratch_file("tgt", driver="core", backing_store=False)
 
@@ -189,38 +238,6 @@ def test_arf_writer_gap():
     assert_equal(nsamples, N)
 
 
-def test_early_structure():
-    src = get_scratch_file("src", driver="core", backing_store=False)
-    tgt = get_scratch_file("tgt", driver="core", backing_store=False)
-    srate = 1000
-
-    # populate the source file
-    for i in range(3):
-        t = i * 2.
-        e = arf.create_entry(src, "entry_%02d" % i, timestamp=t, sample_count=int(t * srate), an_attribute="a_value")
-        arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'))
-        for j in range(3):
-            arf.create_dataset(e, "pcm_%02d" % j, nx.random.randn(1000), units="mV", sampling_rate=srate)
-    arf.set_attributes(src, program='arfxplog', sampling_rate=srate)
-
-    reader = arf_io.arf_reader(src)
-    writer = arf_io.arf_writer(tgt)
-
-    queue = []
-    for chunk in reader:
-        if "structure" in chunk.tags:
-            writer.send(chunk)
-        else:
-            queue.append(chunk)
-
-    for chunk in queue:
-        writer.send(chunk)
-
-    for entry in src:
-        compare_entries(entry, src, tgt)
-        assert_sequence_equal(src[entry].keys(), tgt[entry].keys())
-
-
 def test_writeback():
     """test writing data back to source file"""
     src = get_scratch_file("src", driver="core", backing_store=False)
@@ -231,7 +248,7 @@ def test_writeback():
                        maxshape=(None,))
     # a non-extensible entry
     arf.create_dataset(e, "pcmx", nx.random.randn(N), units="mV", sampling_rate=N)
-    arf.create_dataset(e, "spikes", random_spikes(100), units=('s','mV'),
+    arf.create_dataset(e, "spikes", random_spikes(100, 1.0), units=('s','mV'),
                        maxshape=(None,))
 
     reader = arf_io.arf_reader(src)
@@ -257,6 +274,18 @@ def test_writeback():
             writer.send(chunk._replace(offset=0.1, data=chunk.data[:]))
         else:
             writer.send(chunk)
+
+
+def test_adjust_event_times():
+
+    eq = nx.array_equal
+    f = arf_io.adjust_event_times
+    times = nx.arange(0, 20000, 1000, dtype=nx.int32)
+
+    for t in (nx.float, nx.uint32, nx.int64):
+        assert_true(eq(f(times, t(0), t(0)), times))
+        assert_true(eq(f(times, t(100), t(0)), times + 100))
+        assert_true(eq(f(times, t(100), t(1000)), times - 900))
 
 
 # Variables:
