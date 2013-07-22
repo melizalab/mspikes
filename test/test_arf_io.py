@@ -5,8 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jun 27 10:47:24 2013
 """
-from nose.tools import *
-from nose.plugins.skip import SkipTest
+from test.common import *
 
 import itertools
 import numpy as nx
@@ -59,13 +58,13 @@ def test_corrected_jack_frame():
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames))
     func = arf_io.corrected_jack_frame()
     times = map(func, entries)
-    assert_true(nx.array_equal(sorted(frames), times))
+    assert_array_equal(sorted(frames), times)
 
     # overflow the frame counter
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames - 50000))
     func = arf_io.corrected_jack_frame()
     times = map(func, entries)
-    assert_true(nx.array_equal(sorted(frames), times))
+    assert_array_equal(sorted(frames), times)
 
 
 def test_entry_iteration():
@@ -80,14 +79,14 @@ def test_entry_iteration():
     e = arf.create_entry(fp, "entry-real", 0., sample_count=0)
     expected_times.append(0.)    # from structure block
     for j, t in enumerate(dset_times):
-        d = arf.create_dataset(e, "dset_%d" % j, (), offset=t, units="s", sampling_rate=None)
+        d = arf.create_dataset(e, "dset_%d" % j, (0,), offset=t, units="s", sampling_rate=None)
         expected_times.append(t)
 
     # sampled timebase
     e = arf.create_entry(fp, "entry-sampled", 1000., sample_count=1000 * srate)
     expected_times.append(1000.)    # from structure block
     for j, t in enumerate(dset_times):
-        d = arf.create_dataset(e, "dset_%d" % j, (), offset=int(t * srate), sampling_rate=srate)
+        d = arf.create_dataset(e, "dset_%d" % j, (0,), offset=int(t * srate), sampling_rate=srate)
         expected_times.append(t + 1000)
 
     r = arf_io.arf_reader(fp)
@@ -108,7 +107,7 @@ def compare_entries(name, src, tgt):
     assert_true(name in tgt)
     src, tgt = (fp[name] for fp in (src, tgt))
     src_attrs, tgt_attrs = (dict(entry.attrs) for entry in (src, tgt))
-    assert_true(nx.array_equal(src_attrs.pop('timestamp'), tgt_attrs.pop('timestamp')))
+    assert_array_equal(src_attrs.pop('timestamp'), tgt_attrs.pop('timestamp'))
     assert_dict_equal(src_attrs, tgt_attrs)
     for dset in src:
         compare_datasets(dset, src, tgt)
@@ -120,12 +119,12 @@ def compare_datasets(name, src, tgt):
     assert_equal(d1.attrs.get('sampling_rate', None), d2.attrs.get('sampling_rate', None))
     assert_equal(d1.attrs.get('offset', 0), d2.attrs.get('offset', 0))
     if d1.dtype.names is None:
-        assert_true(nx.array_equal(d1, d2))
+        assert_array_equal(d1, d2)
     else:
         # can't directly compare structured arrays
         assert_sequence_equal(d1.dtype.names, d2.dtype.names)
         for name in d1.dtype.names:
-            assert_true(nx.array_equal(d1[name], d2[name]))
+            assert_array_equal(d1[name], d2[name])
 
 
 def mirror_file(sampled):
@@ -195,6 +194,10 @@ def test_arf_writer_pproc():
     writer = arf_io.arf_writer(tgt)
     writer.send(DataBlock("spikes", 1.0, srate, spikes, ("events",)))
 
+    d1 = tgt['entry_0']['spikes']
+    d2 = tgt['entry_1']['spikes']
+    assert_equal(d1.size + d2.size, spikes.size)
+    assert_equal(d1.size, sum(spikes['start'] < 2.0))
 
 
 def test_arf_writer_gap():
@@ -286,6 +289,14 @@ def test_adjust_event_times():
         assert_true(eq(f(times, t(0), t(0)), times))
         assert_true(eq(f(times, t(100), t(0)), times + 100))
         assert_true(eq(f(times, t(100), t(1000)), times - 900))
+
+
+def test_split_point_process():
+    t = nx.arange(100,200,10)
+
+    assert_arrays_equal(arf_io.split_point_process(t, None), (t, []))
+    assert_arrays_equal(arf_io.split_point_process(t, 0), ([], t))
+    assert_arrays_equal(arf_io.split_point_process(t, 150), (t[t<150], t[t>=150]))
 
 
 # Variables:

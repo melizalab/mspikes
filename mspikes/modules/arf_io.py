@@ -203,10 +203,12 @@ class arf_reader(_base_arf, RandomAccessSource):
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
+                if dset.size == 0:
+                    continue
                 dset_ds = dset.attrs.get('sampling_rate', None)
                 dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
                 tags = dset_tags(dset)
-                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
+                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset[:], tags=tags)
                 Node.send(self, chunk)
                 yield chunk
 
@@ -333,15 +335,14 @@ class arf_writer(_base_arf, Node):
             new_name = "%s_%05d" % (self.auto_entry, idx + 1)
             attrs = dict()
         else:
-            # adding an additional entry because of a gap in a sampled data
-            # stream
+            # adding an additional entry because of gap in sampled data stream
             try:
                 base = entry.attrs['mspikes_base_entry']
                 idx = int(re.match(r"%s_(\d+)" % base, entry.name).group(1))
             except KeyError:
                 base = entry.name
                 idx = 0
-            attrs = dict(mspikes_base_entry=entry.name)
+            attrs = dict(mspikes_base_entry=base)
             new_name = "%s_%03d" % (base, idx + 1)
         if new_name in self.file:
             return self.file[new_name]
@@ -376,43 +377,41 @@ class arf_writer(_base_arf, Node):
             data_offset = util.to_samples(data_offset, chunk.ds)
 
         if chunk.id not in entry:
-            self._create_dataset(entry, chunk, data_offset)
-            return
-
-        # append data to existing dataset
-        dset = entry[chunk.id]
-        dset_offset = dset.attrs.get('offset', 0)
-        # make sure this is a good idea
-        if dset.maxshape[0] is not None:
-            raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
-                           (chunk.id, float(chunk.offset), dset.name))
-        if dset.attrs.get('sampling_rate', None) != chunk.ds:
-            raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
-                           (chunk.id, float(chunk.offset), dset.name))
-        if data_offset <= dset_offset:
-            raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
-                            (chunk.id, float(chunk.offset), dset.name))
+            dset = self._create_dataset(entry, chunk, data_offset)
+            dset_offset = data_offset
+        else:
+            dset = entry[chunk.id]
+            dset_offset = dset.attrs.get('offset', 0)
+            # make sure this is a good idea
+            if dset.maxshape[0] is not None:
+                raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
+                               (chunk.id, float(chunk.offset), dset.name))
+            if dset.attrs.get('sampling_rate', None) != chunk.ds:
+                raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
+                               (chunk.id, float(chunk.offset), dset.name))
+            if data_offset <= dset_offset:
+                raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
+                                (chunk.id, float(chunk.offset), dset.name))
+            if "samples" in chunk.tags:
+                # additional steps to verify alignment for sampled data
+                gap = data_offset - (dset_offset + dset.size)
+                if gap < 0:
+                    raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
+                                    (chunk.id, float(chunk.offset), dset.name))
+                elif gap > 0:
+                    # store data in a subsequent entry if there's a gap
+                    self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
+                                   chunk.id, float(chunk.offset))
+                    entry = self._next_entry(entry, chunk.offset)
+                    data_offset = dset_offset = 0
+                    dset = self._create_dataset(entry, chunk, data_offset)
 
         if "samples" in chunk.tags:
-            # additional steps to verify alignment for sampled data
-            gap = data_offset - (dset_offset + dset.size)
-            if gap < 0:
-                raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
-                                (chunk.id, float(chunk.offset), dset.name))
-            elif gap > 0:
-                # store data in a subsequent entry if there's a gap
-                self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
-                               chunk.id, float(chunk.offset))
-                entry = self._next_entry(entry, chunk.offset)
-                data_offset = 0
-                self._create_dataset(entry, chunk, data_offset)
-            else:
-                arf.append_data(dset, chunk.data)
+            arf.append_data(dset, chunk.data)
         elif "events" in chunk.tags:
             # adjust times relative to dset offset
             data = adjust_event_times(chunk.data, data_offset, dset_offset)
-            # store events that don't go in next entry; repackage other events as a
-            # separate chunk
+            # split events based on time of next entry
             d1, d2 = split_point_process(data, next_entry_time)
             if d1.size > 0:
                 arf.append_data(dset, data)
@@ -422,22 +421,27 @@ class arf_writer(_base_arf, Node):
 
 
     def _create_dataset(self, entry, chunk, data_offset):
-        """Create a new dataset and write chunk to it"""
+        """Create a new empty dataset"""
         # create a new dataset; set chunk size and max shape based on data
         if "samples" in chunk.tags:
             chunks = chunk.data.shape
             units = ''
-        else:
-            chunks = True   # auto-chunk size
+        elif "events" in chunk.tags:
+            # auto-chunk size for point process
+            chunks = True
             units = 's' if chunk.ds is None else 'samples'
             if chunk.data.dtype.names is not None:
                 # compound dtype requires units for each field
                 units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
+        else:
+            raise RuntimeError("no logic for storing data with tags %s" % tuple(chunk.tags))
         maxshape = (None,) + chunk.data.shape[1:]
-        arf.create_dataset(entry, chunk.id, chunk.data, units=units,
-                           chunks=chunks, maxshape=maxshape, compression=self.compress,
+        shape = (0,) + chunk.data.shape[1:]
+        dset = entry.create_dataset(chunk.id, dtype=chunk.data.dtype, shape=shape, maxshape=maxshape,
+                                    chunks=chunks, compression=self.compress)
+        arf.set_attributes(dset, units=units, datatype=arf.DataTypes.UNDEFINED,
                            sampling_rate=chunk.ds, offset=data_offset)
-
+        return dset
 
 
 def true_p(*args):
@@ -518,10 +522,12 @@ def adjust_event_times(data, data_offset, tgt_offset):
 
 def split_point_process(data, split_time):
     """Return subset of data before and after (inclusive) split_time """
-    is_struct = data.dtype.fields is not None
-    times = data['start'] if is_struct else data
+    if split_time is None:
+        return data, data[:0]
+    times = data['start'] if (data.dtype.fields is not None) else data
     idx = times < split_time
     return data[idx], data[~idx]
+
 
 # Variables:
 # End:
