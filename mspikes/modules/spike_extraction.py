@@ -89,6 +89,7 @@ class spike_extract(Node):
             yield (start, spk)
 
 
+@dispatcher.parallel('id', "events")
 class spike_features(Node):
     """Calculate spike features using PCA and raw measurements
 
@@ -130,16 +131,21 @@ class spike_features(Node):
         util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
                                    resample=3, spikes=1000)
         self._eigenvectors = None
+        self._reset_queue()
+
+    def _reset_queue(self):
         self._times = []
         self._spikes = []
         self._nspikes = 0
 
+
     def send(self, chunk):
         """ align spikes, compute features """
 
-        # drop data we can't use
+        # pass data we can't use
         data = chunk.data
-        if "events" not in chunk.tags or data.dtype.names is None or "spike" not in data.dtype.names:
+        if data.dtype.names is None or "spike" not in data.dtype.names:
+            Node.send(self, chunk)
             return
 
         self._times.append(data['start'] + util.to_samples(chunk.offset, chunk.ds))
@@ -151,6 +157,7 @@ class spike_features(Node):
 
         times = nx.concatenate(self._times)
         spikes = nx.concatenate(self._spikes)
+        self._reset_queue()
 
         times, spikes = realign_spikes(times, spikes, self.resample)
         features = [times, spikes]
@@ -169,7 +176,6 @@ class spike_features(Node):
 
         dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1) for n, a in zip(names, features)])
         Node.send(self, chunk._replace(ds=chunk.ds * self.resample, data=nx.rec.fromarrays(features, dt)))
-
 
 
 class detect_spikes(object):

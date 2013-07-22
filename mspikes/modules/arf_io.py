@@ -75,6 +75,9 @@ class _base_arf(object):
             self._log.info("file sampling rate (nominal): %d Hz", sampling_rate)
         return fun
 
+    def close(self):
+        self.file.close()
+
 
 class arf_reader(_base_arf, RandomAccessSource):
     """Source data from an ARF/HDF5 file

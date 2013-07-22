@@ -45,7 +45,12 @@ class export_klusters(Node):
 
     def send(self, chunk):
         """ write to clu/spk/fet files"""
-        pass
+        data = chunk.data
+        if "events" not in chunk.tags or data.dtype.names is None or "spike" not in data.dtype.names:
+            return
+
+
+
 
     def close(self):
         """ write xml file """

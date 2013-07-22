@@ -86,7 +86,6 @@ def mspikes(argv=None):
     import argparse
     import logging
     from itertools import chain
-    from mspikes.modules import util
     from mspikes import __version__
 
     p = argparse.ArgumentParser(prog="mspikes",
@@ -172,6 +171,11 @@ def mspikes(argv=None):
         pass
         # progbar.send(chunk)
 
+    log.info("cleaning up graph")
+    for node in root:
+        node.close()
+
+    log.info("end of run")
 
 # Variables:
 # End:
