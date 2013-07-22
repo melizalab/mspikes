@@ -530,6 +530,5 @@ def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data
         times -= dset_offset
 
     return data[idx], data[~idx]
-
 # Variables:
 # End:

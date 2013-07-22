@@ -30,7 +30,7 @@ def print_toolchains():
 def print_modules():
     """print list of available modules"""
     print "\nmodules:\n========"
-    print_descriptions(inspect.getmembers(modules, inspect.isclass), graph.node_descr)
+    print_descriptions(modules._module_list(), graph.node_descr)
 
 
 def print_filters():

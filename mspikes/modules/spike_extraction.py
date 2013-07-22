@@ -129,6 +129,7 @@ class spike_features(Node):
     def __init__(self, **options):
         util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
                                    resample=3, spikes=1000)
+        self._eigenvectors = None
         self._times = []
         self._spikes = []
         self._nspikes = 0
@@ -137,12 +138,13 @@ class spike_features(Node):
         """ align spikes, compute features """
 
         # drop data we can't use
-        if "events" not in chunk.tags or chunk.data.dtype.names is None or "spike" not in chunk.dtype.names:
+        data = chunk.data
+        if "events" not in chunk.tags or data.dtype.names is None or "spike" not in data.dtype.names:
             return
 
-        self._times.append(chunk.data['start'] + util.to_samples(chunk.offset, chunk.ds))
-        self._spikes.append(chunk.data['spike'])
-        self._nspikes += chunk.data.size
+        self._times.append(data['start'] + util.to_samples(chunk.offset, chunk.ds))
+        self._spikes.append(data['spike'])
+        self._nspikes += data.size
 
         if self._nspikes < self.spikes:
             return
@@ -150,7 +152,7 @@ class spike_features(Node):
         times = nx.concatenate(self._times)
         spikes = nx.concatenate(self._spikes)
 
-        times, spikes = realign_spikes(times, spikes, self.interval, self.resample)
+        times, spikes = realign_spikes(times, spikes, self.resample)
         features = [times, spikes]
         names = ['start', 'spike']
 
@@ -164,6 +166,9 @@ class spike_features(Node):
             for name, meas in measurements(spikes):
                 features.append(meas)
                 names.append(name)
+
+        dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1) for n, a in zip(names, features)])
+        Node.send(self, chunk._replace(ds=chunk.ds * self.resample, data=nx.rec.fromarrays(features, dt)))
 
 
 
@@ -277,7 +282,7 @@ def get_eigenvectors(spikes, nfeats):
     """
     from numpy.linalg import svd
     u, s, v = svd(spikes - spikes.mean(0), full_matrices=0)
-    return v[:nfeats, :]
+    return v[:nfeats, :].T.copy()
 
 
 def measurements(spikes):

@@ -158,7 +158,8 @@ def add_node_to_parser(name, node_def, parser):
     from mspikes import modules
     cls = getattr(modules, node_def.type)
     group = parser.add_argument_group(name, node_descr(cls))
-    cls.options(argparse_prefixer(name, group), **node_def.params)
+    if hasattr(cls, 'options'):
+        cls.options(argparse_prefixer(name, group), **node_def.params)
     return group
 
 
