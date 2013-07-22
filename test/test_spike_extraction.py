@@ -69,11 +69,17 @@ def test_spike_extractor():
     assert_true(all(nx.array_equal(chunk.data['spike'][0], a_spike) for chunk in out))
 
 
+def test_find_peaks():
 
+    dims = (128, 64)
+    shifts = nx.random.randint(-2, 2, dims[0])
+    peak = 32
+    arr = nx.zeros(dims)
+    for i, j in enumerate(peak + shifts):
+        arr[i, j] = 1.0
 
-
-
-
+    arr[:,50] = 2.0             # dummy peak
+    assert_true(nx.array_equal(shifts, spike_extraction.find_peaks(arr, peak, 2)))
 
 
 

@@ -93,7 +93,7 @@ class spike_features(Node):
     """Calculate spike features using PCA and raw measurements
 
     accepts:  _events (marked point process, start=time, spike=waveform)
-    emits:    _events (marked point process, start=time, spike=waveform, feats=array)
+    emits:    _events (marked point process, start=time, spike=waveform, pc1=array, pc2=array, ...)
     passes:   all other tags
 
     """
@@ -151,21 +151,24 @@ class spike_features(Node):
         spikes = nx.concatenate(self._spikes)
 
         times, spikes = realign_spikes(times, spikes, self.interval, self.resample)
-        features = []
+        features = [times, spikes]
+        names = ['start', 'spike']
 
         if self.feats > 0:
             if self._eigenvectors is None:
                 self._eigenvectors = get_eigenvectors(spikes, self.feats)
-            features.append(projections(spikes, self._eigenvectors))
+            features.append(nx.dot(spikes, self._eigenvectors))
+            names.append('pcs')
 
         if self.raw:
-            features.append(measurements(spikes))
+            for name, meas in measurements(spikes):
+                features.append(meas)
+                names.append(name)
 
-        # don't downsample to ensure that spikes and times have the same ds
 
 
 class detect_spikes(object):
-    """ state machine implementation - 955 ms"""
+    """ state machine implementation"""
 
     BelowThreshold = 1
     BeforePeak = 2
@@ -219,6 +222,100 @@ class detect_spikes(object):
                 if sign(self.thresh - x) == tdir:
                     self.state = self.BelowThreshold
         return out
+
+
+def realign_spikes(times, spikes, upsample):
+    """Realign spikes to their peaks using bandwidth-limited resampling
+
+    times : one-dimensional array of spike times, in units of samples
+    spikes : array of spike waveforms, with dimensions (nspikes, npoints)
+    upsample : integer, the factor by which to upsample the data for realignment
+
+    Returns (times, spikes), with the sampling rate increased by a factor of upsample
+
+    """
+    upsample = int(upsample)
+    assert upsample > 1, "Upsampling factor must be greater than 1"
+    nevents, nsamples = spikes.shape
+
+    # first infer the expected peak time
+    expected_peak = spikes.mean(0).argmax() * upsample
+    spikes = fftresample(spikes, nsamples * upsample)
+    # find peaks within upsample samples of mean peak
+    shift = find_peaks(spikes, expected_peak, upsample)
+    start = shift + upsample
+    nshifted = (nsamples - 2) * upsample
+    shifted = nx.zeros((nevents, nshifted))
+    for i,spike in enumerate(spikes):
+	shifted[i,:] = spike[start[i]:start[i]+nshifted]
+    return (times * upsample + expected_peak + shift, shifted)
+
+
+def find_peaks(spikes, peak, window):
+    """Locate the peaks in an array of spikes.
+
+    spikes: resampled spike waveforms, dimensions (nspikes, nsamples)
+    peak:   the expected peak location
+    window: the number of samples to either side of the peak to look for the peak
+
+    Returns array of shift values relative to peak
+
+    """
+    r = slice(peak - window, peak + window + 1)
+    return spikes[:,r].argmax(1) - window
+
+
+def get_eigenvectors(spikes, nfeats):
+    """Calculate eigenvectors of spike waveforms
+
+    spikes: resampled and aligned spike waveforms, dimensions (nspikes, nsamples)
+    nfeats: the number of the most significant eigenvectors to return
+
+    Returns eigenvectors, dimension (nsamples, nfeats). Does not need to be
+    transposed to calculate projections.
+
+    """
+    from numpy.linalg import svd
+    u, s, v = svd(spikes - spikes.mean(0), full_matrices=0)
+    return v[:nfeats, :]
+
+
+def measurements(spikes):
+    """
+    Makes the following measurements on spike shape:
+    height -   max value of trace
+    trough1 -  min value of trace before peak
+    trough2 -  min value of trace after peak
+    ptt     -  peak to trough2 time (in samples)
+    peakw   -  peak width (in samples) at half-height
+    troughw -  trough2 width (in samples) at half-depth
+    ...
+
+    spikes:    resampled, aligned spike waveforms, nevents x nsamples
+    Returns:   dict of arrays, dimension (nevents,), keyed by measurement type
+    """
+    from numpy import column_stack, asarray
+    nevents, nsamples = spikes.shape
+    peak_ind = spikes.mean(0).argmax()
+    return dict(height=spikes.max(1),
+                trough1=spikes[:, :peak_ind].min(1),
+                trough2=spikes[:, peak_ind:].min(1),
+                ptt=spikes[:, peak_ind:].argmin(1),
+                peakw=asarray([(spike >= spike.max()/2).sum() for spike in spikes]),
+                troughw=asarray([(spike[peak_ind:] <= spike[peak_ind:].min()/2).sum() for spike in spikes]),
+            )
+
+
+def fftresample(S, npoints, axis=1):
+    """
+    Resample a signal using discrete fourier transform. The signal
+    is transformed in the fourier domain and then padded or truncated
+    to the correct sampling frequency.  This should be equivalent to
+    a sinc resampling.
+    """
+    from numpy.fft import rfft, irfft
+    Sf = rfft(S, axis=axis)
+    return (1. * npoints / S.shape[axis]) * irfft(Sf, npoints, axis=axis)
 
 
 
