@@ -409,15 +409,10 @@ class arf_writer(_base_arf, Node):
         if "samples" in chunk.tags:
             arf.append_data(dset, chunk.data)
         elif "events" in chunk.tags:
-            # adjust times relative to dset offset
-            data = adjust_event_times(chunk.data, data_offset, dset_offset)
-            # split events based on time of next entry
-            d1, d2 = split_point_process(data, next_entry_time)
-            if d1.size > 0:
-                arf.append_data(dset, data)
-            if d2.size > 0:
-                self.send(chunk._replace(offset=next_entry_time,
-                                         data=adjust_event_times(data, dset_offset, next_entry_time)))
+            data, next = _split_point_process(chunk.data, data_offset, dset_offset, next_entry_time, chunk.ds)
+            arf.append_data(dset, data)
+            if next.size > 0:
+                self.send(chunk._replace(offset=next_entry_time, data=next))
 
 
     def _create_dataset(self, entry, chunk, data_offset):
@@ -502,32 +497,39 @@ def dset_tags(dset):
         return tag_set("samples")
 
 
-def adjust_event_times(data, data_offset, tgt_offset):
-    """Adjust the times of a point process by difference in data_offset and tgt_offset
+def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data_ds=None):
+    """Split point process data across entry boundary.
 
-    Returns a copy of the data.
+    data - an array of times, or a structured array with 'start' field
+    data_offset - the offset of the data times, relative to the start of the current entry
+    dset_offset - the offset of the target dataset
+    entry_offset - the offset of the next entry, relative to the current one,
+                   *in seconds*. If None, the data is not split
+
+    All offset values need to be in the same timebase as the times in data,
+    except for entry_offset, which is converted using data_ds
 
     """
+    from numpy import ones
+    data = data.copy()
     is_struct = data.dtype.fields is not None
     times = data['start'] if is_struct else data
-    # using one expression should guard against overflow for unsigned types
-    shifted = times + data_offset - tgt_offset
-    if not is_struct:
-        return shifted
+
+    # first adjust times relative to entry start
+    times += data_offset
+    # then determine when/if the data should be cut, adjusting for sampling rate
+    if entry_offset is not None:
+        entry_offset *= data_ds or 1.0
+        idx = times < entry_offset
+        # times for current entry are relative to dset_offset
+        times[idx] -= dset_offset
+        # times for next entry are relative to entry_offset
+        times[~idx] -= entry_offset
     else:
-        data = data.copy()
-        data['start'] = shifted
-        return data
+        idx = ones(times.size, dtype='bool')
+        times -= dset_offset
 
-
-def split_point_process(data, split_time):
-    """Return subset of data before and after (inclusive) split_time """
-    if split_time is None:
-        return data, data[:0]
-    times = data['start'] if (data.dtype.fields is not None) else data
-    idx = times < split_time
     return data[idx], data[~idx]
-
 
 # Variables:
 # End:

@@ -183,21 +183,26 @@ def test_arf_writer_pproc():
     stored in a later entry, they must be.
 
     """
+    offset = 1.0
+    cut = 2.0
     srate = 1000
     tgt = get_scratch_file("tgt", driver="core", backing_store=False)
-    spikes = random_spikes(1000, 4.0, srate)
+    spikes = random_spikes(100, 4.0, srate)
+    idx = spikes['start'] < ((cut - offset) * srate)
+    sp1 = spikes[idx]
 
-    for i in range(2):
-        t = i * 2.
-        arf.create_entry(tgt, "entry_%d" % i, timestamp=t, sample_count=int(t * srate))
+    arf.create_entry(tgt, "entry_0", timestamp=0)
+    arf.create_entry(tgt, "entry_1", timestamp=cut)
 
     writer = arf_io.arf_writer(tgt)
-    writer.send(DataBlock("spikes", 1.0, srate, spikes, ("events",)))
+    writer.send(DataBlock("spikes", offset, srate, spikes, ("events",)))
 
     d1 = tgt['entry_0']['spikes']
     d2 = tgt['entry_1']['spikes']
+
     assert_equal(d1.size + d2.size, spikes.size)
-    assert_equal(d1.size, sum(spikes['start'] < 2.0))
+    assert_array_equal(d1['start'], sp1['start'])
+    assert_true(all(d1['start'] < ((cut - offset) * srate)))
 
 
 def test_arf_writer_gap():
@@ -277,26 +282,6 @@ def test_writeback():
             writer.send(chunk._replace(offset=0.1, data=chunk.data[:]))
         else:
             writer.send(chunk)
-
-
-def test_adjust_event_times():
-
-    eq = nx.array_equal
-    f = arf_io.adjust_event_times
-    times = nx.arange(0, 20000, 1000, dtype=nx.int32)
-
-    for t in (nx.float, nx.uint32, nx.int64):
-        assert_true(eq(f(times, t(0), t(0)), times))
-        assert_true(eq(f(times, t(100), t(0)), times + 100))
-        assert_true(eq(f(times, t(100), t(1000)), times - 900))
-
-
-def test_split_point_process():
-    t = nx.arange(100,200,10)
-
-    assert_arrays_equal(arf_io.split_point_process(t, None), (t, []))
-    assert_arrays_equal(arf_io.split_point_process(t, 0), ([], t))
-    assert_arrays_equal(arf_io.split_point_process(t, 150), (t[t<150], t[t>=150]))
 
 
 # Variables:
