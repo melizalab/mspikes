@@ -167,15 +167,24 @@ def mspikes(argv=None):
     # run the graph
     log.info("starting graph")
     # progbar = util.print_progress()
-    for chunk in chain(*root):
-        pass
-        # progbar.send(chunk)
+    try:
+        for chunk in chain(*root):
+            pass
+            # progbar.send(chunk)
+    except KeyboardInterrupt as e:
+        log.info("user interrupted processing")
+        for node in root:
+            node.throw(e)
+    except Exception as e:
+        for node in root:
+            node.throw(e)
+    else:
+        log.info("graph finished executing")
+    finally:
+        log.info("cleaning up graph")
+        for node in root:
+            node.close()
 
-    log.info("cleaning up graph")
-    for node in root:
-        node.close()
-
-    log.info("end of run")
 
 # Variables:
 # End:

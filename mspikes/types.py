@@ -95,8 +95,10 @@ class Node(object):
         caller (with raise). The default implementation is to call
         throw(exception) on all connected targets.
 
-        Nodes must handle throw() being called with the same argument multiple
-        times, as they may have multiple upstream sources.
+        Calls to throw() must be followed by calls to close(), so finalization
+        code should go in close(). Nodes must handle throw() being called with
+        the same argument multiple times, as they may have multiple upstream
+        sources.
 
         """
         for tgt, filt in getattr(self, "_targets", ()):
