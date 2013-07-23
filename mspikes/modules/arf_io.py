@@ -254,7 +254,7 @@ class arf_writer(_base_arf, Node):
             if chunk.id in self.file:
                 entry = self.file[chunk.id]
                 self._log.debug("structure chunk (id='%s', offset=%.2fs) matches existing entry '%s'",
-                                chunk.id, chunk.offset, entry.name)
+                                chunk.id, float(chunk.offset), entry.name)
                 if not matches_entry(chunk, entry):
                     raise ArfError("an entry named '%s' exists in the target file,"
                                    "but has the wrong timestamp or uuid", chunk.id)

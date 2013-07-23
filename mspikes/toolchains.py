@@ -18,7 +18,8 @@ spk_extract = ("Extract spikes from raw neural recordings",
 
 klust_export = ("Export spike features for klusters/KlustaKwik",
                 "input = arf_reader()\n"
-                "feats = spike_features((input, _events))\n")
+                "feats = spike_features((input, _events))\n"
+                "output = klusters_writer(feats)")
 
 
 # Variables:

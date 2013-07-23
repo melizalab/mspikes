@@ -25,13 +25,11 @@ a_spike = nx.array([-1290,  -483,  -136,  -148,  -186,   637,   328,    41,    6
 t_peak = a_spike.argmax()
 t_trough = a_spike.argmin()
 
-def random_spikes(n, maxt, ds=None):
+
+def random_spikes(n, maxt, ds):
     """ generate a record array with marked point process structure """
     dt = nx.dtype([('start', nx.int32), ('spike', nx.int16, 60)])
-    if ds is None:
-        t = nx.random.uniform(0, maxt, n)
-    else:
-        t = nx.random.randint(0, maxt * ds, n)
+    t = nx.random.randint(0, maxt * ds, n)
     spikes = nx.tile(a_spike, (n, 1)) + nx.random.randn(n, 60) * 500 #nx.random.randint(2000, size=(n, 60))
     return nx.rec.fromarrays([t, spikes], dtype=dt)
 
@@ -85,6 +83,7 @@ def test_spike_feats():
     # somewhat limited in what we can test
     assert_equal(out[0].data.size, spikes.data.size)
     assert_true("pcs" in out[0].data.dtype.names)
+    return out
 
 
 def test_find_peaks():

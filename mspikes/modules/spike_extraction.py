@@ -16,6 +16,8 @@ from mspikes.types import Node, tag_set
 class spike_extract(Node):
     """Detect spike times in time series and extract waveforms
 
+    Currently only works on individual channels, not groups.
+
     accepts: _samples (time series of extracellular voltage)
     emits:   _events (marked point process, time + waveform)
     passes:  all other tags
@@ -164,6 +166,7 @@ class spike_features(Node):
         names = ['start', 'spike']
 
         if self.feats > 0:
+            # TODO handle multiple channels
             if self._eigenvectors is None:
                 self._eigenvectors = get_eigenvectors(spikes, self.feats)
             features.append(nx.dot(spikes, self._eigenvectors))
