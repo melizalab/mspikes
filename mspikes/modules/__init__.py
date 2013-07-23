@@ -8,6 +8,7 @@ from neural_filter import zscale
 from util import splitter, print_progress
 from spike_extraction import spike_extract, spike_features
 from klusters import klusters_writer, klusters_reader
+from plotting import collect_stats
 #from file_io import file_reader, file_writer
 
 

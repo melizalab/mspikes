@@ -178,6 +178,7 @@ def mspikes(argv=None):
     except Exception as e:
         for node in root:
             node.throw(e)
+        raise e
     else:
         log.info("graph finished executing")
     finally:
