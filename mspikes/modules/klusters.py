@@ -14,7 +14,7 @@ from mspikes.types import DataBlock, Node, Source, tag_set, MspikesError
 
 # defines a klusters group
 _group = namedtuple('_group', ('idx', 'spk', 'clu', 'fet', 'nfeats', 'nchannels', 'nsamples', 'peak_idx',
-                               'float_scaling'))
+                               'float_scaling', 'sampling_rate'))
 
 
 class KlustersError(MspikesError):
@@ -57,6 +57,9 @@ class klusters_writer(Node):
         if "events" not in chunk.tags or data.dtype.names is None or "spike" not in data.dtype.names:
             return
         group = self._get_group(chunk)
+        if group.sampling_rate != chunk.ds:
+            self._log.warn("(id=%s, offset=%.2fs): sampling rate was %s, now %s",
+                           chunk.id, float(chunk.offset), group.sampling_rate, chunk.ds)
         feats = int_features(chunk.data, group.float_scaling)
         if feats.shape[1] != group.nfeats:
             raise KlustersError("(id=%s, offset=%.2fs): feature count was %d, now %d" %
@@ -72,7 +75,24 @@ class klusters_writer(Node):
 
     def close(self):
         """ write xml file """
-
+        if not self._groups:
+            return
+        import pdb; pdb.set_trace() ## DEBUG ##
+        srates = [g.sampling_rate for g in self._groups.itervalues()]
+        sampling_rate = srates[0]
+        if not all(s == sampling_rate for s in srates):
+            self._log.war("sampling rate not the same for all channels: may lead to undefined behavior")
+        xml = make_paramfile(self._groups, sampling_rate)
+        self._log.info("writing parameters to %s.xml", self._basename)
+        with open(self._basename + ".xml", "wt") as fp:
+            fp.write(xml)
+        # close open files
+        for group in self._groups.itervalues():
+            group.fet.close()
+            group.spk.close()
+            group.clu.close()
+        self._groups = {}
+        # run kkwik
 
     def throw(self, exception):
         """Turn off klustakwik option"""
@@ -95,7 +115,8 @@ class klusters_writer(Node):
                            nsamples=chunk.data.dtype.fields['spike'][0].shape[0],
                            nchannels=1,              # TODO handle multiple channels
                            peak_idx=chunk.data['spike'].mean(0).argmax(),
-                           float_scaling=get_scaling(chunk.data))
+                           float_scaling=get_scaling(chunk.data),
+                           sampling_rate=chunk.ds)
             self._groups[chunk.id] = group
             return group
 
@@ -176,5 +197,55 @@ def int_spikes(data, scaling):
     return spikes.astype(tgt_dtype)
 
 
+def make_paramfile(groups, sampling_rate, sample_bits=16):
+    """Generate the klusters parameter file. Returns an xml string"""
+    from xml.etree import ElementTree as et
+    from mspikes import __version__
+
+    root = et.Element('parameters', creator='mspikes', version=__version__)
+    acq = et.SubElement(root, "acquisitionSystem")
+    text_element(acq, 'nBits', sample_bits)
+    # TODO multiple channels per group
+    text_element(acq, 'nChannels', len(groups))
+    text_element(acq, 'samplingRate', sampling_rate)
+    text_element(acq, 'voltageRange', 20)
+    text_element(acq, 'amplification', 1000)
+    text_element(acq, 'offset', 0)
+    text_element(et.SubElement(root, 'fieldPotentials'), 'lfpSamplingRate', 1250)
+
+    sd = et.SubElement(root, 'spikeDetection')
+    cg = et.SubElement(sd, 'channelGroups')
+    for i, name in enumerate(sorted(groups, key=natsorted)):
+        group = groups[name]
+        # TODO multiple channels per group
+        g = et.SubElement(cg, "group")
+        c = et.SubElement(g, "channels")
+        text_element(c, "channel", i)
+        text_element(c, "name", name)
+        text_element(g, "nSamples", group.nsamples)
+        text_element(g, "peakSampleIndex", group.peak_idx)
+        text_element(g, "nFeatures", group.nfeats)
+
+    return et.tostring(root)
+
+
+def text_element(parent, tag, value, **attribs):
+    """Create a text sub-element"""
+    from xml.etree import ElementTree as et
+    el = et.SubElement(parent, tag, **attribs)
+    el.text = str(value)
+    return el
+
+
+def natsorted(key):
+    """ key function for natural sorting. usage: sorted(seq, key=natsorted) """
+    import re
+    return map(lambda t: int(t) if t.isdigit() else t, re.split(r"([0-9]+)",key))
+
+
+
 # Variables:
 # End:
+
+
+

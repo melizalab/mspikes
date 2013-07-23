@@ -77,6 +77,7 @@ class _base_arf(object):
 
     def close(self):
         self.file.close()
+        Node.close(self)
 
 
 class arf_reader(_base_arf, RandomAccessSource):
