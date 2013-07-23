@@ -6,12 +6,12 @@ Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jun 27 10:47:24 2013
 """
 
-from nose.tools import *
-from nose.plugins.skip import SkipTest
+from test.common import *
 
 import numpy as nx
 import h5py
 
+from mspikes.types import DataBlock
 from mspikes.modules import spike_extraction, util
 
 # a nice surrogate spike with 20 samples before peak and 40 after
@@ -25,6 +25,15 @@ a_spike = nx.array([-1290,  -483,  -136,  -148,  -186,   637,   328,    41,    6
 t_peak = a_spike.argmax()
 t_trough = a_spike.argmin()
 
+def random_spikes(n, maxt, ds=None):
+    """ generate a record array with marked point process structure """
+    dt = nx.dtype([('start', nx.int32), ('spike', nx.int16, 60)])
+    if ds is None:
+        t = nx.random.uniform(0, maxt, n)
+    else:
+        t = nx.random.randint(0, maxt * ds, n)
+    spikes = nx.tile(a_spike, (n, 1)) + nx.random.randn(n, 60) * 500 #nx.random.randint(2000, size=(n, 60))
+    return nx.rec.fromarrays([t, spikes], dtype=dt)
 
 
 def test_detect_spikes():
@@ -62,15 +71,23 @@ def test_spike_extractor():
     with util.chain_modules(extractor, util.visitor(out.append)) as chain:
         for chunk in util.array_reader(a_recording, 20000, chunk_size):
             chain.send(chunk)
-
     starts = [to_samples(chunk.offset, chunk.ds) + chunk.data['start'] for chunk in out]
-    assert_true(nx.array_equal(nx.concatenate(starts), times))
-
+    assert_array_equal(nx.concatenate(starts), times)
     assert_true(all(nx.array_equal(chunk.data['spike'][0], a_spike) for chunk in out))
 
 
-def test_find_peaks():
+def test_spike_feats():
+    spikes = DataBlock("spikes", 0, 20000, random_spikes(1000, 20, 20000), ("events",))
+    out = []
+    measurer = spike_extraction.spike_features(raw=True, spikes=1000)
+    with util.chain_modules(measurer, util.visitor(out.append)) as chain:
+        chain.send(spikes)
+    # somewhat limited in what we can test
+    assert_equal(out[0].data.size, spikes.data.size)
+    assert_true("pcs" in out[0].data.dtype.names)
 
+
+def test_find_peaks():
     dims = (128, 64)
     shifts = nx.random.randint(-2, 2, dims[0])
     peak = 32
@@ -80,6 +97,11 @@ def test_find_peaks():
 
     arr[:,50] = 2.0             # dummy peak
     assert_true(nx.array_equal(shifts, spike_extraction.find_peaks(arr, peak, 2)))
+
+
+
+
+
 
 
 

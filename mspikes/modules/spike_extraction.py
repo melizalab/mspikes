@@ -308,13 +308,12 @@ def measurements(spikes):
     from numpy import column_stack, asarray
     nevents, nsamples = spikes.shape
     peak_ind = spikes.mean(0).argmax()
-    return dict(height=spikes.max(1),
-                trough1=spikes[:, :peak_ind].min(1),
-                trough2=spikes[:, peak_ind:].min(1),
-                ptt=spikes[:, peak_ind:].argmin(1),
-                peakw=asarray([(spike >= spike.max()/2).sum() for spike in spikes]),
-                troughw=asarray([(spike[peak_ind:] <= spike[peak_ind:].min()/2).sum() for spike in spikes]),
-            )
+    return (('height', spikes.max(1)),
+            ('trough1', spikes[:, :peak_ind].min(1)),
+            ('trough2', spikes[:, peak_ind:].min(1)),
+            ('ptt', spikes[:, peak_ind:].argmin(1)),
+            ('peakw', asarray([(spike >= spike.max()/2).sum() for spike in spikes])),
+            ('troughw', asarray([(spike[peak_ind:] <= spike[peak_ind:].min()/2).sum() for spike in spikes])))
 
 
 def fftresample(S, npoints, axis=1):
