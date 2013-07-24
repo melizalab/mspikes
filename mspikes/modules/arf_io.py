@@ -210,7 +210,11 @@ class arf_reader(_base_arf, RandomAccessSource):
                 if dset.size == 0:
                     continue
                 dset_ds = dset.attrs.get('sampling_rate', None)
-                dset_time = util.to_seconds(dset.attrs.get('offset', 0), dset_ds, entry_time)
+                dset_offset = dset.attrs.get('offset', 0)
+                if dset_offset > 0:
+                    dset_time = util.to_seconds(dset_offset, dset_ds, entry_time)
+                else:
+                    dset_time = entry_time
                 tags = dset_tags(dset)
                 chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset[:], tags=tags)
                 Node.send(self, chunk)
@@ -379,6 +383,8 @@ class arf_writer(_base_arf, Node):
         data_offset = chunk.offset - entry_time
         if chunk.ds is not None:
             data_offset = util.to_samples(data_offset, chunk.ds)
+        else:
+            data_offset = float(data_offset)
 
         if chunk.id not in entry:
             dset = self._create_dataset(entry, chunk, data_offset)
