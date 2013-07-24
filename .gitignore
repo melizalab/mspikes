@@ -1,5 +1,7 @@
 *.pyc
 *.pyo
+*.so
+*.arf
 *_flymake.py
 /mspikes.egg-info/
 /build/

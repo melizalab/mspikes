@@ -175,10 +175,10 @@ def mspikes(argv=None):
         log.info("user interrupted processing")
         for node in root:
             node.throw(e)
-    except Exception as e:
-        for node in root:
-            node.throw(e)
-        raise e
+    # except Exception as e:
+    #     for node in root:
+    #         node.throw(e)
+    #     raise e
     else:
         log.info("graph finished executing")
     finally:
