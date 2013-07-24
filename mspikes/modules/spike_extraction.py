@@ -49,6 +49,7 @@ class spike_extract(Node):
         self.last_chunk = None  # store last chunk in case spike splits across boundary
 
     def send(self, chunk):
+        from mspikes.modules.spikes import detect_spikes
         from mspikes.util import repeatedly
         from itertools import chain
 
@@ -179,63 +180,6 @@ class spike_features(Node):
 
         dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1) for n, a in zip(names, features)])
         Node.send(self, chunk._replace(ds=chunk.ds * self.resample, data=nx.rec.fromarrays(features, dt)))
-
-
-class detect_spikes(object):
-    """ state machine implementation"""
-
-    BelowThreshold = 1
-    BeforePeak = 2
-    AfterPeak = 3
-
-    def __init__(self, thresh, n_after):
-        """Construct spike detector.
-
-        thresh -- the crossing threshold that triggers the detector. Positive
-                  values imply positive-going crossings, and negative values
-                  imply negative-going crossings
-
-        n_after -- the maximum number of samples after threshold crossing to
-                   look for the peak. If a peak has not been located within this
-                   window, the crossing is considered an artifact and is not counted.
-
-        """
-        assert thresh != 0
-        self.thresh = thresh
-        self.n_after = n_after
-        self.state = self.BelowThreshold
-
-    def send(self, samples):
-        """Detect spikes in a time series.
-
-        Returns a list of indices corresponding to the peaks (or troughs) in the
-        data. Retains state between calls. The detector should be reset if there
-        is a gap in the signal.
-
-        """
-        from numpy import sign
-        out = []
-        tdir = sign(self.thresh)     # threshold crossing direction
-
-        for i, x in enumerate(samples):
-            if self.state is self.BelowThreshold:
-                if sign(x - self.thresh) == tdir:
-                    self.prev_val = x
-                    self.n_after_crossing = 0
-                    self.state = self.BeforePeak
-            elif self.state is self.BeforePeak:
-                if sign(self.prev_val - x) == tdir:
-                    out.append(i - 1)
-                    self.state = self.AfterPeak
-                elif self.n_after_crossing > self.n_after:
-                    self.state = self.BelowThreshold
-                else:
-                    self.prev_val = x
-                    self.n_after_crossing += 1
-            elif self.state is self.AfterPeak:
-                if sign(self.thresh - x) == tdir:
-                    self.state = self.BelowThreshold
-        return out
 
 
 def realign_spikes(times, spikes, upsample):

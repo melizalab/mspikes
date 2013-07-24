@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
 import sys
-
 if sys.hexversion < 0x02070000:
     raise RuntimeError("Python 2.7 or higher required")
 
 from ez_setup import use_setuptools
 use_setuptools()
-from setuptools import find_packages
+from setuptools import setup, find_packages, Extension
+import numpy
 
-from numpy.distutils.core import setup, Extension
+try:
+    from Cython.Distutils import build_ext
+    SUFFIX = '.pyx'
+except ImportError:
+    from distutils.command.build_ext import build_ext
+    SUFFIX = '.c'
 
 
 VERSION = '3.0.0-SNAPSHOT'
@@ -29,6 +34,12 @@ long_desc = """
 FIXME
 """
 
+compiler_settings = {
+    'include_dirs' : [numpy.get_include()],
+    }
+
+_spikes = Extension('mspikes.modules.spikes', sources=['mspikes/modules/spikes' + SUFFIX],
+                    **compiler_settings)
 # _readklu = Extension('klustio', sources=['src/klustio.cc'])
 # _spikes = Extension('spikes', sources=['src/spikes.pyf', 'src/spikes.c'])
 
@@ -41,18 +52,12 @@ setup(name="mspikes",
       author_email='"dan" at the domain "meliza.org"',
       maintainer='C Daniel Meliza',
       maintainer_email='"dan" at the domain "meliza.org"',
+      url = "https://github.com/dmeliza/mspikes",
+
       packages=find_packages(),
+      ext_modules=[_spikes],
+      cmdclass = {'build_ext': build_ext},
       entry_points={'console_scripts':
                     ['mspikes=mspikes.main:mspikes']},
-      #               ['mspike_extract=mspikes.mspike_extract:main',
-      #                'mspike_group=mspikes.mspike_group:main',
-      #                'mspike_view=mspikes.mspike_view:main',
-      #                'mspike_rasters=mspikes.mspike_rasters:main',
-      #                'mspike_shape=mspikes.mspike_shape:main',
-      #                'mspike_merge=mspikes.mspike_merge:main']},
-
-      # install_requires=["numpy>=1.3", "scipy>=0.7", "arf>=1.1.0"],
-
-      ext_package='mspikes',
-      # ext_modules=[_readklu, _spikes]
+      test_suite = 'nose.collector'
 )

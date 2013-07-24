@@ -35,16 +35,17 @@ def random_spikes(n, maxt, ds):
 
 
 def test_detect_spikes():
+    from mspikes.modules.spikes import detect_spikes
     a_recording = nx.zeros(10000, dtype=nx.int16)
     times = [100, 400, 1200]
     for t in times:
         a_recording[t:t + a_spike.size] += a_spike
 
-    detector = spike_extraction.detect_spikes(2000, 40)
+    detector = detect_spikes(2000, 40)
     assert_sequence_equal(detector.send(a_recording), [t + t_peak for t in times])
     assert_sequence_equal(detector.send(-a_recording), [t + t_trough for t in times])
 
-    detector = spike_extraction.detect_spikes(-4000, 40)
+    detector = detect_spikes(-4000, 40)
     assert_sequence_equal(detector.send(a_recording), [])
     assert_sequence_equal(detector.send(-a_recording), [t + t_peak for t in times])
 
@@ -72,6 +73,7 @@ def test_spike_extractor():
     starts = [to_samples(chunk.offset, chunk.ds) + chunk.data['start'] for chunk in out]
     assert_array_equal(nx.concatenate(starts), times)
     assert_true(all(nx.array_equal(chunk.data['spike'][0], a_spike) for chunk in out))
+
 
 
 def test_spike_feats():
