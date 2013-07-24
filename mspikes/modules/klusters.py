@@ -14,7 +14,7 @@ from mspikes.types import DataBlock, Node, Source, tag_set, MspikesError
 
 # defines a klusters group
 _group = namedtuple('_group', ('idx', 'spk', 'clu', 'fet', 'nfeats', 'nchannels', 'nsamples', 'peak_idx',
-                               'float_scaling', 'sampling_rate'))
+                               'float_scaling', 'sampling_rate', 'pcfeats'))
 
 
 class KlustersError(MspikesError):
@@ -106,19 +106,25 @@ class klusters_writer(Node):
             return self._groups[chunk.id]
         except KeyError:
             idx = len(self._groups) + 1
-            self._log.info("id '%s' will be stored in '%s.fet.%d'", chunk.id, self._basename, idx)
             spk = open("{0}.spk.{1}".format(self._basename, idx), "wb")
             clu = open("{0}.clu.{1}".format(self._basename, idx), "wt")
             clu.write("1\n")
             fet = open("{0}.fet.{1}".format(self._basename, idx), "wt")
             nfeats = count_features(chunk.data)
+            try:
+                pcfeats = chunk.data.dtype['pcs'].shape[0]
+            except KeyError:
+                pcfeats = 0
             fet.write("%d\n" % nfeats)
             group = _group(idx, spk, clu, fet, nfeats,
-                           nsamples=chunk.data.dtype.fields['spike'][0].shape[0],
+                           nsamples=chunk.data.dtype['spike'].shape[0],
                            nchannels=1,              # TODO handle multiple channels
                            peak_idx=chunk.data['spike'].mean(0).argmax(),
                            float_scaling=get_scaling(chunk.data),
-                           sampling_rate=chunk.ds)
+                           sampling_rate=chunk.ds,
+                           pcfeats=pcfeats)
+            self._log.info("'%s' -> '%s.fet.%d' (pcs=%d, feats=%d, spk=(%d,%d))",
+                           chunk.id, self._basename, idx, pcfeats, nfeats, group.nsamples, group.nchannels)
             self._groups[chunk.id] = group
             return group
 
@@ -236,8 +242,8 @@ def run_klustakwik(basename, groups, log):
     from subprocess import Popen
     cmd = "KlustaKwik %s %d -Screen 0 -UseFeatures %s"
     try:
-        jobs = [Popen(cmd % (basename, g.idx, "1" * (g.nfeats - 1) + "0"), bufsize=-1) for
-                i, g in enumerate(groups)]
+        jobs = [Popen((cmd % (basename, g.idx, "1" * (g.pcfeats) + "0" * (g.nfeats - g.pcfeats))).split(),
+                      bufsize=-1) for i, g in enumerate(groups.itervalues())]
     except OSError:
         log.warning("unable to run KlustaKwik - is it installed?")
         return
