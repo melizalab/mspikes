@@ -100,7 +100,7 @@ def test_entry_iteration():
 
     r = arf_io.arf_reader(fp)
     dset_times = [d.offset for d in r]
-    assert_sequence_equal(dset_times, [Fraction(t) for t in expected_times])
+    assert_sequence_equal(dset_times, [Fraction(str(t)) for t in expected_times])
 
 
 def compare_entries(name, src, tgt):

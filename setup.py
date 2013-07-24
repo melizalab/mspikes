@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
 import sys
-if sys.hexversion < 0x02070000:
-    raise RuntimeError("Python 2.7 or higher required")
+if sys.hexversion < 0x02060000:
+    raise RuntimeError("Python 2.6 or higher required")
 
 from ez_setup import use_setuptools
 use_setuptools()
@@ -15,7 +15,6 @@ try:
 except ImportError:
     from distutils.command.build_ext import build_ext
     SUFFIX = '.c'
-
 
 VERSION = '3.0.0-SNAPSHOT'
 cls_txt = """
@@ -40,6 +39,11 @@ compiler_settings = {
 
 _spikes = Extension('mspikes.modules.spikes', sources=['mspikes/modules/spikes' + SUFFIX],
                     **compiler_settings)
+
+requirements = ["arf==2.1"]
+if sys.hexversion < 0x02070000:
+    requirements.append("argparse==1.2.1")
+
 # _readklu = Extension('klustio', sources=['src/klustio.cc'])
 # _spikes = Extension('spikes', sources=['src/spikes.pyf', 'src/spikes.c'])
 
@@ -59,5 +63,6 @@ setup(name="mspikes",
       cmdclass = {'build_ext': build_ext},
       entry_points={'console_scripts':
                     ['mspikes=mspikes.main:mspikes']},
-      test_suite = 'nose.collector'
+      test_suite = 'nose.collector',
+      install_requires = requirements
 )

@@ -84,7 +84,7 @@ def to_seconds(samples, sampling_rate=None, offset=None):
 
 def to_samples(seconds, sampling_rate):
     """Convert seconds to integer number of samples, rounding to nearest sample"""
-    return long(round(seconds * sampling_rate))
+    return long(round(seconds * float(sampling_rate)))
 
 # Variables:
 # End:

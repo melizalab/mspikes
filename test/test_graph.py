@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
 
-from nose.tools import *
-from nose.plugins.skip import SkipTest
-
+from test.common import *
 import inspect
 
 from mspikes import graph
@@ -60,7 +58,7 @@ def test_chain_doc():
 
     node_types = inspect.getmembers(modules, inspect.isclass)
     parser = argparse.ArgumentParser("test", add_help=False)
-    code = ";".join("node{} = {}()".format(i,n) for i,(n,t) in enumerate(node_types))
+    code = ";".join("node{0} = {1}()".format(i,n) for i,(n,t) in enumerate(node_types))
     for name,node_def in graph.parse_node_descrs(code):
         graph.add_node_to_parser(name, node_def, parser)
 

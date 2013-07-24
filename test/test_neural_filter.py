@@ -5,8 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jun 27 10:47:24 2013
 """
-from nose.tools import *
-from nose.plugins.skip import SkipTest
+from test.common import *
 
 import numpy as nx
 from mspikes.modules import neural_filter, util

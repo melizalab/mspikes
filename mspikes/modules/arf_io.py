@@ -29,6 +29,10 @@ class _base_arf(object):
             self.file = filename
         else:
             self.file = arf.open_file(filename, mode)
+        try:
+            arf.check_file_version(self.file)
+        except Warning, w:
+            self._log.warn("%s", w)
         self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
 
     @property
@@ -209,7 +213,13 @@ class arf_reader(_base_arf, RandomAccessSource):
                     continue
                 if dset.size == 0:
                     continue
-                dset_ds = dset.attrs.get('sampling_rate', None)
+                if 'sampling_rate' in dset.attrs:
+                    dset_ds = dset.attrs['sampling_rate']
+                    # python 2.6 shim
+                    if hasattr(dset_ds, 'dtype') and dset_ds.dtype.kind == 'i':
+                        dset_ds = int(dset_ds)
+                else:
+                    dset_ds = None
                 dset_offset = dset.attrs.get('offset', 0)
                 if dset_offset > 0:
                     dset_time = util.to_seconds(dset_offset, dset_ds, entry_time)
@@ -540,5 +550,6 @@ def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data
         times -= dset_offset
 
     return data[idx], data[~idx]
+
 # Variables:
 # End:

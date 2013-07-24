@@ -107,10 +107,10 @@ class klusters_writer(Node):
         except KeyError:
             idx = len(self._groups) + 1
             self._log.info("id '%s' will be stored in '%s.fet.%d'", chunk.id, self._basename, idx)
-            spk = open("{}.spk.{}".format(self._basename, idx), "wb")
-            clu = open("{}.clu.{}".format(self._basename, idx), "wt")
+            spk = open("{0}.spk.{1}".format(self._basename, idx), "wb")
+            clu = open("{0}.clu.{1}".format(self._basename, idx), "wt")
             clu.write("1\n")
-            fet = open("{}.fet.{}".format(self._basename, idx), "wt")
+            fet = open("{0}.fet.{1}".format(self._basename, idx), "wt")
             nfeats = count_features(chunk.data)
             fet.write("%d\n" % nfeats)
             group = _group(idx, spk, clu, fet, nfeats,
@@ -171,7 +171,7 @@ def int_features(data, scaling):
         elif dtype[0].kind=='i':
             out.append(data[name])
         else:
-            raise KlustersError("data type {} can't be converted to klusters feature".format(dtype[0]))
+            raise KlustersError("data type {0} can't be converted to klusters feature".format(dtype[0]))
 
     # time comes last. it needs to be sampled
     out.append(data['start'].astype(tgt_dtype))

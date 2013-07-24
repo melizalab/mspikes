@@ -5,7 +5,7 @@ __version__ = "3.0.0-SNAPSHOT"
 
 __doc__ = """A program for processing time-varying data.
 
-Version: {}
+Version: {0}
 
 Copyright (C) Dan Meliza, 2006-2013 (dmeliza@uchicago.edu)
 This is free software.

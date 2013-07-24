@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
-
-from nose.tools import *
-from nose.plugins.skip import SkipTest
+from test.common import *
 
 from operator import attrgetter
 from mspikes.modules import dispatcher
@@ -24,7 +22,7 @@ def test_parallel_wrapper():
     assert_true(hasattr(wrapped, 'close'))
     assert_true(hasattr(wrapped, 'throw'))
     assert_equal(wrapped.options(5), base.options(5))
-    assert_is_not(wrapped.send, base.send)
+    assert_false(wrapped.send is base.send)
 
 
 def test_parallel_dispatch():

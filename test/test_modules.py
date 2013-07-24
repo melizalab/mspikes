@@ -5,8 +5,7 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jun 20 14:59:30 2013
 """
-from nose.tools import *
-from nose.plugins.skip import SkipTest
+from test.common import *
 
 from mspikes import types
 from mspikes import filters

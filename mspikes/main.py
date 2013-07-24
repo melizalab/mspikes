@@ -16,7 +16,7 @@ def print_descriptions(keyvals, descr):
     objs = tuple(keyvals)      # in case it's an iterator
     if len(objs)==0:
         return
-    fmt = "{:<%d}   {}" % max(len(n) for n,_ in objs)
+    fmt = "{0:<%d}   {1}" % max(len(n) for n,_ in objs)
     for n,obj in objs:
         print fmt.format(n, descr(obj))
 
@@ -69,17 +69,17 @@ def print_doc(arg):
 
     elif hasattr(toolchains, arg):
         sdoc,defs = getattr(toolchains, arg)
-        print "{}:  {}\n\n{}".format(arg, sdoc, defs)
+        print "{0}:  {1}\n\n{2}".format(arg, sdoc, defs)
     elif hasattr(modules, arg):
         cls = getattr(modules, arg)
         doc = getdoc(cls)
-        print "{}:  {}".format(arg, doc)
+        print "{0}:  {1}".format(arg, doc)
         print_options(cls)
     elif hasattr(filters, arg):
         doc = getdoc(getattr(filters, arg))
-        print "{}:  {}".format(arg, doc)
+        print "{0}:  {1}".format(arg, doc)
     else:
-        print "E: no such toolchain, module, or filter '{}'".format(arg)
+        print "E: no such toolchain, module, or filter '{0}'".format(arg)
 
 
 def mspikes(argv=None):
@@ -127,10 +127,10 @@ def mspikes(argv=None):
             toolchain.update(graph.parse_node_descrs(expr))
 
     except AttributeError,e:
-        print "E: no such toolchain '{}'".format(opts.tchain_name)
+        print "E: no such toolchain '{0}'".format(opts.tchain_name)
         return -1
     except SyntaxError,e:
-        print "E: couldn't parse definition: {}".format(e)
+        print "E: couldn't parse definition: {0}".format(e)
         raise
 
     # add nodes to the parser so user can set their parameters
@@ -138,7 +138,7 @@ def mspikes(argv=None):
         try:
             graph.add_node_to_parser(node_name, node_def, p)
         except AttributeError,e:
-            print "E: no such processing module '{}'".format(node_def.type)
+            print "E: no such processing module '{0}'".format(node_def.type)
             return -1
 
     if opts.help or len(toolchain)==0:
@@ -155,10 +155,10 @@ def mspikes(argv=None):
     try:
         root = graph.build_node_graph(toolchain.items(), opts)
     except AttributeError,e:
-        print "E: {}".format(e.message)
+        print "E: {0}".format(e.message)
         return -1
     except KeyError,e:
-        print "E: no such node {}".format(e)
+        print "E: no such node {0}".format(e)
         return -1
     # TODO catch instantiation errors
 
