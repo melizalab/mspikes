@@ -94,9 +94,10 @@ class _smoother(Node):
     def __init__(self, **options):
         util.set_option_attributes(self, options, window=2.0)
         self._log.info("window size: %.2f s", self.window)
-        self.last_sample_t = 0    # time of last sample
+        self.first_sample_t = None   # time of first sample in window
+        self.last_sample_t = None    # time of last sample
         self.state = None         # statistics from sliding window
-        self.nsamples = 0         # number of samples for which we have data
+        self.weight = 0           # number of samples for which we have data
         self.init_queue = []      # queue for chunks while initializing smoother
 
     def statefun(self, chunk, nsamples, state):
@@ -109,36 +110,43 @@ class _smoother(Node):
 
     def send(self, chunk):
         from mspikes.util import repeatedly
-
         # pass non-time series data
         if not "samples" in chunk.tags:
             Node.send(self, chunk)
             return
 
+        # this implementation is a poor man's ringbuffer. A tail 'pointer'
+        # indicates how many samples are averaged in self.state. Data are queued
+        # until this number exceeds the minimum window size. If there are gaps,
+        # the past sample count is penalized.
+        if self.first_sample_t is None:
+            self.first_sample_t = chunk.offset
+        if self.last_sample_t is None:
+            self.last_sample_t = chunk.offset
         # convert time windows to sample counts
         n_window = int(self.window * chunk.ds)
+        # number of samples (including gaps)
+        nsamples = util.to_samples(chunk.offset - self.first_sample_t, chunk.ds)
 
-        # penalize for gaps - but still keep some old data
-        if self.nsamples > n_window / 5:
-            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
-            self.nsamples = max(n_window / 5, self.nsamples - gap)
-
-        # ensure that data is realized (e.g. from hdf5 arrays)
-        chunk = chunk._replace(data=chunk.data[...])
-
-        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
-
-        # if uninitialized, append to init_queue
-        if self.nsamples < n_window:
+        # if uninitialized, append to init_queue; otherwise, process past and
+        # current chunks
+        if nsamples < n_window:
             self.init_queue.append(chunk)
-            self.state = self.statefun(chunk, self.nsamples, self.state)
-            self.nsamples = min(n_window, self.nsamples + chunk.data.size)
+            self.state = self.statefun(chunk, self.weight, self.state)
         else:
             # flush the init_queue
             for past_chunk in repeatedly(self.init_queue.pop, 0):
                 self.datafun(past_chunk)
-            # process the current chunk
+            # process the current chunk. penalize for gaps, but only when the
+            # window is full
+            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
+            self.weight = max(self.weight, n_window) - gap
             self.datafun(chunk)
+            # advance tail? may cause reinitialization
+            # self.first_sample_t = util.to_seconds(chunk.data.size, chunk.ds, self.first_sample_t)
+
+        self.weight = min(n_window, self.weight + chunk.data.size)
+        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
 
 
 @dispatcher.parallel('id', "samples")
@@ -201,7 +209,7 @@ class zscale(_smoother):
         """Drop chunks that exceed the threshold"""
         from mspikes.util import to_samples
 
-        mean, var = self.statefun(chunk, self.nsamples, self.state)
+        mean, var = self.statefun(chunk, self.weight, self.state)
         rms = nx.sqrt(var)
         rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
         Node.send(self, chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar")))
