@@ -53,7 +53,6 @@ class spike_extract(Node):
         from itertools import chain
 
         n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
-
         # reset the detector if there's a gap or ds changes
         if self.last_chunk is not None:
             last_sample_t = util.to_seconds(self.last_chunk.data.size, self.last_chunk.ds, self.last_chunk.offset)
@@ -72,19 +71,20 @@ class spike_extract(Node):
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
                                            data=nx.fromiter(spikes, dtype=dt),
                                            tags=tag_set("events")))
-
         self.last_chunk = chunk
 
     def get_spikes(self, chunk, times):
         data = chunk.data
-
         for start, stop in times:
             if stop > data.size:
                 # queue the spike until the next data chunk arrives
                 self.spike_queue.append((start - data.size, stop - data.size))
                 continue
-            if start < 0 and self.last_chunk is not None:
-                spk = nx.concatenate((self.last_chunk.data[slice(start, None)], data[slice(0, stop)]))
+            if start < 0:
+                if self.last_chunk is not None:
+                    spk = nx.concatenate((self.last_chunk.data[slice(start, None)], data[slice(0, stop)]))
+                else:
+                    continue
             else:
                 spk = data[start:stop]
 
