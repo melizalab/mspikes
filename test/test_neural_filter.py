@@ -9,7 +9,6 @@ from nose.tools import *
 from nose.plugins.skip import SkipTest
 
 import numpy as nx
-from mspikes import types
 from mspikes.modules import neural_filter, util
 
 def test_exponential_filter():
@@ -86,7 +85,7 @@ def test_rms_exclude():
 
     out = []
     with util.chain_modules(excluder, util.visitor(out.append)) as chain:
-        for chunk in util.array_reader(data, ds, chunk_size):
+        for chunk in util.array_reader(data, ds, chunk_size, gap=100):
             chain.send(chunk)
 
     return data, out

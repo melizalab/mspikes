@@ -11,6 +11,7 @@ import contextlib
 from mspikes.types import Node, tag_set
 from mspikes.modules import dispatcher
 
+
 def coroutine(func):
     from functools import wraps
     @wraps(func)
@@ -141,15 +142,17 @@ class splitter(Node):
             self.last_time = to_seconds(nframes, chunk.ds, chunk.offset)
 
 
-
-def array_reader(array, ds, chunk_size, id='', tags=tag_set("samples")):
+def array_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
     """Generate chunks from a 1d array"""
+    from numpy import array_split
     from mspikes.types import DataBlock
     from mspikes.util import to_seconds
 
     assert array.ndim == 1
-    for i in xrange(0, array.size, chunk_size):
-        yield DataBlock(id, to_seconds(i, ds), ds, array[i:i + chunk_size], tags)
+    t = 0
+    for arr in array_split(array, array.size / chunk_size):
+        yield DataBlock(id, to_seconds(t, ds), ds, arr, tags)
+        t += arr.size + gap
 
 
 def time_series_offsets(dset_time, dset_ds, start_time, stop_time, nframes):
