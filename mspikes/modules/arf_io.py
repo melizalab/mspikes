@@ -40,10 +40,11 @@ class _base_arf(object):
         """The program that created the file, or None if unknown"""
         if self.file.attrs.get('program', None) == 'arfxplog':
             return 'arfxplog'
-        elif "jill_log" in self.file:  # maybe check for jack_sample attribute?
+        entry = get_first(self.file, h5py.Group)
+        if hasattr(entry, "jack_frame"):
             return "jill"
         else:
-            return None
+            return self.file.attrs.get('file_creator', None)
 
     def get_offset_function(self, use_timestamp=False):
         """Return a function that extracts offsets (in seconds) from entries
@@ -80,7 +81,9 @@ class _base_arf(object):
         return fun
 
     def close(self):
-        self.file.close()
+        if self.file is not None:
+            self.file.close()
+            self.file = None
         Node.close(self)
 
 
@@ -262,7 +265,7 @@ class arf_writer(_base_arf, Node):
         # build entry table
         self._offset_fun = self.get_offset_function()
         self._make_entry_table()
-        arf.set_attributes(self.file, file_creator='mspikes.arf_writer')
+        arf.set_attributes(self.file, file_creator='mspikes.arf_writer', overwrite=False)
 
     def send(self, chunk):
         if "structure" in chunk.tags and self.auto_entry is None:
@@ -283,19 +286,23 @@ class arf_writer(_base_arf, Node):
     def _make_entry_table(self):
         """Generate a table of entries and start times."""
         entries = sorted(self.file.values(), key=arf.entry_time)
-
         self._offsets = []
         self._entries = []
+        self._datasets = set()
         t0 = None
         for entry in entries:
             try:
                 t = self._offset_fun(entry)
+            except LookupError:
+                pass
+            else:
                 if t0 is None:
                     t0 = t
                 self._offsets.append(t - t0)
                 self._entries.append(entry)
-            except LookupError:
-                pass
+                self._datasets.update(dset.name for dset in entry.itervalues()
+                                      if isinstance(dset, h5py.Dataset))
+
 
     def _create_entry(self, name, offset, **attributes):
         """Create a new entry in the target file
@@ -333,6 +340,7 @@ class arf_writer(_base_arf, Node):
                 timestamp = (arf.timestamp_to_float(other.attrs['timestamp']) +
                              offset - self._offset_fun(other))
         self._log.info("created new entry '%s' (offset=%.2fs)", name, float(offset))
+        # TODO store mspikes offset in entry in some unambiguous format
         entry = arf.create_entry(self.file, name, timestamp, **attributes)
         # insert new entry in the table of entries
         self._offsets.insert(idx, offset)
@@ -403,15 +411,15 @@ class arf_writer(_base_arf, Node):
             dset = entry[chunk.id]
             dset_offset = dset.attrs.get('offset', 0)
             # make sure this is a good idea
+            if dset.name in self._datasets:
+                raise ArfError("(id='%s', offset=%.3f): can't write to pre-existing dataset '%s'" %
+                               (chunk.id, float(chunk.offset), dset.name))
             if dset.maxshape[0] is not None:
                 raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
                                (chunk.id, float(chunk.offset), dset.name))
             if dset.attrs.get('sampling_rate', None) != chunk.ds:
                 raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
                                (chunk.id, float(chunk.offset), dset.name))
-            if data_offset <= dset_offset:
-                raise ArfError("(id='%s', offset=%.3fs): dataset '%s' already exists" %
-                                (chunk.id, float(chunk.offset), dset.name))
             if "samples" in chunk.tags:
                 # additional steps to verify alignment for sampled data
                 gap = data_offset - (dset_offset + dset.size)
@@ -550,6 +558,14 @@ def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data
         times -= dset_offset
 
     return data[idx], data[~idx]
+
+
+def get_first(obj, obj_type):
+    """Return the first element of obj_type under obj"""
+    def visit(name):
+        if obj.get(name, getclass=True) is obj_type:
+            return obj.get(name)
+    return obj.visit(visit)
 
 # Variables:
 # End:

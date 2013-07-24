@@ -254,8 +254,6 @@ def test_writeback():
     e = arf.create_entry(src, "entry", timestamp=0, sample_count=0)
     arf.create_dataset(e, "pcm", nx.random.randn(N), units="mV", sampling_rate=N,
                        maxshape=(None,))
-    # a non-extensible entry
-    arf.create_dataset(e, "pcmx", nx.random.randn(N), units="mV", sampling_rate=N)
     arf.create_dataset(e, "spikes", random_spikes(100, 1.0), units=('s','mV'),
                        maxshape=(None,))
 
@@ -263,24 +261,14 @@ def test_writeback():
     writer = arf_io.arf_writer(src)
 
     for chunk in reader:
-        if chunk.id == "pcmx":
+        if not "structure" in chunk.tags:
             with assert_raises(arf_io.ArfError):
-                # non-extensible entry
-                writer.send(chunk._replace(offset=1))
-        elif chunk.id == "pcm":
-            with assert_raises(arf_io.ArfError):
-                # still overlaps
-                writer.send(chunk._replace(offset=0.5))
-            # okay
-            writer.send(chunk._replace(offset=2))
-        elif chunk.id == "spikes":
-            with assert_raises(arf_io.ArfError):
-                writer.send(chunk)
-            # as long as they're not at exactly the same offset they're merged
-            # have to read the data in order to avoid extending the dataset
-            # we're trying to write
-            writer.send(chunk._replace(offset=0.1, data=chunk.data[:]))
+                # changing the offset is not sufficient
+                writer.send(chunk._replace(offset=0.1))
+            # changing the name makes it okay
+            writer.send(chunk._replace(id=chunk.id + "_new"))
         else:
+            # okay to send structure tags again
             writer.send(chunk)
 
 
