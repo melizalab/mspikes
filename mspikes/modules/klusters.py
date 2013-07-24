@@ -77,7 +77,6 @@ class klusters_writer(Node):
         """ write xml file """
         if not self._groups:
             return
-        import pdb; pdb.set_trace() ## DEBUG ##
         srates = [g.sampling_rate for g in self._groups.itervalues()]
         sampling_rate = srates[0]
         if not all(s == sampling_rate for s in srates):
@@ -87,12 +86,15 @@ class klusters_writer(Node):
         with open(self._basename + ".xml", "wt") as fp:
             fp.write(xml)
         # close open files
+        kkwik_jobs = []
         for group in self._groups.itervalues():
             group.fet.close()
             group.spk.close()
             group.clu.close()
+        if self.kkwik:
+            run_klustakwik(self._basename, self._groups, self._log)
         self._groups = {}
-        # run kkwik
+
 
     def throw(self, exception):
         """Turn off klustakwik option"""
@@ -227,6 +229,23 @@ def make_paramfile(groups, sampling_rate, sample_bits=16):
         text_element(g, "nFeatures", group.nfeats)
 
     return et.tostring(root)
+
+
+def run_klustakwik(basename, groups, log):
+    """Run klustakwik on groups, if it exists"""
+    from subprocess import Popen
+    cmd = "KlustaKwik %s %d -Screen 0 -UseFeatures %s"
+    try:
+        jobs = [Popen(cmd % (basename, g.idx, "1" * (g.nfeats - 1) + "0"), bufsize=-1) for
+                i, g in enumerate(groups)]
+    except OSError:
+        log.warning("unable to run KlustaKwik - is it installed?")
+        return
+
+    for i, job in enumerate(jobs):
+        log.info("waiting for KlustaKwik job %d to finish...", i + 1)
+        job.wait()
+
 
 
 def text_element(parent, tag, value, **attribs):
