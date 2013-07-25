@@ -99,13 +99,22 @@ class arf_reader(_base_arf, RandomAccessSource):
     _entries is used to calculate offsets for the chunks, but for ARF files
     created by 'arfxplog' and 'jrecord' the sample clock can be used as well.
 
+    To only read specific entries or channels, you can use the --entries or
+    --channels options. Note that these options are interpreted as regular
+    expressions.
+
     """
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("filename",
                  help="the file to read")
         addopt_f("--channels",
-                 help="names or regexps of channels to read (default all)",
+                 help="""regular expression restricting which channels to read (default all). For
+        example, 'pcm_000' will only match channels that start with 'pcm_000',
+        including 'pcm_000' but also 'pcm_0001', etc. To match 'pcm_000'
+        exactly, use 'pcm_000$'. You can also exclude specific channels using
+        regular expressions. '(?!pcm_000)' will match any channel that doesn't
+        start with 'pcm_000'""",
                  metavar='CH',
                  action='append')
         addopt_f("--start",
@@ -118,9 +127,10 @@ class arf_reader(_base_arf, RandomAccessSource):
                  type=float,
                  metavar='FLOAT')
         addopt_f("--entries",
-                 help="names or regexps of entries to read (default all)",
+                 help="regular expression restricting which entries to read (default all)",
                  metavar='P',
                  action='append')
+        # TODO select based on datatype attribute
         addopt_f("--use-timestamp", help=""" use entry timestamp for timebase and ignore other fields. May lead to
         warnings about data overlap because of jitter in the system clock. Using
         sample-based times from files recorded at multiple sampling rates or
@@ -229,7 +239,8 @@ class arf_reader(_base_arf, RandomAccessSource):
                 else:
                     dset_time = entry_time
                 tags = dset_tags(dset)
-                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset[:], tags=tags)
+                # don't read data until necessary: preserving the dtypes can help downstream
+                chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
                 yield chunk
 
@@ -440,7 +451,8 @@ class arf_writer(_base_arf, Node):
                     data_offset = dset_offset = 0
                     dset = self._create_dataset(entry, chunk, data_offset)
 
-        if "samples" in chunk.tags:
+        if "samples" in chunk.tags or isinstance(chunk.data, h5py.Dataset):
+            # no need to split data that come from another arf file
             arf.append_data(dset, chunk.data)
         elif "events" in chunk.tags:
             data, next = _split_point_process(chunk.data, data_offset, dset_offset, next_entry_time, chunk.ds)

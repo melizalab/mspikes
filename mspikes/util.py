@@ -13,7 +13,7 @@ def chain_predicates(*ps):
 def any_regex(*regexes):
     """Return closure that tests for match against any of the arguments"""
     import re
-    rx = [re.compile(regex).search for regex in regexes]
+    rx = [re.compile(regex).match for regex in regexes]
     def multimatch(x):
         return any(p(x) for p in rx)
     multimatch.__doc__ = " | ".join(regexes)

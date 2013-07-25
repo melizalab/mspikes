@@ -130,6 +130,10 @@ class _smoother(Node):
         # time since last sample
         gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
 
+        # if data is not in memory, read it once now
+        if not isinstance(chunk.data, nx.ndarray):
+            chunk = chunk._replace(data=chunk.data[:])
+
         # if uninitialized, append to init_queue; otherwise, process past and
         # current chunks
         if gap > n_window:
