@@ -6,64 +6,63 @@ Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Tue Jul 23 15:06:17 2013
 """
 
-import logging
 from mspikes import util
 from mspikes.types import Node, tag_set
 
 
-class collect_stats(Node):
-    """Collect statistics from upstream modules"""
-
-    @classmethod
-    def options(cls, addopt_f, **defaults):
-        if not defaults.get('plot', False):
-            addopt_f("--plot",
-                     help="if set, plot results",
-                     action="store_true")
+class print_stats(Node):
+    """ Print statistics from upstream modules """
 
     def __init__(self, **options):
-        util.set_option_attributes(self, options, plot=True)
-        self._stats = []
-        self._exclusions = []
+        names = ('time','chan','stat','value')
+        print "\t".join(names)
 
     def send(self, chunk):
-        # could really do the plot/print as we get the data
-        if "scalar" in chunk.tags:
-            for field, value in chunk.data._asdict().iteritems():
-                self._stats.append((float(chunk.offset), chunk.id, field, value))
-        elif "exclusions" in chunk.tags:
-            for rec in chunk.data:
-                self._exclusions.append((rec['start'], rec['stop']))
+        if not "scalar" in chunk.tags: return
+        for field, value in chunk.data._asdict().iteritems():
+            print "%.3f\t%s\t%s\t%f" % (float(chunk.offset), chunk.id, field, value)
 
-    def close(self):
-        import numpy as nx
-        names = ('time','chan','stat','value')
-        data = nx.rec.fromrecords(self._stats, names=names)
-        if not self._stats:
-            return
-        if self.plot:
-            import matplotlib.pyplot as plt
-            # remap strings to numbers
-            channels = tuple(set(data['chan']))
-            stats = tuple(set(data['stat']))
-            fig = plt.figure()
-            for i,stat in enumerate(stats):
-                ax = fig.add_subplot(len(stats), 1, i + 1)
-                ax.hold(1)
-                for j,chan in enumerate(channels):
-                    idx = (data['chan']==chan) & (data['stat']==stat)
-                    ax.plot(data['time'][idx], data['value'][idx], '.', label=chan)
-                ax.set_ylabel(stat)
-                ax.legend()
-            fig.show()
-            plt.show()
-        else:
-            print "\t".join(names)
-            for rec in data:
-                print "\t".join("%s" % x for x in rec)
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    class plot_stats(Node):
+        """Plot statistics from upstream module (disabled; needs matplotlib)"""
+else:
+    class plot_stats(Node):
+        """Plot statistics from upstream modules"""
 
-    def throw(self, err):
-        self._stats = []
+        @classmethod
+        def options(cls, addopt_f, **defaults):
+            # TODO restrict to specific stats?
+            pass
+
+        def __init__(self, **options):
+            plt.ion()
+            self.fig = None
+            self.colors = {}
+
+        def send(self, chunk):
+            if not "scalar" in chunk.tags: return
+            if self.fig is None:
+                self.fig, self.axes = plt.subplots(len(chunk.data),1, sharex=True, squeeze=True)
+                self.axes[-1].set_xlabel("Time (s)")
+                for name, ax in zip(chunk.data._fields, self.axes):
+                    ax.set_ylabel(name)
+                    ax.hold(1)
+
+            for datum, ax in zip(chunk.data, self.axes):
+                if chunk.id in self.colors:
+                    ax.plot(chunk.offset, datum, '.', color=self.colors[chunk.id], label=chunk.id)
+                else:
+                    p = ax.plot(chunk.offset, datum, '.', label=chunk.id)
+                    self.colors[chunk.id] = p[0].get_color()
+                    ax.legend(fontsize='small')
+            plt.draw()
+
+        def close(self):
+            if plt.isinteractive():
+                plt.ioff()
+                plt.show()
 
 
 # Variables:
