@@ -84,7 +84,7 @@ def test_spike_feats():
         chain.send(spikes)
     # somewhat limited in what we can test
     assert_equal(out[0].data.size, spikes.data.size)
-    assert_true("pcs" in out[0].data.dtype.names)
+    assert_true("PC" in out[0].data.dtype.names)
     return out
 
 

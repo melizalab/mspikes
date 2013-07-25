@@ -417,8 +417,8 @@ class arf_writer(_base_arf, Node):
             # make sure this is a good idea. most errors will be caught by this
             # first check
             if dset.name in self._datasets:
-                self._log.warning("(id='%s', offset=%.3f): not written; dataset '%s' already exists",
-                                  chunk.id, float(chunk.offset), dset.name)
+                raise ArfError("(id='%s', offset=%.3f): not written; dataset '%s' already exists" %
+                               (chunk.id, float(chunk.offset), dset.name))
                 return
             if dset.maxshape[0] is not None:
                 raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %

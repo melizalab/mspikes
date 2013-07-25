@@ -109,11 +109,9 @@ class klusters_writer(Node):
             clu = open("{0}.clu.{1}".format(self._basename, idx), "wt")
             clu.write("1\n")
             fet = open("{0}.fet.{1}".format(self._basename, idx), "wt")
-            nfeats = count_features(chunk.data)
-            try:
-                pcfeats = chunk.data.dtype['pcs'].shape[0]
-            except KeyError:
-                pcfeats = 0
+            feat_names = tuple(feature_names(chunk.data))
+            nfeats = len(feat_names)
+            pcfeats = sum(1 for x in feat_names if x.startswith('PC'))
             fet.write("%d\n" % nfeats)
             group = _group(idx, spk, clu, fet, nfeats,
                            nsamples=chunk.data.dtype['spike'].shape[0],
@@ -122,8 +120,9 @@ class klusters_writer(Node):
                            float_scaling=get_scaling(chunk.data),
                            sampling_rate=chunk.ds,
                            pcfeats=pcfeats)
-            self._log.info("'%s' -> '%s.fet.%d' (pcs=%d, feats=%d, spk=(%d,%d))",
-                           chunk.id, self._basename, idx, pcfeats, nfeats, group.nsamples, group.nchannels)
+            self._log.info("'%s' -> '%s.fet.%d' %s", chunk.id, self._basename, idx, feat_names)
+            self._log.info("'%s' -> '%s.spk.%d' (shape=(%d,%d))", chunk.id, self._basename, idx,
+                           group.nsamples, group.nchannels)
             self._groups[chunk.id] = group
             return group
 
@@ -146,10 +145,31 @@ def get_scaling(data):
     return 32768 / rng
 
 
-def count_features(data):
-    """Count features in structured data array"""
-    shapes = [(dt[0].shape or (1,)) for n, dt in data.dtype.fields.items() if n not in ("spike",)]
-    return sum(s[0] for s in shapes)
+def iter_features(data):
+    """Iterate through feature names in structured data array"""
+    fields = list(data.dtype.names)
+    try:
+        fields.remove('PC')
+        yield 'PC'
+    except ValueError:
+        pass
+    for n in fields:
+        if n in ("spike","start"):
+            continue
+        yield n
+    yield "start"
+
+
+def feature_names(data):
+    """Get feature names in structured data array, expanding multi-dimensional features"""
+    from itertools import product
+    for name in iter_features(data):
+        shape = data.dtype[name].shape
+        if shape == (1,):
+            yield name
+        else:
+            for idx in product(*(xrange(extent) for extent in shape)):
+                yield name + ",".join(str(i) for i in idx)
 
 
 def int_features(data, scaling):
@@ -161,31 +181,20 @@ def int_features(data, scaling):
     from numpy import concatenate, dtype
 
     tgt_dtype = dtype('int64')
-    fields = dict(data.dtype.fields)
     out = []
-    # PCs come first
-    if 'pcs' in fields:
-        fields.pop('pcs')
-        out.append((data['pcs'] * scaling).astype(tgt_dtype))
-
-    for name, dtype in fields.iteritems():
-        if name in ("start", "spike"):
-            continue
-        if dtype[0].kind=='f':
+    for name in iter_features(data):
+        dt = data.dtype[name]
+        if dt.base.kind=='f':
             out.append((data[name] * scaling).astype(tgt_dtype))
-        elif dtype[0].kind=='i':
+        elif dt.base.kind=='i':
             out.append(data[name])
         else:
-            raise KlustersError("data type {0} can't be converted to klusters feature".format(dtype[0]))
-
-    # time comes last. it needs to be sampled
-    out.append(data['start'].astype(tgt_dtype))
+            raise KlustersError("data type {0} can't be converted to klusters feature".format(dt))
 
     # reshape to form single array
     for arr in out:
         if arr.ndim == 1:
             arr.shape = (arr.size,1)
-
     return concatenate(out, axis=1)
 
 

@@ -171,7 +171,7 @@ class spike_features(Node):
             if self._eigenvectors is None:
                 self._eigenvectors = get_eigenvectors(spikes, self.feats)
             features.append(nx.dot(spikes, self._eigenvectors))
-            names.append('pcs')
+            names.append('PC')
 
         if self.raw:
             for name, meas in measurements(spikes):
@@ -252,7 +252,7 @@ def measurements(spikes):
     spikes:    resampled, aligned spike waveforms, nevents x nsamples
     Returns:   dict of arrays, dimension (nevents,), keyed by measurement type
     """
-    from numpy import column_stack, asarray
+    from numpy import asarray
     nevents, nsamples = spikes.shape
     peak_ind = spikes.mean(0).argmax()
     return (('height', spikes.max(1)),
