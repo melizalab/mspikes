@@ -56,13 +56,13 @@ def test_corrected_jack_frame():
     usecs = (frames * 50).astype(nx.uint64)
 
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames))
-    func = arf_io.corrected_jack_frame()
+    func = arf_io.corrected_jack_frame(1)
     times = map(func, entries)
     assert_array_equal(sorted(frames), times)
 
     # overflow the frame counter
     entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames - 50000))
-    func = arf_io.corrected_jack_frame()
+    func = arf_io.corrected_jack_frame(1)
     times = map(func, entries)
     assert_array_equal(sorted(frames), times)
 

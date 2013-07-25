@@ -35,13 +35,12 @@ class _base_arf(object):
         except Warning, w:
             self._log.warn("%s", w)
 
-    @property
-    def creator(self):
+    def get_creator(self):
         """The program that created the file, or None if unknown"""
         if self.file.attrs.get('program', None) == 'arfxplog':
             return 'arfxplog'
         entry = get_first(self.file, h5py.Group)
-        if hasattr(entry, "jack_frame"):
+        if entry and "jack_frame" in entry.attrs:
             return "jill"
         else:
             return self.file.attrs.get('file_creator', None)
@@ -59,15 +58,16 @@ class _base_arf(object):
         sampling_rate = None
         fun = arf.entry_time
 
-        if self.creator is None:
+        creator = self.get_creator()
+        if creator is None:
             self._log.info("couldn't determine ARF file source")
         elif use_timestamp:
             pass
-        elif self.creator == 'arfxplog':
+        elif creator == 'arfxplog':
             keyname = "sample_count"
             sampling_rate = self.file.attrs['sampling_rate']
             fun = lambda entry: util.to_seconds(entry.attrs[keyname], sampling_rate)
-        elif self.creator == 'jill':
+        elif creator == 'jill':
             keyname = "jack_frame"
             def srate_visitor(name, obj):
                 if isinstance(obj, h5py.Dataset):
@@ -485,20 +485,21 @@ class corrected_jack_frame(object):
     correctly, entries must be called in order.
 
     """
-
-    def __init__(self):
+    def __init__(self, sampling_rate):
         from numpy import uint64, seterr
         seterr(over='ignore')   # ignore overflow warning
+        self.sampling_rate = int(sampling_rate)
         self.frame = uint64()
         self.last = None
 
     def __call__(self, entry):
         """Return entry.attrs['jack_frame'] - first_entry.attrs['jack_frame']"""
+        from fractions import Fraction
         offset = entry.attrs['jack_frame']
         if self.last is not None:
             self.frame += offset - self.last
         self.last = offset
-        return self.frame
+        return Fraction(long(self.frame), self.sampling_rate)
 
 
 def matches_entry(chunk, entry):

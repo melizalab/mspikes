@@ -39,6 +39,8 @@ class collect_stats(Node):
         import numpy as nx
         names = ('time','chan','stat','value')
         data = nx.rec.fromrecords(self._stats, names=names)
+        if not self._stats:
+            return
         if self.plot:
             import matplotlib.pyplot as plt
             # remap strings to numbers
@@ -60,7 +62,8 @@ class collect_stats(Node):
             for rec in data:
                 print "\t".join("%s" % x for x in rec)
 
-
+    def throw(self, err):
+        self._stats = []
 
 
 # Variables:
