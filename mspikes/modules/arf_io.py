@@ -114,7 +114,8 @@ class arf_reader(_base_arf, RandomAccessSource):
         including 'pcm_000' but also 'pcm_0001', etc. To match 'pcm_000'
         exactly, use 'pcm_000$'. You can also exclude specific channels using
         regular expressions. '(?!pcm_000)' will match any channel that doesn't
-        start with 'pcm_000'""",
+        start with 'pcm_000'. If multiple patterns are specified, channels that
+        match any pattern will be included.""",
                  metavar='CH',
                  action='append')
         addopt_f("--start",
@@ -203,8 +204,8 @@ class arf_reader(_base_arf, RandomAccessSource):
 
             if "jill_error" in entry.attrs:
                 self._log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
-                          " (skipping)" if not self.use_xruns else "")
-                if not self.use_xruns:
+                          " (skipping)" if not self.ignore_xruns else "")
+                if not self.ignore_xruns:
                     continue
 
             if self.start and entry_time < self.start:
