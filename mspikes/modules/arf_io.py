@@ -24,7 +24,7 @@ class ArfError(MspikesError):
 class _base_arf(object):
     """Base class for arf reader and writer"""
 
-    def __init__(self, filename, mode='r'):
+    def __init__(self, filename, mode='r+'):
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
@@ -260,7 +260,11 @@ class arf_writer(_base_arf, Node):
     def __init__(self, filename, **options):
         util.set_option_attributes(self, options, compress=9, auto_entry=None,
                                    split_entry_template='%s_g%02d')
-        _base_arf.__init__(self, filename, "a")
+        try:
+            _base_arf.__init__(self, filename, "a")
+        except IOError:
+            raise ArfError("Error opening '%s' - writing back to the same file is not allowed" %
+                           filename)
         self._log.info("output file: %s", self.file.filename)
         # build entry table
         self._offset_fun = self.get_offset_function()
@@ -410,10 +414,12 @@ class arf_writer(_base_arf, Node):
         else:
             dset = entry[chunk.id]
             dset_offset = dset.attrs.get('offset', 0)
-            # make sure this is a good idea
+            # make sure this is a good idea. most errors will be caught by this
+            # first check
             if dset.name in self._datasets:
-                raise ArfError("(id='%s', offset=%.3f): can't write to pre-existing dataset '%s'" %
-                               (chunk.id, float(chunk.offset), dset.name))
+                self._log.warning("(id='%s', offset=%.3f): not written; dataset '%s' already exists",
+                                  chunk.id, float(chunk.offset), dset.name)
+                return
             if dset.maxshape[0] is not None:
                 raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
                                (chunk.id, float(chunk.offset), dset.name))

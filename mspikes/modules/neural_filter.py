@@ -179,7 +179,7 @@ class zscale(_smoother):
                  default=defaults.get('window', cls.window),
                  type=float,
                  metavar='SEC')
-        if "exclude" not in defaults:
+        if not defaults.get("exclude", False):
             addopt_f("--exclude",
                      help="if set, drop intervals where relative RMS exceeds threshold",
                      action="store_true")
@@ -196,7 +196,7 @@ class zscale(_smoother):
 
     def __init__(self, **options):
         _smoother.__init__(self, **options)
-        util.set_option_attributes(self, options, exclude=False, max_rms=1.15, min_duration=200.)
+        util.set_option_attributes(self, options, exclude=True, max_rms=1.15, min_duration=200.)
         if self.exclude:
             self._log.info("excluding intervals with RMS %.3f times baseline", self.max_rms)
         self.excl_queue = []     # need a separate queue to determine if the rms

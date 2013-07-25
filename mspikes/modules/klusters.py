@@ -86,7 +86,6 @@ class klusters_writer(Node):
         with open(self._basename + ".xml", "wt") as fp:
             fp.write(xml)
         # close open files
-        kkwik_jobs = []
         for group in self._groups.itervalues():
             group.fet.close()
             group.spk.close()

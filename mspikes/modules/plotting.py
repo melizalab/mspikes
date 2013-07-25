@@ -16,18 +16,24 @@ class collect_stats(Node):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("--plot",
-                 help="if set, plot results",
-                 action="store_true")
+        if not defaults.get('plot', False):
+            addopt_f("--plot",
+                     help="if set, plot results",
+                     action="store_true")
 
     def __init__(self, **options):
         util.set_option_attributes(self, options, plot=True)
         self._stats = []
+        self._exclusions = []
 
     def send(self, chunk):
+        # could really do the plot/print as we get the data
         if "scalar" in chunk.tags:
             for field, value in chunk.data._asdict().iteritems():
                 self._stats.append((float(chunk.offset), chunk.id, field, value))
+        elif "exclusions" in chunk.tags:
+            for rec in chunk.data:
+                self._exclusions.append((rec['start'], rec['stop']))
 
     def close(self):
         import numpy as nx
