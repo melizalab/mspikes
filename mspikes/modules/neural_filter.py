@@ -127,9 +127,14 @@ class _smoother(Node):
         n_window = int(self.window * chunk.ds)
         # number of samples (including gaps)
         nsamples = util.to_samples(chunk.offset - self.first_sample_t, chunk.ds)
+        # time since last sample
+        gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
 
         # if uninitialized, append to init_queue; otherwise, process past and
         # current chunks
+        if gap > n_window:
+            nsamples = 0
+            self.first_sample_t = chunk.offset
         if nsamples < n_window:
             self.init_queue.append(chunk)
             self.state = self.statefun(chunk, self.weight, self.state)
@@ -139,14 +144,18 @@ class _smoother(Node):
                 self.datafun(past_chunk)
             # process the current chunk. penalize for gaps, but only when the
             # window is full
-            gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
-            self.weight = max(self.weight, n_window) - gap
+            self.weight = max(0, max(self.weight, n_window) - gap)
             self.datafun(chunk)
-            # advance tail? may cause reinitialization
-            # self.first_sample_t = util.to_seconds(chunk.data.size, chunk.ds, self.first_sample_t)
 
         self.weight = min(n_window, self.weight + chunk.data.size)
         self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
+
+    def close(self):
+        from mspikes.util import repeatedly
+        # flush the queue
+        for past_chunk in repeatedly(self.init_queue.pop, 0):
+            self.datafun(past_chunk)
+        Node.close(self)
 
 
 @dispatcher.parallel('id', "samples")

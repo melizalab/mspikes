@@ -81,13 +81,13 @@ class splitter(Node):
     This module is used to split long entries into more manageable chunks
 
     """
-    nsamples = 4096
+    nsamples = 65536            # likely to be 2-3 seconds at most sampling rates
     _log = logging.getLogger(__name__ + ".arf_reader")
 
     @classmethod
     def options(cls, addopt_f, **defaults):
         if "nsamples" not in defaults:
-            addopt_f("nsamples",
+            addopt_f("--nsamples",
                      help="the maximum number of samples in a chunk (default %(default)d)",
                      type=int,
                      default=cls.nsamples,

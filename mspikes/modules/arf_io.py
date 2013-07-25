@@ -25,6 +25,7 @@ class _base_arf(object):
     """Base class for arf reader and writer"""
 
     def __init__(self, filename, mode='r+'):
+        self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
@@ -33,7 +34,6 @@ class _base_arf(object):
             arf.check_file_version(self.file)
         except Warning, w:
             self._log.warn("%s", w)
-        self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
 
     @property
     def creator(self):
@@ -263,7 +263,7 @@ class arf_writer(_base_arf, Node):
         try:
             _base_arf.__init__(self, filename, "a")
         except IOError:
-            raise ArfError("Error opening '%s' - writing back to the same file is not allowed" %
+            raise ArfError("Error writing to '%s' - writing to the source file is not allowed" %
                            filename)
         self._log.info("output file: %s", self.file.filename)
         # build entry table

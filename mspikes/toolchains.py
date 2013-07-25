@@ -8,7 +8,7 @@ Created Wed Jun 19 09:55:10 2013
 
 view_stats = ("Inspect raw sampled data",
               "input = arf_reader()\n"
-              "scaled = zscale(input, exclude=True)\n"
+              "scaled = zscale(input)\n"
               "view = collect_stats(scaled, plot=True)")
 
 spk_extract = ("Extract spikes from raw neural recordings",

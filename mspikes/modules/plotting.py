@@ -50,7 +50,7 @@ class collect_stats(Node):
                 ax.hold(1)
                 for j,chan in enumerate(channels):
                     idx = (data['chan']==chan) & (data['stat']==stat)
-                    ax.plot(data['time'][idx], data['value'][idx], label=chan)
+                    ax.plot(data['time'][idx], data['value'][idx], '.', label=chan)
                 ax.set_ylabel(stat)
                 ax.legend()
             fig.show()
