@@ -20,7 +20,7 @@ def test_zscale():
     chunks = []
     data = _randg.randn(chunk_size * 100) * 5
     with util.chain_modules(zscaler, util.visitor(out.append)) as chain:
-        for chunk in util.array_reader(data, 1, chunk_size):
+        for chunk in util.timeseries_reader(data, 1, chunk_size):
             chain.send(chunk)
             chunks.append(chunk)
 
@@ -50,7 +50,7 @@ def test_rms_exclude():
 
     out = []
     with util.chain_modules(excluder, util.visitor(out.append)) as chain:
-        for chunk in util.array_reader(data, ds, chunk_size, gap=100):
+        for chunk in util.timeseries_reader(data, ds, chunk_size, gap=100):
             chain.send(chunk)
 
     return data, out

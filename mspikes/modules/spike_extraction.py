@@ -206,7 +206,7 @@ def realign_spikes(times, spikes, upsample):
     shifted = nx.zeros((nevents, nshifted))
     for i,spike in enumerate(spikes):
 	shifted[i,:] = spike[start[i]:start[i]+nshifted]
-    return (times * upsample + expected_peak + shift, shifted)
+    return (times * upsample + shift, shifted)
 
 
 def find_peaks(spikes, peak, window):

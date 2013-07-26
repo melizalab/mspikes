@@ -29,7 +29,7 @@ scaler = neural_filter.zscale()
 
 def time_run(source, target, *args, **kwargs):
     if isinstance(source, nx.ndarray):
-        source = util.array_reader(source, *args, **kwargs)
+        source = util.timeseries_reader(source, *args, **kwargs)
     for chunk in source:
         target.send(chunk)
 

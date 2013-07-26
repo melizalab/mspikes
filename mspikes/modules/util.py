@@ -142,8 +142,8 @@ class splitter(Node):
             self.last_time = to_seconds(nframes, chunk.ds, chunk.offset)
 
 
-def array_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
-    """Generate chunks from a 1d array"""
+def timeseries_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
+    """Read chunks from a 1d time series array"""
     from numpy import array_split
     from mspikes.types import DataBlock
     from mspikes.util import to_seconds
@@ -153,6 +153,17 @@ def array_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
     for arr in array_split(array, array.size / chunk_size):
         yield DataBlock(id, to_seconds(t, ds), ds, arr, tags)
         t += arr.size + gap
+
+
+def pointproc_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("events")):
+    """Read chunks from a 1d point process (unmarked) array"""
+    from numpy import array_split
+    from mspikes.types import DataBlock
+    from mspikes.util import to_seconds
+
+    assert array.ndim == 1
+    for arr in array_split(array, array.size / chunk_size):
+        yield DataBlock(id, to_seconds(arr[0], ds), ds, arr - arr[0], tags)
 
 
 def time_series_offsets(dset_time, dset_ds, start_time, stop_time, nframes):

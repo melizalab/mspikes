@@ -24,12 +24,15 @@ class ArfError(MspikesError):
 class _base_arf(object):
     """Base class for arf reader and writer"""
 
-    def __init__(self, filename, mode='r+'):
+    def __init__(self, filename, mode='r+', dry_run=False):
         self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
+        file_options = {}
+        if dry_run:
+            file_options = {'driver': 'core', 'backing_store': False}
         if isinstance(filename, h5py.File):
             self.file = filename
         else:
-            self.file = arf.open_file(filename, mode)
+            self.file = arf.open_file(filename, mode, **file_options)
         try:
             arf.check_file_version(self.file)
         except Warning, w:
@@ -266,18 +269,22 @@ class arf_writer(_base_arf, Node):
                  file.""",
                  default=defaults.get('auto_entry', None),
                  metavar='NAME',)
+        addopt_f("--dry-run",
+                 help="do everything but actually write to the file",
+                 action="store_true")
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
 
     def __init__(self, filename, **options):
         util.set_option_attributes(self, options, compress=9, auto_entry=None,
-                                   split_entry_template='%s_g%02d')
+                                   split_entry_template='%s_g%02d',
+                                   dry_run=False)
         try:
-            _base_arf.__init__(self, filename, "a")
+            _base_arf.__init__(self, filename, "a", dry_run=self.dry_run)
         except IOError:
-            raise ArfError("Error writing to '%s' - writing to the source file is not allowed" %
+            raise ArfError("Error writing to '%s' - are you trying to write to the source file?" %
                            filename)
-        self._log.info("output file: %s", self.file.filename)
+        self._log.info("output file: %s %s", self.file.filename, "(DRY RUN)" if self.dry_run else "")
         # build entry table
         self._offset_fun = self.get_offset_function()
         self._make_entry_table()
@@ -409,7 +416,6 @@ class arf_writer(_base_arf, Node):
         else:
             entry = self._entries[idx - 1]
             entry_time = self._offsets[idx - 1]
-            next_entry_time = self._offsets[idx] if idx < len(self._offsets) else None
         self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
                         chunk.id, float(chunk.offset), entry.name, entry_time)
 
@@ -456,9 +462,20 @@ class arf_writer(_base_arf, Node):
             # no need to split data that come from another arf file
             arf.append_data(dset, chunk.data)
         elif "events" in chunk.tags:
-            data, next = _split_point_process(chunk.data, data_offset, dset_offset, next_entry_time, chunk.ds)
-            arf.append_data(dset, data)
-            if next.size > 0:
+            try:
+                next_entry_time = self._offsets[idx]
+            except IndexError:
+                data = chunk.data
+                next = None
+            else:
+                data, next = _split_point_process(chunk.data, data_offset, dset_offset,
+                                                  next_entry_time - entry_time, chunk.ds)
+            if data.size:
+                arf.append_data(dset, data)
+            else:
+                # somewhat hacky to delete empty dataset, but logic is complex otherwise
+                del entry[dset.name]
+            if next is not None and next.size > 0:
                 self.send(chunk._replace(offset=next_entry_time, data=next))
 
 

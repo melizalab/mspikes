@@ -68,7 +68,7 @@ setup(
 
 from numpy.distutils.core import setup, Extension
 _stats = Extension('mspikes.stats', sources=['src/stats.pyf', 'src/stats.c'])
-# _readklu = Extension('klustio', sources=['src/klustio.cc'])
+_klusters = Extension('mspikes.modules._klusters', sources=['src/klusters.cc'], **compiler_settings)
 setup(
-    ext_modules=[_stats]
+    ext_modules=[_stats, _klusters]
 )

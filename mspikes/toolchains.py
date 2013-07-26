@@ -22,6 +22,10 @@ klust_export = ("Export spike features for klusters/KlustaKwik",
                 "feats = spike_features((input, _events))\n"
                 "output = klusters_writer(feats)")
 
+klust_import = ("Import sorted spikes from klusters",
+                "input = klusters_reader()\n"
+                "output = arf_writer(input)")
+
 
 # Variables:
 # End:

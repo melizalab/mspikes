@@ -68,7 +68,7 @@ def test_spike_extractor():
     extractor = spike_extraction.spike_extract(thresh=4000, interval=(1.0, 2.0))
 
     with util.chain_modules(extractor, util.visitor(out.append)) as chain:
-        for chunk in util.array_reader(a_recording, 20000, chunk_size):
+        for chunk in util.timeseries_reader(a_recording, 20000, chunk_size):
             chain.send(chunk)
     starts = [to_samples(chunk.offset, chunk.ds) + chunk.data['start'] for chunk in out]
     assert_array_equal(nx.concatenate(starts), times)

@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     _randg = nx.random.RandomState(1)
     # data = _randg.randn(1000000) * 1.2
-    # stats = get_stats(util.array_reader(data, 10000, 5000), neural_filter.zscale(max_rms=2, window=60))
+    # stats = get_stats(util.timeseries_reader(data, 10000, 5000), neural_filter.zscale(max_rms=2, window=60))
 
     scaler = neural_filter.zscale(exclude=True)
     reader = arf_io.arf_reader("examples/st445_1_5.arf", channels=("st445_8$",))

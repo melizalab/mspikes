@@ -167,7 +167,6 @@ class zscale(_smoother):
         rms = nx.sqrt(smoothed[1])
 
         stat_chunk = chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar"))
-        # self._log.debug("offset=%s, mean=%.3f, rms=%.3f, rms_ratio=%.3f", chunk.offset, mean, rms, rms_ratio)
 
         # rescale data first, then decide if to queue it
         # should really rescale the threshold downstream, not the data

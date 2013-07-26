@@ -35,7 +35,7 @@ class klusters_writer(Node):
      <basename>.xml - the control file used by Klusters
 
     """
-    _log = logging.getLogger("%s.spike_extract" % __name__)
+    _log = logging.getLogger("%s.klusters_writer" % __name__)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -60,7 +60,7 @@ class klusters_writer(Node):
         if group.sampling_rate != chunk.ds:
             self._log.warn("(id=%s, offset=%.2fs): sampling rate was %s, now %s",
                            chunk.id, float(chunk.offset), group.sampling_rate, chunk.ds)
-        feats = int_features(chunk.data, group.float_scaling)
+        feats = int_features(chunk.data, group.float_scaling, group.peak_idx)
         if feats.shape[1] != group.nfeats:
             raise KlustersError("(id=%s, offset=%.2fs): feature count was %d, now %d" %
                                 (chunk.id, float(chunk.offset), group.nfeats, feats.shape[1]))
@@ -129,7 +129,51 @@ class klusters_writer(Node):
 
 class klusters_reader(Source):
     """Import spike clusters from klusters format"""
-    pass
+
+    _log = logging.getLogger("%s.klusters_reader" % __name__)
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("basename",
+                 help="base name for input files")
+        addopt_f("--groups",
+                 help="restrict to one or more groups (default all)",
+                 nargs='+',
+                 type=int)
+        addopt_f("--units",
+                 help="""restrict to one or more units (default all). Units are numbered sequentially,
+                 starting with the first cluster in the first group. Clusters
+                 numbered 0 and 1 are excluded as artifacts and noise,
+                 respectively, unless there are no clusters > 1, in which case
+                 the highest numbered cluster is used""")
+        addopt_f("--id",
+                 help="base for id of data (default=%(default)s)",
+                 default="unit")
+
+    def __init__(self, basename, **options):
+        util.set_option_attributes(self, options, kkwik=False, id="unit")
+        self._basename = basename
+        self._groups = read_paramfile(basename + ".xml")
+        self._log.info("input basename: %s", basename)
+
+    def __iter__(self):
+        from numpy import asarray
+        from mspikes.modules.util import pointproc_reader
+        from mspikes.modules._klusters import sort_unit
+        unit_idx = 0
+        for i, group in enumerate(self._groups):
+            clusters = sort_unit("{0}.fet.{1}".format(self._basename, group['idx']),
+                                 "{0}.clu.{1}".format(self._basename, group['idx']))
+            for j, cluster in enumerate(clusters):
+                # adjust for peak time
+                unit_name = "{0}_{1:03}".format(self.id, unit_idx)
+                data = asarray(cluster)
+                self._log.info("%s.%d.%d -> %s (%d spikes)", self._basename, group['idx'], j, unit_name, data.size)
+                # split up to avoid recurring too deeply in arf_writer._write_data
+                for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
+                    Node.send(self, chunk)
+                    yield chunk
+                unit_idx += 1
 
 
 def get_scaling(data):
@@ -172,10 +216,11 @@ def feature_names(data):
                 yield name + ",".join(str(i) for i in idx)
 
 
-def int_features(data, scaling):
+def int_features(data, scaling, peak_idx):
     """Extract features from structured data as an array of integers
 
     scaling:  used to rescale floating point features to avoid quantization
+    peak_idx: used to adjust times from starts to peaks
 
     """
     from numpy import concatenate, dtype
@@ -186,6 +231,8 @@ def int_features(data, scaling):
         dt = data.dtype[name]
         if dt.base.kind=='f':
             out.append((data[name] * scaling).astype(tgt_dtype))
+        elif name == 'start':
+            out.append(data[name] + peak_idx)
         elif dt.base.kind=='i':
             out.append(data[name])
         else:
@@ -243,6 +290,23 @@ def make_paramfile(groups, sampling_rate, sample_bits=16):
         text_element(g, "nFeatures", group.nfeats)
 
     return et.tostring(root)
+
+
+def read_paramfile(xmlfile):
+    """Parse the klusters parameter file to get sampling rate, etc"""
+    from xml.etree import ElementTree
+    tree = ElementTree.parse(xmlfile)
+
+    sampling_rate = int(tree.find('acquisitionSystem/samplingRate').text)
+    groups = []
+    for i, group in enumerate(tree.findall('spikeDetection/channelGroups/group')):
+        groups.append(dict(idx=i+1,
+                           nfeats=int(group.find('nFeatures').text),
+                           channels=[c.text for c in group.findall('channels/name')],
+                           nsamples=int(group.find('nSamples').text),
+                           peak_idx=int(group.find('peakSampleIndex').text),
+                           sampling_rate=sampling_rate))
+    return groups
 
 
 def run_klustakwik(basename, groups, log):
