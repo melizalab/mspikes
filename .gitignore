@@ -8,3 +8,4 @@
 /dist/
 /examples/
 /setuptools*
+/src/statsmodule.c

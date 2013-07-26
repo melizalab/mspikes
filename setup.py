@@ -44,25 +44,31 @@ requirements = ["arf==2.1"]
 if sys.hexversion < 0x02070000:
     requirements.append("argparse==1.2.1")
 
-# _readklu = Extension('klustio', sources=['src/klustio.cc'])
-# _spikes = Extension('spikes', sources=['src/spikes.pyf', 'src/spikes.c'])
 
-setup(name="mspikes",
-      version=VERSION,
-      description=short_desc,
-      long_description=long_desc,
-      classifiers=[x for x in cls_txt.split("\n") if x],
-      author='C Daniel Meliza',
-      author_email='"dan" at the domain "meliza.org"',
-      maintainer='C Daniel Meliza',
-      maintainer_email='"dan" at the domain "meliza.org"',
-      url = "https://github.com/dmeliza/mspikes",
+setup(
+    name="mspikes",
+    version=VERSION,
+    description=short_desc,
+    long_description=long_desc,
+    classifiers=[x for x in cls_txt.split("\n") if x],
+    author='C Daniel Meliza',
+    author_email='"dan" at the domain "meliza.org"',
+    maintainer='C Daniel Meliza',
+    maintainer_email='"dan" at the domain "meliza.org"',
+    url = "https://github.com/dmeliza/mspikes",
 
       packages=find_packages(),
-      ext_modules=[_spikes],
-      cmdclass = {'build_ext': build_ext},
-      entry_points={'console_scripts':
-                    ['mspikes=mspikes.main:mspikes']},
-      test_suite = 'nose.collector',
-      install_requires = requirements
+    ext_modules=[_spikes],
+    cmdclass = {'build_ext': build_ext},
+    entry_points={'console_scripts':
+                  ['mspikes=mspikes.main:mspikes']},
+    test_suite = 'nose.collector',
+    install_requires = requirements
+)
+
+from numpy.distutils.core import setup, Extension
+_stats = Extension('mspikes.stats', sources=['src/stats.pyf', 'src/stats.c'])
+# _readklu = Extension('klustio', sources=['src/klustio.cc'])
+setup(
+    ext_modules=[_stats]
 )

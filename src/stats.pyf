@@ -1,0 +1,13 @@
+!    -*- f90 -*-
+python module stats
+interface
+   subroutine moments(out, samples, nsamples)
+     intent(c) moments
+     intent(c)
+     double precision intent(out) :: out(2)
+     double precision intent(in) :: samples(nsamples)
+     integer intent(hide), depend(samples) :: nsamples = len(samples)
+   end subroutine moments
+
+end interface
+end python module moments

@@ -13,75 +13,6 @@ from collections import namedtuple
 from mspikes import util
 from mspikes.types import Node, DataBlock, tag_set
 from mspikes.modules import dispatcher
-from mspikes.modules.util import coroutine
-
-def moving_meanvar(x, w=0, s=None):
-    """Calculating moving mean and variance of a time series
-
-    x - input data. 1-dimensional numpy array
-
-    w - weight assigned to previous state, relative to the number of elements in
-        x. set to 0 to initialize
-
-    s - previous state: (mean, variance)
-
-    returns updated mean, variance
-
-    """
-    m0,v0 = (w * a for a in s) if w > 0 else (0, 0)
-    m = (m0 + x.sum()) / (w + x.size)
-    v = (v0 + ((x - m) ** 2).sum()) / (w + x.size)
-    return (m, v)
-
-
-@coroutine
-def smoother(func, M, S0=None, N0=0):
-    """A coroutine for applying a moving smoother to data arrays
-
-    Given a time series X = {x_0,...,x_N}, calculates the average of
-    func({x_i,...,x_i+N}) and func({x_i-M,...x_i-1}), weighted by N and M.
-
-    func -- a function with signature f(X, S, M) that updates the sliding window
-            statistics according to the following formula:
-
-            (S * M + f(X)) / (M + X.size)
-
-    M -- the number of samples in the sliding window
-
-    S0 -- the initial value of the smoother. If None, this will be estimated
-          from the first M samples.
-
-    N -- the number of samples used to calculate S0
-
-    Usage:
-    >>> g = smoother(mean, 100)
-    >>> g.send(ones(50))
-    None  # returns None until the number of samples is >= M
-    >>> g.send(zeros(50))
-    0.5
-    >>> g.send(ones(1))
-    0.504950495049505
-
-    """
-    from numpy import concatenate, asarray
-
-    init_queue = [()]
-    N = N0
-    try:
-        while N < M:
-            # return None while initializing
-            X = asarray((yield))
-            init_queue.append(X)
-            N += X.size
-        # calculate initial state from full length of the window
-        X = concatenate(init_queue)
-        S = func(X, N0, S0)
-        while True:
-            # note: send() assigns value to X, then loops and returns S
-            X = asarray((yield S))
-            S = func(X, M, S)
-    except GeneratorExit:
-        return
 
 
 class _smoother(Node):
@@ -100,8 +31,8 @@ class _smoother(Node):
         self.weight = 0           # number of samples for which we have data
         self.init_queue = []      # queue for chunks while initializing smoother
 
-    def statefun(self, chunk, nsamples, state):
-        """Return updated value for state incorporating new data"""
+    def statfun(self, chunk):
+        """Return statistics for new data"""
         raise NotImplementedError
 
     def datafun(self, chunk):
@@ -115,6 +46,11 @@ class _smoother(Node):
             Node.send(self, chunk)
             return
 
+        # if data is not in memory, read it once now
+        if not isinstance(chunk.data, nx.ndarray):
+            chunk = chunk._replace(data=chunk.data[:])
+        N = chunk.data.size
+
         # this implementation is a poor man's ringbuffer. A tail 'pointer'
         # indicates how many samples are averaged in self.state. Data are queued
         # until this number exceeds the minimum window size. If there are gaps,
@@ -125,34 +61,31 @@ class _smoother(Node):
             self.last_sample_t = chunk.offset
         # convert time windows to sample counts
         n_window = int(self.window * chunk.ds)
-        # number of samples (including gaps)
         nsamples = util.to_samples(chunk.offset - self.first_sample_t, chunk.ds)
-        # time since last sample
         gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
 
-        # if data is not in memory, read it once now
-        if not isinstance(chunk.data, nx.ndarray):
-            chunk = chunk._replace(data=chunk.data[:])
-
-        # if uninitialized, append to init_queue; otherwise, process past and
-        # current chunks
+        # check for gap > window
         if gap > n_window:
             nsamples = 0
             self.first_sample_t = chunk.offset
+        # if uninitialized, add to queue and update stats
         if nsamples < n_window:
             self.init_queue.append(chunk)
-            self.state = self.statefun(chunk, self.weight, self.state)
+            stats = self.statfun(chunk)
+            if self.weight:
+                self.state = (self.state * self.weight + stats) / (self.weight + N)
+            else:
+                self.state = stats / N
         else:
             # flush the init_queue
             for past_chunk in repeatedly(self.init_queue.pop, 0):
                 self.datafun(past_chunk)
-            # process the current chunk. penalize for gaps, but only when the
-            # window is full
+            # process the current chunk. penalize for gaps.
             self.weight = max(0, max(self.weight, n_window) - gap)
             self.datafun(chunk)
 
-        self.weight = min(n_window, self.weight + chunk.data.size)
-        self.last_sample_t = util.to_seconds(chunk.data.size, chunk.ds, chunk.offset)
+        self.weight = min(n_window, self.weight + N)
+        self.last_sample_t = util.to_seconds(N, chunk.ds, chunk.offset)
 
     def close(self):
         from mspikes.util import repeatedly
@@ -215,26 +148,35 @@ class zscale(_smoother):
         self.excl_queue = []     # need a separate queue to determine if the rms
                                 # stayed above threshold for > min_duration
 
-    def statefun(self, chunk, nsamples, state):
-        return moving_meanvar(chunk.data, nsamples, state)
+    def statfun(self, chunk):
+        from mspikes.stats import moments
+        return moments(chunk.data)
 
     def datafun(self, chunk):
         """Drop chunks that exceed the threshold"""
         from mspikes.util import to_samples
 
-        mean, var = self.statefun(chunk, self.weight, self.state)
-        rms = nx.sqrt(var)
-        rms_ratio = nx.sqrt(nx.var(chunk.data) / var)
-        Node.send(self, chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar")))
+        N = chunk.data.size
+        stats = self.statfun(chunk)
+        # current and previous variance
+        variances = [s[1] - s[0] ** 2 for s in (self.state, stats / N)]
+        rms_ratio = nx.sqrt(variances[1] / variances[0])
+        # smoothed statistics
+        smoothed = (self.state * self.weight + stats) / (self.weight + N)
+        mean = smoothed[0]
+        rms = nx.sqrt(smoothed[1])
+
+        stat_chunk = chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar"))
         # self._log.debug("offset=%s, mean=%.3f, rms=%.3f, rms_ratio=%.3f", chunk.offset, mean, rms, rms_ratio)
 
         # rescale data first, then decide if to queue it
+        # should really rescale the threshold downstream, not the data
         chunk = chunk._replace(data=(chunk.data - mean) / rms)
         if self.exclude and rms_ratio > self.max_rms:
-            self.excl_queue.append(chunk)
+            self.excl_queue.extend((stat_chunk, chunk))
             return
 
-        if len(self.excl_queue):
+        if self.excl_queue:
             first = self.excl_queue[0]
             duration = chunk.offset - first.offset
             if (duration > self.min_duration / 1000):
@@ -252,8 +194,9 @@ class zscale(_smoother):
                     Node.send(self, c)
             self.excl_queue = []
 
+        Node.send(self, stat_chunk)
         Node.send(self, chunk)
-        self.state = (mean, var)
+        self.state = smoothed
 
 
 # Variables:
