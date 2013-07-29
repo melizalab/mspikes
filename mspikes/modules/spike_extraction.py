@@ -76,10 +76,11 @@ class spike_extract(Node):
 
     def get_spikes(self, chunk, times):
         data = chunk.data
+        nsamples = data.shape[0]
         for start, stop in times:
-            if stop > data.size:
+            if stop > nsamples:
                 # queue the spike until the next data chunk arrives
-                self.spike_queue.append((start - data.size, stop - data.size))
+                self.spike_queue.append((start - nsamples, stop - nsamples))
                 continue
             if start < 0:
                 if self.last_chunk is not None:
@@ -153,7 +154,7 @@ class spike_features(Node):
 
         self._times.append(data['start'] + util.to_samples(chunk.offset, chunk.ds))
         self._spikes.append(data['spike'])
-        self._nspikes += data.size
+        self._nspikes += data.shape[0]
 
         if self._nspikes < self.spikes:
             return
