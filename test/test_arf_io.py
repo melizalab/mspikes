@@ -236,8 +236,8 @@ def test_arf_writer_gap():
             writer.send(chunk)
 
     assert_equal(len(tgt), 3)
-    entries = sorted(tgt.itervalues(), key=arf.entry_time)
-    assert_sequence_equal([arf.entry_time(entry) for entry in entries], [gap * i for i in range(3)])
+    entries = sorted(tgt.itervalues(), key=arf_io.arf_entry_time)
+    assert_sequence_equal([arf_io.arf_entry_time(entry) for entry in entries], [gap * i for i in range(3)])
     nsamples = 0
     for entry in entries:
         assert_true('pcm' in entry)

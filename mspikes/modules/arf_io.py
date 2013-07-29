@@ -228,7 +228,7 @@ class arf_reader(_base_arf, RandomAccessSource):
             for id, dset in entry.iteritems():
                 if not self.chanp(id):
                     continue
-                if dset.size == 0:
+                if dset.shape[0] == 0:
                     continue
                 if 'sampling_rate' in dset.attrs:
                     dset_ds = dset.attrs['sampling_rate']
@@ -446,7 +446,7 @@ class arf_writer(_base_arf, Node):
                                (chunk.id, float(chunk.offset), dset.name))
             if "samples" in chunk.tags:
                 # additional steps to verify alignment for sampled data
-                gap = data_offset - (dset_offset + dset.size)
+                gap = data_offset - (dset_offset + dset.shape[0])
                 if gap < 0:
                     raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
                                     (chunk.id, float(chunk.offset), dset.name))
@@ -591,7 +591,7 @@ def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data
         # times for next entry are relative to entry_offset
         times[~idx] -= entry_offset
     else:
-        idx = ones(times.size, dtype='bool')
+        idx = ones(times.shape[0], dtype='bool')
         times -= dset_offset
 
     return data[idx], data[~idx]
