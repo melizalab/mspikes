@@ -59,7 +59,7 @@ class _base_arf(object):
         """
         keyname = "timestamp"
         sampling_rate = None
-        fun = arf.entry_time
+        fun = arf_entry_time
 
         creator = self.get_creator()
         if creator is None:
@@ -188,7 +188,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         if self.skip_sort:
             it = arf.keys_by_creation(self.file)
         else:
-            it = sorted(self.file.keys(), key=lambda x: arf.entry_time(self.file[x]))
+            it = sorted(self.file.keys(), key=lambda x: arf_entry_time(self.file[x]))
 
         entries = (self.file[name] for name in it
                    if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group)
@@ -308,7 +308,7 @@ class arf_writer(_base_arf, Node):
 
     def _make_entry_table(self):
         """Generate a table of entries and start times."""
-        entries = sorted(self.file.values(), key=arf.entry_time)
+        entries = sorted(self.file.values(), key=arf_entry_time)
         self._offsets = []
         self._entries = []
         self._datasets = set()
@@ -603,6 +603,15 @@ def get_first(obj, obj_type):
         if obj.get(name, getclass=True) is obj_type:
             return obj.get(name)
     return obj.visit(visit)
+
+
+def arf_entry_time(entry):
+    """Get timestamp of an entry in floating point format, or None if not set"""
+    try:
+        return arf.timestamp_to_float(entry.attrs['timestamp'])
+    except KeyError:
+        return None
+
 
 # Variables:
 # End:
