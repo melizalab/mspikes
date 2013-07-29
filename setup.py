@@ -4,8 +4,6 @@ import sys
 if sys.hexversion < 0x02060000:
     raise RuntimeError("Python 2.6 or higher required")
 
-from ez_setup import use_setuptools
-use_setuptools()
 from setuptools import setup, find_packages, Extension
 import numpy
 
