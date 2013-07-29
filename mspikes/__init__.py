@@ -13,7 +13,6 @@ You are licensed for its use under the GNU GENERAL PUBLIC LICENSE, version 3
 <http://www.gnu.org/licenses/gpl-3.0.txt>
 """.format(__version__)
 
-DEBUG = True
 
 # Variables:
 # End:

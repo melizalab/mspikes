@@ -3,9 +3,15 @@
 import sys
 if sys.hexversion < 0x02060000:
     raise RuntimeError("Python 2.6 or higher required")
-
-from setuptools import setup, find_packages, Extension
 import numpy
+# setuptools 0.7+ doesn't play nice with distribute, so try to use existing
+# package if possible
+try:
+    from setuptools import setup, find_packages, Extension
+except ImportError:
+    from ez_setup import use_setuptools
+    use_setuptools()
+    from setuptools import setup, find_packages, Extension
 
 try:
     from Cython.Distutils import build_ext
@@ -27,14 +33,22 @@ Operating System :: MacOS :: MacOS X
 Natural Language :: English
 """
 short_desc = "Processing framework for time series and point process data"
-long_desc = """
-FIXME
+long_desc = """mspikes is a general-purpose tool for processing time-varying data. It can
+read and write various formats and perform a range of filtering and detection
+operations. You can:
+
+* filter acoustic recordings
+* extract field potentials and spike waveforms from extracellular neural recordings
+* export spike times and waveforms for spike sorting (using third-party programs) and import the results
+* export spike times to generic formats
+* add processing modules as plugins
+* design your own mulithreaded processing pipelines using existing or plugin modules
+
 """
 
 compiler_settings = {
     'include_dirs' : [numpy.get_include()],
     }
-
 _spikes = Extension('mspikes.modules.spikes', sources=['mspikes/modules/spikes' + SUFFIX],
                     **compiler_settings)
 
@@ -54,8 +68,7 @@ setup(
     maintainer='C Daniel Meliza',
     maintainer_email='"dan" at the domain "meliza.org"',
     url = "https://github.com/dmeliza/mspikes",
-
-      packages=find_packages(),
+    packages=find_packages(),
     ext_modules=[_spikes],
     cmdclass = {'build_ext': build_ext},
     entry_points={'console_scripts':
@@ -68,5 +81,7 @@ from numpy.distutils.core import setup, Extension
 _stats = Extension('mspikes.stats', sources=['src/stats.pyf', 'src/stats.c'])
 _klusters = Extension('mspikes.modules._klusters', sources=['src/klusters.cc'], **compiler_settings)
 setup(
+    name="mspikes",
+    version=VERSION,
     ext_modules=[_stats, _klusters]
 )
