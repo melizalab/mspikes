@@ -8,7 +8,7 @@ Created Thu Jul 25 15:47:21 2013
 
 import numpy as nx
 import cProfile
-from mspikes.modules import neural_filter, util, statistics
+from mspikes.modules import neural_filter, util
 
 N = 5000000
 chunk_size = 10000

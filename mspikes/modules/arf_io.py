@@ -345,12 +345,12 @@ class arf_writer(_base_arf, Node):
         Additional keyword arguments are set as attributes of the new entry
 
         """
-        from numpy import searchsorted
+        from bisect import bisect
         import datetime
 
         # match the entry against the entries in the file using the offset
         n_entries = len(self._offsets)
-        idx = searchsorted(self._offsets, offset, side='right')
+        idx = bisect(self._offsets, offset)
         try:
             timestamp = attributes.pop('timestamp')
         except KeyError:
@@ -404,10 +404,10 @@ class arf_writer(_base_arf, Node):
         Creates new datasets as needed, and may create a new entry if there is a gap.
 
         """
-        from numpy import searchsorted
+        from bisect import bisect
 
         # Look up target entry
-        idx = searchsorted(self._offsets, chunk.offset, side='right')
+        idx = bisect(self._offsets, chunk.offset)
         if idx == 0:
             if self.auto_entry is None:
                 raise ArfError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
