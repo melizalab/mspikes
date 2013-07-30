@@ -56,6 +56,14 @@ requirements = ["arf==2.1"]
 if sys.hexversion < 0x02070000:
     requirements.append("argparse==1.2.1")
 
+from numpy.distutils.core import setup, Extension
+_stats = Extension('mspikes.stats', sources=['src/stats.pyf', 'src/stats.c'])
+_klusters = Extension('mspikes.modules._klusters', sources=['src/klusters.cc'], **compiler_settings)
+setup(
+    name="mspikes",
+    version=VERSION,
+    ext_modules=[_stats, _klusters]
+)
 
 setup(
     name="mspikes",
@@ -77,11 +85,3 @@ setup(
     install_requires = requirements
 )
 
-from numpy.distutils.core import setup, Extension
-_stats = Extension('mspikes.stats', sources=['src/stats.pyf', 'src/stats.c'])
-_klusters = Extension('mspikes.modules._klusters', sources=['src/klusters.cc'], **compiler_settings)
-setup(
-    name="mspikes",
-    version=VERSION,
-    ext_modules=[_stats, _klusters]
-)
