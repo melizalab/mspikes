@@ -40,7 +40,7 @@ Options:
 
 """
 import os, sys, arf
-from arf.constants import DataTypes
+from arf import DataTypes
 from .extractor import _spike_resamp, _default_samplerate, _dummy_writer
 from .version import version
 
@@ -139,7 +139,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     """
     from collections import defaultdict
     from itertools import izip
-    from arf.io import toelis
+    import toelis
     from klusters import klustxml
     from numpy import asarray
 
@@ -167,7 +167,7 @@ def group_events(arffile, log=_dummy_writer, **options):
     else:
         arf_mode = 'r'
 
-    with arf.file(arffile,arf_mode) as arfp:
+    with arf.file(arffile, arf_mode) as arfp:
         sr = arfp.get_attributes(key='sampling_rate')
         if sr is None:
             sr = _default_samplerate
