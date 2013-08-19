@@ -155,7 +155,9 @@ class arf_reader(_base_arf, RandomAccessSource):
                                    ignore_xruns=False,
                                    skip_sort=False)
         _base_arf.__init__(self, filename, "r")
-        self._log.info("input file: %s", self.file.filename)
+        self._log.info("input file: '%s'", self.file.filename)
+        for k in self.file.attrs:
+            self._log.info("file attribute: %s=%s", k, self.file.attrs[k])
 
         try:
             self.chanp = util.any_regex(*options['channels'])
@@ -301,6 +303,7 @@ class arf_writer(_base_arf, Node):
                                    "but has the wrong timestamp or uuid", chunk.id)
                     # TODO ask the user to decide
             else:
+                # NB: reading all the attributes can take a lot of time
                 entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
 
         elif self.can_store(chunk):

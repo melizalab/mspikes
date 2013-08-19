@@ -27,12 +27,13 @@ cdef class detect_spikes:
     cdef:
 
         double thresh
+        double scaled_thresh
         double prev_val
         int n_after
         int n_after_crossing
         DetectorState state
 
-    def __init__(self, thresh, n_after):
+    def __init__(self, double thresh not None, int n_after not None):
         """Construct spike detector.
 
         thresh -- the crossing threshold that triggers the detector. Positive
@@ -45,11 +46,26 @@ cdef class detect_spikes:
 
         """
         assert thresh != 0
-        self.thresh = thresh
+        self.thresh = self.scaled_thresh = thresh
         self.n_after = n_after
         self.state = BELOW_THRESHOLD
 
+    def scale_thresh(self, double mean not None, double sd not None):
+        """Adjust threshold for the mean and standard deviation of the signal.
+
+        For positive-going thresholds, the effective threshold will be (thresh *
+        sd + mean); for negative-going thresholds the effective threshold will
+        be (thresh * sd - mean)
+
+        """
+        self.scaled_thresh = self.thresh * sd
+        if self.thresh > 0:
+            self.scaled_thresh += mean
+        else:
+            self.scaled_thresh -= mean
+
     def send(self, nx.ndarray samples not None):
+
         """Detect spikes in a time series.
 
         Returns a list of indices corresponding to the peaks (or troughs) in the
