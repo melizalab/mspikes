@@ -12,7 +12,7 @@ from mspikes import util
 from mspikes.modules import dispatcher
 from mspikes.types import Node, tag_set
 
-@dispatcher.parallel('id', "samples")
+@dispatcher.parallel('id', "samples", "scalar")
 class spike_extract(Node):
     """Detect spike times in time series and extract waveforms
 
@@ -41,17 +41,22 @@ class spike_extract(Node):
 
     def __init__(self, **options):
         util.set_option_attributes(self, options, thresh=None, interval=(1.5, 2.5))
+        self.last_scalar = None # for scaling threshold
         self.reset()
 
     def reset(self):
         self.detector = None
         self.spike_queue = []
-        self.last_chunk = None  # store last chunk in case spike splits across boundary
+        self.last_chunk = None  # last chunk for spikes split across boundary
 
     def send(self, chunk):
         from mspikes.modules.spikes import detect_spikes
         from mspikes.util import repeatedly
         from itertools import chain
+
+        if "scalar" in chunk.tags:
+            self.last_scalar = chunk
+            return
 
         n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
         # reset the detector if there's a gap or ds changes
@@ -63,8 +68,10 @@ class spike_extract(Node):
         if self.detector is None:
             self.detector = detect_spikes(self.thresh, n_after)
 
+        if self.last_scalar is not None:
+            self.detector.scale_thresh(self.last_scalar.data.mean, self.last_scalar.data.rms)
         spike_it = chain(repeatedly(self.spike_queue.pop, 0),
-                         ((t - n_before, t + n_after) for t in self.detector.send(chunk.data)))
+                         ((t - n_before, t + n_after) for t in self.detector.send(chunk.data.astype('d'))))
         dt = nx.dtype([('start', nx.int32), ('spike', chunk.data.dtype, n_before + n_after)])
         spikes = nx.fromiter(self.get_spikes(chunk, spike_it), dt)
         self._log.debug("%s (offset=%.2fs): %d spikes", chunk.id, chunk.offset, spikes.size)

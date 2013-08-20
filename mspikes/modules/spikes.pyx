@@ -5,9 +5,6 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Wed Jul 24 09:26:36 2013
 """
-cimport numpy as nx
-nx.import_array()
-
 cdef enum DetectorState:
     BELOW_THRESHOLD = 1
     BEFORE_PEAK = 2
@@ -25,7 +22,6 @@ cdef class detect_spikes:
     """
 
     cdef:
-
         double thresh
         double scaled_thresh
         double prev_val
@@ -33,7 +29,7 @@ cdef class detect_spikes:
         int n_after_crossing
         DetectorState state
 
-    def __init__(self, double thresh not None, int n_after not None):
+    def __init__(self, double thresh, int n_after):
         """Construct spike detector.
 
         thresh -- the crossing threshold that triggers the detector. Positive
@@ -50,7 +46,7 @@ cdef class detect_spikes:
         self.n_after = n_after
         self.state = BELOW_THRESHOLD
 
-    def scale_thresh(self, double mean not None, double sd not None):
+    def scale_thresh(self, double mean, double sd):
         """Adjust threshold for the mean and standard deviation of the signal.
 
         For positive-going thresholds, the effective threshold will be (thresh *
@@ -64,7 +60,7 @@ cdef class detect_spikes:
         else:
             self.scaled_thresh -= mean
 
-    def send(self, nx.ndarray samples not None):
+    def send(self, double[:] samples):
 
         """Detect spikes in a time series.
 
@@ -73,20 +69,19 @@ cdef class detect_spikes:
         is a gap in the signal.
 
         """
-        cdef object x
+        cdef double x
         cdef int i = 0
         out = []
 
-        cdef nx.flatiter it = <nx.flatiter> nx.PyArray_IterNew(samples)
-        while nx.PyArray_ITER_NOTDONE(it):
-            x = nx.PyArray_GETITEM(samples, nx.PyArray_ITER_DATA(it))
+        for i in range(samples.shape[0]):
+            x = samples[i]
             if self.state is BELOW_THRESHOLD:
-                if compare_sign(x - self.thresh, self.thresh):
+                if compare_sign(x - self.scaled_thresh, self.scaled_thresh):
                     self.prev_val = x
                     self.n_after_crossing = 0
                     self.state = BEFORE_PEAK
             elif self.state is BEFORE_PEAK:
-                if compare_sign(self.prev_val - x, self.thresh):
+                if compare_sign(self.prev_val - x, self.scaled_thresh):
                     out.append(i - 1)
                     self.state = AFTER_PEAK
                 elif self.n_after_crossing > self.n_after:
@@ -95,10 +90,8 @@ cdef class detect_spikes:
                     self.prev_val = x
                     self.n_after_crossing += 1
             elif self.state is AFTER_PEAK:
-                if compare_sign(self.thresh - x, self.thresh):
+                if compare_sign(self.scaled_thresh - x, self.scaled_thresh):
                     self.state = BELOW_THRESHOLD
-            nx.PyArray_ITER_NEXT(it)
-            i += 1
         return out
 
 

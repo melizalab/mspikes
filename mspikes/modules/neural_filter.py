@@ -175,7 +175,7 @@ class zscale(_smoother):
 
         # rescale data first, then decide if to queue it
         # should really rescale the threshold downstream, not the data
-        chunk = chunk._replace(data=(chunk.data - mean) / rms)
+        # chunk = chunk._replace(data=(chunk.data - mean) / rms)
         if self.exclude and rms_ratio > self.max_rms:
             self.excl_queue.extend((stat_chunk, chunk))
             return
