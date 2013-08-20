@@ -10,6 +10,8 @@ from test.common import *
 import numpy as nx
 from mspikes.modules import neural_filter, util
 
+# not used: data aren't actually rescaled by this module any more
+@SkipTest
 def test_zscale():
     _randg = nx.random.RandomState(1)
     window_size = 4096

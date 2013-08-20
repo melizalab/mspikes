@@ -77,7 +77,7 @@ def create_graph(definitions):
 
 def test_graph_run():
     toolchains = [("rng = rand_samples(seed=10)",
-                   "out = stream_sink((rng, _sampled))")]
+                   "out = stream_writer((rng, _sampled))")]
 
     for descrs in toolchains:
         yield create_graph, descrs

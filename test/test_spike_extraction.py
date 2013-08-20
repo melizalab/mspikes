@@ -36,7 +36,7 @@ def random_spikes(n, maxt, ds):
 
 def test_detect_spikes():
     from mspikes.modules.spikes import detect_spikes
-    a_recording = nx.zeros(10000, dtype=nx.int16)
+    a_recording = nx.zeros(10000, dtype='d')
     times = [100, 400, 1200]
     for t in times:
         a_recording[t:t + a_spike.size] += a_spike

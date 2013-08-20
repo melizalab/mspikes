@@ -6,6 +6,7 @@ Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Tue Jul 23 15:06:17 2013
 """
 import logging
+from mspikes import util
 from mspikes.types import Node
 
 
@@ -49,6 +50,29 @@ class print_stats(Node):
         if not "scalar" in chunk.tags: return
         for field, value in chunk.data._asdict().iteritems():
             print "%.3f\t%s\t%s\t%f" % (float(chunk.offset), chunk.id, field, value)
+
+
+class stream_writer(Node):
+    """Output data blocks to the console or a file"""
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        from sys import stdout
+        from argparse import FileType
+        addopt_f("--file",
+                 help="output file",
+                 type=FileType('w'),
+                 default=defaults.get('file', stdout),
+                 metavar='PATH')
+
+    def __init__(self, **options):
+        util.set_option_attributes(self, options, file=None)
+
+    def send(self, chunk):
+        # TODO better formatting
+        if self.file:
+            print >> self.file, chunk
+
 
 try:
     import matplotlib.pyplot as plt
