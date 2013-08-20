@@ -100,7 +100,7 @@ def extract_spikes(arfp, channel, thresh, maxrms=None, log=_dummy_writer, **kwar
 	    yield entry, None, None, None
 	    continue
 
-        T = float(thresh if absthresh else thresh * rms)
+        T = float(thresh if absthresh else thresh * rms + mean)
 
         spike_t = spike_times(data, T, window).nonzero()[0]
 	if spike_t.size > 0:
