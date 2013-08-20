@@ -1,5 +1,4 @@
 from setuptools import setup, find_packages
-
 from numpy.distutils.core import setup,Extension
 
 
@@ -48,8 +47,7 @@ setup(name = "mspikes",
                                           'mspike_shape = mspikes.mspike_shape:main',
                                           'mspike_merge = mspikes.mspike_merge:main']},
 
-
-      install_requires = ["numpy>=1.3", "scipy>=0.7", "arf==2.0.0"],
+      install_requires = ["numpy>=1.3", "scipy>=0.7", "arf==2.0.0", "arfx==2.0.1"],
 
       ext_package = 'mspikes',
       ext_modules = [ _readklu, _spikes ]
