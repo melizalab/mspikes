@@ -138,20 +138,22 @@ class klusters_reader(Source):
                  help="base name for input files")
         addopt_f("--groups",
                  help="restrict to one or more groups (default all)",
-                 nargs='+',
+                 action='append',
                  type=int)
         addopt_f("--units",
                  help="""restrict to one or more units (default all). Units are numbered sequentially,
                  starting with the first cluster in the first group. Clusters
                  numbered 0 and 1 are excluded as artifacts and noise,
                  respectively, unless there are no clusters > 1, in which case
-                 the highest numbered cluster is used""")
+                 the highest numbered cluster is used""",
+                 action='append',
+                 type=int)
         addopt_f("--id",
                  help="base for id of data (default=%(default)s)",
                  default="unit")
 
     def __init__(self, basename, **options):
-        util.set_option_attributes(self, options, kkwik=False, id="unit")
+        util.set_option_attributes(self, options, kkwik=False, id="unit", groups=(), units=())
         self._basename = basename
         self._groups = read_paramfile(basename + ".xml")
         self._log.info("input basename: %s", basename)
@@ -162,10 +164,15 @@ class klusters_reader(Source):
         from mspikes.modules._klusters import sort_unit
         unit_idx = 0
         for i, group in enumerate(self._groups):
+            if self.groups and group not in self.groups:
+                self._log.info("%s.%d -> skipped", self._basename, group['idx'])
+                continue
             clusters = sort_unit("{0}.fet.{1}".format(self._basename, group['idx']),
                                  "{0}.clu.{1}".format(self._basename, group['idx']))
             for j, cluster in enumerate(clusters):
-                # adjust for peak time
+                if self.units and unit_idx not in self.units:
+                    self._log.info("%s.%d.%d (unit %d)-> skipped", self._basename, group['idx'], j, unit_idx)
+                    continue
                 unit_name = "{0}_{1:03}".format(self.id, unit_idx)
                 data = asarray(cluster)
                 self._log.info("%s.%d.%d -> %s (%d spikes)", self._basename, group['idx'], j, unit_name, data.size)
