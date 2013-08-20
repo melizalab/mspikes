@@ -82,6 +82,7 @@ def test_spike_feats():
     measurer = spike_extraction.spike_features(raw=True, spikes=1000)
     with util.chain_modules(measurer, util.visitor(out.append)) as chain:
         chain.send(spikes)
+        measurer.close()
     # somewhat limited in what we can test
     assert_equal(out[0].data.size, spikes.data.size)
     assert_true("PC" in out[0].data.dtype.names)

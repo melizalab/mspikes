@@ -10,7 +10,7 @@ import numpy as nx
 
 from mspikes import util
 from mspikes.modules import dispatcher
-from mspikes.types import Node, tag_set
+from mspikes.types import Node, tag_set, DataBlock, DataError
 
 @dispatcher.parallel('id', "samples", "scalar")
 class spike_extract(Node):
@@ -113,12 +113,13 @@ class spike_features(Node):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("--interval",
-                 help="interval around the spike peak to use (default=%(default)s)",
-                 type=float,
-                 default=(1.0, 2.0),
-                 nargs=2,
-                 metavar='MS')
+        # FIXME
+        # addopt_f("--interval",
+        #          help="interval around the spike peak to use (default=%(default)s)",
+        #          type=float,
+        #          default=(1.0, 2.0),
+        #          nargs=2,
+        #          metavar='MS')
         addopt_f("--feats",
                  help="include %(metavar)s features from PCA (default=%(default)d)",
                  default=3,
@@ -132,53 +133,41 @@ class spike_features(Node):
                  default=3,
                  type=int,
                  metavar='INT')
-        addopt_f("--spikes",
-                 help="accumulate %(metavar)s spikes before calculating statistics (default=%(default)d)",
-                 default=1000,
-                 type=int,
-                 metavar='INT')
 
     def __init__(self, **options):
         util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
-                                   resample=3, spikes=1000)
-        self._eigenvectors = None
-        self._reset_queue()
-
-    def _reset_queue(self):
-        self._times = []
-        self._spikes = []
-        self._nspikes = 0
-
+                                   resample=3)
+        self._queue = []
 
     def send(self, chunk):
         """ align spikes, compute features """
-
         # pass data we can't use
-        data = chunk.data
-        if data.dtype.names is None or "spike" not in data.dtype.names:
+        if chunk.data.dtype.names is None or "spike" not in chunk.data.dtype.names:
             Node.send(self, chunk)
+        else:
+            # need to read data now because it won't be available in close
+            self._queue.append(chunk._replace(data=chunk.data[:]))
+            if chunk.ds != self._queue[0].ds:
+                self._queue.pop()
+                raise DataError("%s (offset=%.2f): sampling rate doesn't match other spikes" %
+                                chunk.id, float(chunk.offset))
+
+    def close(self):
+        if not self._queue:
             return
-
-        self._times.append(data['start'] + util.to_samples(chunk.offset, chunk.ds))
-        self._spikes.append(data['spike'])
-        self._nspikes += data.shape[0]
-
-        if self._nspikes < self.spikes:
-            return
-
-        times = nx.concatenate(self._times)
-        spikes = nx.concatenate(self._spikes)
-        self._reset_queue()
-
-        times, spikes = realign_spikes(times, spikes, self.resample)
+        times = [chunk.data['start'] + util.to_samples(chunk.offset, chunk.ds) for
+                 chunk in self._queue]
+        spikes = [chunk.data['spike'] for chunk in self._queue]
+        times, spikes = realign_spikes(nx.concatenate(times),
+                                       nx.concatenate(spikes),
+                                       self.resample)
         features = [times, spikes]
         names = ['start', 'spike']
 
         if self.feats > 0:
             # TODO handle multiple channels
-            if self._eigenvectors is None:
-                self._eigenvectors = get_eigenvectors(spikes, self.feats)
-            features.append(nx.dot(spikes, self._eigenvectors))
+            eigenvectors = get_eigenvectors(spikes, self.feats)
+            features.append(nx.dot(spikes, eigenvectors))
             names.append('PC')
 
         if self.raw:
@@ -186,8 +175,12 @@ class spike_features(Node):
                 features.append(meas)
                 names.append(name)
 
+        chunk = self._queue[0]
+        self._log.debug("'%s': %d spikes", chunk.id, times.size)
         dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1) for n, a in zip(names, features)])
-        Node.send(self, chunk._replace(ds=chunk.ds * self.resample, data=nx.rec.fromarrays(features, dt)))
+        Node.send(self, DataBlock(id=chunk.id, offset=0, ds=chunk.ds * self.resample,
+                                  data=nx.rec.fromarrays(features, dt), tags=chunk.tags))
+        self._queue = []
 
 
 def realign_spikes(times, spikes, upsample):
