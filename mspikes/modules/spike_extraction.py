@@ -61,13 +61,13 @@ class spike_extract(Node):
             if gap > 1 or self.last_chunk.ds != chunk.ds:
                 self.reset()
         if self.detector is None:
-            self.detector = detect_spikes(self.thresh, util.to_samples(self.interval[1], chunk.ds))
+            self.detector = detect_spikes(self.thresh, n_after)
 
         spike_it = chain(repeatedly(self.spike_queue.pop, 0),
                          ((t - n_before, t + n_after) for t in self.detector.send(chunk.data)))
         dt = nx.dtype([('start', nx.int32), ('spike', chunk.data.dtype, n_before + n_after)])
         spikes = nx.fromiter(self.get_spikes(chunk, spike_it), dt)
-
+        self._log.debug("%s (offset=%.2fs): %d spikes", chunk.id, chunk.offset, spikes.size)
         if len(spikes):
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
                                            data=nx.fromiter(spikes, dtype=dt),

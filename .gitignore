@@ -9,3 +9,4 @@
 /examples/
 /setuptools*
 /src/statsmodule.c
+/src/spikesmodule.c

@@ -53,9 +53,7 @@ class print_stats(Node):
 try:
     import matplotlib.pyplot as plt
 except ImportError:
-    class plot_stats(Node):
-        """Plot scalar statistics from upstream module (disabled; needs matplotlib)"""
-        pass
+    plot_stats = print_stats
 else:
     class plot_stats(Node):
         """Plot scalar statistics from upstream modules"""

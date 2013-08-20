@@ -14,6 +14,7 @@ from mspikes import util
 from mspikes.types import Node, DataBlock, tag_set
 from mspikes.modules import dispatcher
 
+# algorithm is very complicated but should be very general.
 
 class _smoother(Node):
     """Modify a time series based on statistics in a sliding window
@@ -22,6 +23,8 @@ class _smoother(Node):
     datafun()
 
     """
+    _log = logging.getLogger("%s.smoother" % __name__)
+
     def __init__(self, **options):
         util.set_option_attributes(self, options, window=2.0)
         self._log.info("window size: %.2f s", self.window)
@@ -64,8 +67,10 @@ class _smoother(Node):
         nsamples = util.to_samples(chunk.offset - self.first_sample_t, chunk.ds)
         gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
 
-        # check for gap > window
+        # check for gap > window. If so, the smoother has to be reset.
         if gap > n_window:
+            self._log.debug("%s (offset=%.2fs): gap (%d) > window (%d), resetting",
+                            chunk.id, float(chunk.offset), gap, n_window)
             nsamples = 0
             self.first_sample_t = chunk.offset
         # if uninitialized, add to queue and update stats
@@ -146,7 +151,7 @@ class zscale(_smoother):
         if self.exclude:
             self._log.info("excluding intervals with RMS %.3f times baseline", self.max_rms)
         self.excl_queue = []     # need a separate queue to determine if the rms
-                                # stayed above threshold for > min_duration
+                                 # stayed above threshold for > min_duration
 
     def statfun(self, chunk):
         from mspikes.stats import moments
@@ -164,7 +169,7 @@ class zscale(_smoother):
         # smoothed statistics
         smoothed = (self.state * self.weight + stats) / (self.weight + N)
         mean = smoothed[0]
-        rms = nx.sqrt(smoothed[1])
+        rms = nx.sqrt(smoothed[1] - smoothed[0] ** 2)
 
         stat_chunk = chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar"))
 
