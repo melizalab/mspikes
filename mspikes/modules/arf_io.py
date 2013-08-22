@@ -9,6 +9,7 @@ import logging
 import h5py
 import arf
 
+from mspikes import __version__
 from mspikes import util
 from mspikes import filters
 from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set, MspikesError
@@ -37,51 +38,6 @@ class _base_arf(object):
             arf.check_file_version(self.file)
         except Warning, w:
             self._log.warn("%s", w)
-
-    def get_creator(self):
-        """The program that created the file, or None if unknown"""
-        if self.file.attrs.get('program', None) == 'arfxplog':
-            return 'arfxplog'
-        entry = get_first(self.file, h5py.Group)
-        if entry and "jack_frame" in entry.attrs:
-            return "jill"
-        else:
-            return self.file.attrs.get('file_creator', None)
-
-    def get_offset_function(self, use_timestamp=False):
-        """Return a function that extracts offsets (in seconds) from entries
-
-        Tries to use the most precise clock available
-
-        use_timestamp -- force use of timestamp attribute even if sample count
-                         attributes are present
-
-        """
-        keyname = "timestamp"
-        sampling_rate = None
-        fun = arf_entry_time
-
-        creator = self.get_creator()
-        if creator is None:
-            self._log.info("couldn't determine ARF file source")
-        elif use_timestamp:
-            pass
-        elif creator == 'arfxplog':
-            keyname = "sample_count"
-            sampling_rate = self.file.attrs['sampling_rate']
-            fun = lambda entry: util.to_seconds(entry.attrs[keyname], sampling_rate)
-        elif creator == 'jill':
-            keyname = "jack_frame"
-            def srate_visitor(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    # if None is returned the iteration will continue
-                    return obj.attrs.get("sampling_rate", None)
-            sampling_rate = self.file.visititems(srate_visitor)
-            fun = corrected_jack_frame(sampling_rate)
-        self._log.info("using '%s' attribute for time", keyname)
-        if sampling_rate:
-            self._log.info("file sampling rate (nominal): %d Hz", sampling_rate)
-        return fun
 
     def close(self):
         if self.file is not None:
@@ -143,9 +99,6 @@ class arf_reader(_base_arf, RandomAccessSource):
         addopt_f("--ignore-xruns",
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
-        addopt_f("--skip-sort", help="""skip initial sort of entries. only use
-        this if creation order was tracked and the entries are already in the correct order""",
-                 action='store_true')
 
     def __init__(self, filename, **options):
         import re
@@ -186,24 +139,16 @@ class arf_reader(_base_arf, RandomAccessSource):
         file.
 
         """
-        to_seconds = self.get_offset_function(self.use_timestamp)
-        if self.skip_sort:
-            it = arf.keys_by_creation(self.file)
-        else:
-            it = sorted(self.file.keys(), key=lambda x: arf_entry_time(self.file[x]))
+        self._log.info("sorting entries")
+        entries = sorted((v for v in self.file.itervalues() if isinstance(v, h5py.Group)),
+                         key=arf_entry_time)
 
-        entries = (self.file[name] for name in it
-                   if self.entryp(name) and self.file.get(name, getclass=True) == h5py.Group)
-
-        time_0 = None
+        to_seconds = entry_offset_calculator(self.use_timestamp)
         for entry in entries:
             # check for marked errors
             try:
-                entry_time = to_seconds(entry)
-                if time_0 is None:
-                    time_0 = entry_time
-                entry_time -= time_0
-            except LookupError:
+                entry_time, entry_ds = to_seconds(entry)
+            except AttributeError:
                 self._log.info("'%s' skipped (no time attribute)", entry.name)
                 continue
 
@@ -221,13 +166,14 @@ class arf_reader(_base_arf, RandomAccessSource):
             # emit structure blocks to indicate entry onsets
             chunk = DataBlock(id=entry.name,
                               offset=entry_time,
-                              ds=None,
+                              ds=entry_ds,
                               data=entry.attrs,
                               tags=tag_set("structure"))
             Node.send(self, chunk)
             yield chunk
 
-            for id, dset in entry.iteritems():
+            for id in sorted(entry, key=util.natsorted):
+                dset = entry[id]
                 if not self.chanp(id):
                     continue
                 if dset.shape[0] == 0:
@@ -274,13 +220,16 @@ class arf_writer(_base_arf, Node):
         addopt_f("--dry-run",
                  help="do everything but actually write to the file",
                  action="store_true")
+        addopt_f("--overwrite",
+                 help="overwrite existing datasets (DANGER)",
+                 action='store_true')
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
 
     def __init__(self, filename, **options):
         util.set_option_attributes(self, options, compress=9, auto_entry=None,
                                    split_entry_template='%s_g%02d',
-                                   dry_run=False)
+                                   dry_run=False, overwrite=False)
         try:
             _base_arf.__init__(self, filename, "a", dry_run=self.dry_run)
         except IOError:
@@ -288,90 +237,161 @@ class arf_writer(_base_arf, Node):
                            filename)
         self._log.info("output file: %s %s", self.file.filename, "(DRY RUN)" if self.dry_run else "")
         # build entry table
-        self._offset_fun = self.get_offset_function()
         self._make_entry_table()
-        arf.set_attributes(self.file, file_creator='mspikes.arf_writer', overwrite=False)
+        arf.set_attributes(self.file,
+                           file_creator='org.meliza.mspikes/arf_writer ' + __version__,
+                           overwrite=False)
 
     def send(self, chunk):
-        if "structure" in chunk.tags and self.auto_entry is None:
-            if chunk.id in self.file:
-                entry = self.file[chunk.id]
-                self._log.debug("structure chunk (id='%s', offset=%.2fs) matches existing entry '%s'",
-                                chunk.id, float(chunk.offset), entry.name)
-                if not matches_entry(chunk, entry):
-                    raise ArfError("an entry named '%s' exists in the target file,"
-                                   "but has the wrong timestamp or uuid", chunk.id)
-                    # TODO ask the user to decide
-            else:
-                # NB: reading all the attributes can take a lot of time
-                entry = self._create_entry(chunk.id, chunk.offset, **chunk.data)
+        if "structure" in chunk.tags:
+            self._write_structure(chunk)
+        elif "samples" in chunk.tags:
+            self._write_samples(chunk)
+        elif "events" in chunk.tags:
+            self._write_events(chunk)
+        else:
+            self._log.debug("%s skipped: data type not supported", chunk)
 
-        elif self.can_store(chunk):
-            self._write_data(chunk)
+    def _write_structure(self, chunk):
+        """ Write a structure chunk to the file; creates entries as needed if auto_entry is off"""
+        from bisect import bisect
+        import datetime
+        if self.auto_entry is not None:
+            self._log.debug("%s skipped: auto_entry is true", chunk)
+            return
+
+        if chunk.id in self.file:
+            # see if the entry exists
+            entry = self.file[chunk.id]
+            if not matches_entry(chunk, entry):
+                raise ArfError("an entry named '%s' exists in the target file,"
+                               "but has the wrong timestamp or uuid", chunk.id)
+                # TODO ask the user to decide
+            self._log.debug("%s matches existing entry '%s'", chunk, entry.name)
+        else:
+            # create a new entry in the file with the chunk's offset and attributes
+            attrs = dict(chunk.data)
+            # need to find the closest entry to insert into list
+            n_entries = len(self._offsets)
+            idx = bisect(self._offsets, chunk.offset)
+            try:
+                # use chunk timestamp if it exists
+                timestamp = attrs.pop('timestamp')
+            except KeyError:
+                # otherwise infer from other entries in file
+                if n_entries == 0:
+                    # first entry in the file gets timestamp of now
+                    timestamp = datetime.datetime.now()
+                else:
+                    # calculate timestamp from offset with existing entry
+                    o_idx = idx if idx < n_entries else n_entries - 1
+                    timestamp = (arf.timestamp_to_float(self._entries[o_idx].attrs['timestamp']) +
+                                 chunk.offset - self._offsets[o_idx])
+            # set creator and sample count attribute
+            if 'entry_creator' not in attrs:
+                attrs['entry_creator'] = 'org.meliza.mspikes/arf_writer ' + __version__
+            if chunk.ds is not None:
+                if 'sample_count' not in attrs:
+                    attrs['sample_count'] = long(chunk.offset * chunk.ds)
+                if 'sampling_rate' not in attrs:
+                    attrs['sampling_rate'] = chunk.ds
+
+            # create entry and insert in the table of entries
+            entry = arf.create_entry(self.file, chunk.id, timestamp, **attrs)
+            self._offsets.insert(idx, chunk.offset)
+            self._entries.insert(idx, entry)
+            self._log.info("created new entry '%s' (offset=%.2fs)", chunk.id, float(chunk.offset))
+
+    def _write_samples(self, chunk):
+        """Write sampled data to the file"""
+        entry, entry_time, idx = self._find_entry(chunk.offset)
+        self._log.debug("%s matches '%s' (offset=%.2fs)", chunk, entry.name, entry_time)
+        # offset of data in entry
+        data_offset = chunk.offset - entry_time
+        if chunk.ds is not None:
+            data_offset = util.to_samples(data_offset, chunk.ds)
+        else:
+            data_offset = float(data_offset)
+        dset = self._require_dataset(entry, chunk, data_offset)
+        dset_offset = dset.attrs.get('offset', 0)
+
+        # check whether there's a gap between existing data and new chunk
+        gap = data_offset - (dset_offset + dset.shape[0])
+        if gap != 0:
+            raise ArfError("%s not contiguous with existing dataset '%s' (gap=%d samples)" %
+                           (chunk, dset.name, gap))
+        arf.append_data(dset, chunk.data)
+
+    def _write_events(self, chunk):
+        """Write event data to the file """
+        # writing events is complicated because of a use case where we're trying
+        # to slot an unstructured list of events (like from a spike sorter) into
+        # existing structure. We assume that the data stream is ordered, so the
+        # question is which events go into the entry associated with the start
+        # of the chunk, and which should go in a later one.
+        entry, entry_time, idx = self._find_entry(chunk.offset)
+        self._log.debug("%s matches '%s' (offset=%.2fs)", chunk, entry.name, entry_time)
+        # offset of data in entry
+        data_offset = chunk.offset - entry_time
+        if chunk.ds is not None:
+            data_offset = util.to_samples(data_offset, chunk.ds)
+        else:
+            data_offset = float(data_offset)
+        # prefer event datasets to have offset of 0
+        dset = self._require_dataset(entry, chunk, 0)
+        dset_offset = dset.attrs.get('offset', 0)
+
+        data = chunk.data
+        if isinstance(data, h5py.Dataset):
+            data = data[:]
+
+        # see if any events belong in the subsequent entry
+        try:
+            next_entry_time = self._offsets[idx]
+        except IndexError:
+            data = chunk.data
+            next = None
+        else:
+            data, next = _split_point_process(data, data_offset, dset_offset,
+                                              next_entry_time - entry_time, chunk.ds)
+        if data.size:
+            arf.append_data(dset, data)
+        else:
+            # somewhat hacky to delete empty dataset, but simplifies logic
+            del entry[dset.name]
+        if next is not None and next.size > 0:
+            self.send(chunk._replace(offset=next_entry_time, data=next))
+
 
     def _make_entry_table(self):
         """Generate a table of entries and start times."""
-        entries = sorted(self.file.values(), key=arf_entry_time)
+        self._log.info("scanning existing entries and datasets")
+        entries = sorted((v for v in self.file.itervalues() if isinstance(v, h5py.Group)),
+                         key=arf_entry_time)
         self._offsets = []
         self._entries = []
         self._datasets = set()
-        t0 = None
+        to_seconds = entry_offset_calculator()
         for entry in entries:
             try:
-                t = self._offset_fun(entry)
-            except LookupError:
+                entry_time, entry_ds = to_seconds(entry)
+            except AttributeError:
                 pass
             else:
-                if t0 is None:
-                    t0 = t
-                self._offsets.append(t - t0)
+                self._offsets.append(entry_time)
                 self._entries.append(entry)
                 self._datasets.update(dset.name for dset in entry.itervalues()
                                       if isinstance(dset, h5py.Dataset))
 
-
-    def _create_entry(self, name, offset, **attributes):
-        """Create a new entry in the target file
-
-        Stores entry in the object's offset/entry table
-
-        name -- the name of the entry
-        offset -- the offset of the entry in the data stream
-
-        Optional arguments:
-
-        timestamp -- if supplied, the timestamp of the new entry in the arf file
-                     is set to this. If not supplied, inferred from the
-                     difference in seconds between offset and the closest entry.
-                     If no entries in the file, the current time is used.
-
-        Additional keyword arguments are set as attributes of the new entry
-
-        """
+    def _find_entry(self, offset):
+        """ Find the entry that should contain data with offset. Returns entry, entry_offset, index """
         from bisect import bisect
-        import datetime
-
-        # match the entry against the entries in the file using the offset
-        n_entries = len(self._offsets)
         idx = bisect(self._offsets, offset)
-        try:
-            timestamp = attributes.pop('timestamp')
-        except KeyError:
-            if n_entries == 0:
-                # first entry in the file gets timestamp of now
-                timestamp = datetime.datetime.now()
-            else:
-                # calculate timestamp from offset with existing entry
-                other = self._entries[idx] if idx < n_entries else self._entries[n_entries - 1]
-                timestamp = (arf.timestamp_to_float(other.attrs['timestamp']) +
-                             offset - self._offset_fun(other))
-        self._log.info("created new entry '%s' (offset=%.2fs)", name, float(offset))
-        # TODO store mspikes offset in entry in some unambiguous format
-        entry = arf.create_entry(self.file, name, timestamp, **attributes)
-        # insert new entry in the table of entries
-        self._offsets.insert(idx, offset)
-        self._entries.insert(idx, entry)
-        return entry
+        if idx == 0:
+            raise ArfError("no entry with offset < %.2f in file" % float(offset))
+        entry = self._entries[idx - 1]
+        entry_time = self._offsets[idx - 1]
+        return entry, entry_time, idx
 
     def _next_entry(self, entry, offset):
         """Create the next entry in a series."""
@@ -401,89 +421,24 @@ class arf_writer(_base_arf, Node):
         else:
             return self._create_entry(new_name, offset, **attrs)
 
-    def _write_data(self, chunk):
-        """Look up target dataset for chunk and write data.
-
-        Creates new datasets as needed, and may create a new entry if there is a gap.
-
-        """
-        from bisect import bisect
-
-        # Look up target entry
-        idx = bisect(self._offsets, chunk.offset)
-        if idx == 0:
-            if self.auto_entry is None:
-                raise ArfError("unable to find a target entry with offset < %.2f" % float(chunk.offset))
+    def _require_dataset(self, entry, chunk, data_offset):
+        import posixpath as pp
+        dset_name = pp.join(entry.name, chunk.id)
+        if chunk.id in entry and dset_name in self._datasets:
+            if self.overwrite:
+                del entry[chunk.id]
+                self._datasets.remove(dset_name)
             else:
-                raise NotImplementedError("need to use auto_entry to create new entry")
-        else:
-            entry = self._entries[idx - 1]
-            entry_time = self._offsets[idx - 1]
-        self._log.debug("chunk (id='%s', offset=%.2fs) matches '%s' (offset=%.2fs)",
-                        chunk.id, float(chunk.offset), entry.name, entry_time)
-
-        # offset of data in entry
-        data_offset = chunk.offset - entry_time
-        if chunk.ds is not None:
-            data_offset = util.to_samples(data_offset, chunk.ds)
-        else:
-            data_offset = float(data_offset)
-
-        if chunk.id not in entry:
-            dset = self._create_dataset(entry, chunk, data_offset)
-            dset_offset = data_offset
-        else:
+                raise ArfError("%s not written: dataset '%s' already exists" %
+                               (chunk, dset_name))
+        if chunk.id in entry:
             dset = entry[chunk.id]
-            dset_offset = dset.attrs.get('offset', 0)
-            # make sure this is a good idea. most errors will be caught by this
-            # first check
-            if dset.name in self._datasets:
-                raise ArfError("(id='%s', offset=%.3f): not written; dataset '%s' already exists" %
-                               (chunk.id, float(chunk.offset), dset.name))
-                return
-            if dset.maxshape[0] is not None:
-                raise ArfError("(id='%s', offset=%.3fs): target dataset '%s' is not extensible" %
-                               (chunk.id, float(chunk.offset), dset.name))
+            # check if the upstream provider is insane and changed the sampling rate
             if dset.attrs.get('sampling_rate', None) != chunk.ds:
-                raise ArfError("(id='%s', offset=%.3fs): samplerate mismatches target dataset '%s'" %
-                               (chunk.id, float(chunk.offset), dset.name))
-            if "samples" in chunk.tags:
-                # additional steps to verify alignment for sampled data
-                gap = data_offset - (dset_offset + dset.shape[0])
-                if gap < 0:
-                    raise ArfError("(id='%s', offset=%.3f): overlaps with an existing dataset '%s'" %
-                                    (chunk.id, float(chunk.offset), dset.name))
-                elif gap > 0:
-                    # store data in a subsequent entry if there's a gap
-                    self._log.info("(id='%s', offset='%.3fs): gap in data requires new entry",
-                                   chunk.id, float(chunk.offset))
-                    entry = self._next_entry(entry, chunk.offset)
-                    data_offset = dset_offset = 0
-                    dset = self._create_dataset(entry, chunk, data_offset)
+                raise ArfError("%s samplerate mismatches target dataset '%s'" %
+                               (chunk, dset.name))
+            return dset
 
-        if "samples" in chunk.tags or isinstance(chunk.data, h5py.Dataset):
-            # no need to split data that come from another arf file
-            arf.append_data(dset, chunk.data)
-        elif "events" in chunk.tags:
-            try:
-                next_entry_time = self._offsets[idx]
-            except IndexError:
-                data = chunk.data
-                next = None
-            else:
-                data, next = _split_point_process(chunk.data, data_offset, dset_offset,
-                                                  next_entry_time - entry_time, chunk.ds)
-            if data.size:
-                arf.append_data(dset, data)
-            else:
-                # somewhat hacky to delete empty dataset, but logic is complex otherwise
-                del entry[dset.name]
-            if next is not None and next.size > 0:
-                self.send(chunk._replace(offset=next_entry_time, data=next))
-
-
-    def _create_dataset(self, entry, chunk, data_offset):
-        """Create a new empty dataset"""
         # create a new dataset; set chunk size and max shape based on data
         if "samples" in chunk.tags:
             chunks = chunk.data.shape
@@ -510,29 +465,76 @@ def true_p(*args):
     return True
 
 
-class corrected_jack_frame(object):
-    """Extracts frame counts from entries using jack_frame attribute.
+class entry_offset_calculator(object):
+    """Calculates the offset, in seconds, of an arf entry.
 
-    The jack_frame attribute is a 32-bit unsigned integer. This class converts
-    this to an unsigned 64-bit integer, handling overflows. In order to do this
-    correctly, entries must be called in order.
+    Attempts to use sample counts if they're present, falling back to the
+    timestamp. The offsets are referenced to that of the first entry passed to
+    the object, and corrected for overflows.
 
     """
-    def __init__(self, sampling_rate):
-        from numpy import uint64, seterr
+
+    def __init__(self, use_timestamp=False):
+        """ Initialize the calculator. If use_timestamp is true, ignores sample count attributes """
+        from numpy import seterr
         seterr(over='ignore')   # ignore overflow warning
-        self.sampling_rate = int(sampling_rate)
-        self.frame = uint64()
-        self.last = None
+        self.use_timestamp = use_timestamp
 
     def __call__(self, entry):
-        """Return entry.attrs['jack_frame'] - first_entry.attrs['jack_frame']"""
+        """Calculate interval in seconds between first entry and argument.
+
+        If sample count information is available, returns (interval,
+        sampling_rate), with interval as a Fraction. If not available or if the
+        object was initialized with use_timestamp=True, returns (interval,
+        None), with interval as a float.
+
+        """
+        from numpy import zeros_like, int64
         from fractions import Fraction
-        offset = entry.attrs['jack_frame']
-        if self.last is not None:
-            self.frame += offset - self.last
-        self.last = offset
-        return Fraction(long(self.frame), self.sampling_rate)
+
+        sampling_rate = None
+        if self.use_timestamp:
+            pass
+        elif 'sample_count' in entry.attrs:
+            # arfxplog and mspikes files
+            t = entry.attrs['sample_count']
+            try:
+                sampling_rate = entry.attrs['sampling_rate']
+            except KeyError:
+                try:
+                    sampling_rate = entry.file.attrs['sampling_rate']
+                except KeyError:
+                    pass
+        elif 'jack_frame' in entry.attrs:
+            # jill files
+            t = entry.attrs['jack_frame']
+            try:
+                sampling_rate = entry.attrs['jack_sampling_rate']
+            except KeyError:
+                dset = get_first(entry, h5py.Dataset)
+                try:
+                    sampling_rate = dset.attrs['sampling_rate']
+                except KeyError:
+                    pass
+        # fallback to timestamp
+        if sampling_rate is None:
+            t = entry.attrs['timestamp']
+
+        # this block corrects for overflow of 32-bit counters by calculating the
+        # difference between the current time and the last time and adding it to
+        # a variable with a larger type
+        try:
+            self.current += t - self.last
+        except AttributeError:
+            self.current = zeros_like(t)
+            if self.current.dtype.kind == 'i' and self.current.dtype.itemsize < 8:
+                self.current = self.current.astype(int64)
+        self.last = t
+
+        if sampling_rate is None:
+            return arf.timestamp_to_float(self.current), None
+        else:
+            return Fraction(long(self.current), long(sampling_rate)), sampling_rate
 
 
 def matches_entry(chunk, entry):
@@ -576,6 +578,11 @@ def _split_point_process(data, data_offset, dset_offset, entry_offset=None, data
 
     All offset values need to be in the same timebase as the times in data,
     except for entry_offset, which is converted using data_ds
+
+    Returns two arrays of times. The first contains the times that belong in the
+    current entry, and the second contains the times that belong in the next
+    entry. Both arrays are corrected for the start of the entry or dataset they
+    will be inserted into.
 
     """
     from numpy import ones

@@ -50,6 +50,7 @@ class spike_extract(Node):
         self.last_chunk = None  # last chunk for spikes split across boundary
 
     def send(self, chunk):
+        from fractions import Fraction
         from mspikes.modules.spikes import detect_spikes
         from mspikes.util import repeatedly
         from itertools import chain
@@ -74,10 +75,20 @@ class spike_extract(Node):
                          ((t - n_before, t + n_after) for t in self.detector.send(chunk.data.astype('d'))))
         dt = nx.dtype([('start', nx.int32), ('spike', chunk.data.dtype, n_before + n_after)])
         spikes = nx.fromiter(self.get_spikes(chunk, spike_it), dt)
-        self._log.debug("%s (offset=%.2fs): %d spikes", chunk.id, chunk.offset, spikes.size)
+        self._log.debug("%s: %d spikes", chunk, spikes.size)
         if len(spikes):
+            # spikes may have a negative time if they began in the previous
+            # chunk, which is not handled well by arf_writer and other
+            # downstream. Adjust offset and times so that times are >= 0
+            adj = spikes[0]['start']
+            if adj < 0:
+                spikes['start'] -= adj
+                offset = chunk.offset + Fraction(adj, chunk.ds)
+            else:
+                offset = chunk.offset
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
-                                           data=nx.fromiter(spikes, dtype=dt),
+                                           data=spikes,
+                                           offset=offset,
                                            tags=tag_set("events")))
         self.last_chunk = chunk
 
@@ -180,6 +191,7 @@ class spike_features(Node):
         Node.send(self, DataBlock(id=chunk.id, offset=0, ds=chunk.ds * self.resample,
                                   data=nx.rec.fromarrays(features, dt), tags=chunk.tags))
         self._queue = []
+        Node.close(self)
 
 
 def realign_spikes(times, spikes, upsample):

@@ -49,24 +49,6 @@ def random_spikes(n, maxt, ds=None):
     return nx.rec.fromarrays([t, nx.tile(a_spike, (n,1))], dtype=dt)
 
 
-def test_corrected_jack_frame():
-
-    idx = nx.arange(100, dtype=nx.uint32)
-    frames = idx * 1000
-    usecs = (frames * 50).astype(nx.uint64)
-
-    entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames))
-    func = arf_io.corrected_jack_frame(1)
-    times = map(func, entries)
-    assert_array_equal(sorted(frames), times)
-
-    # overflow the frame counter
-    entries = (Entry(u, f) for u, f in itertools.izip(usecs, frames - 50000))
-    func = arf_io.corrected_jack_frame(1)
-    times = map(func, entries)
-    assert_array_equal(sorted(frames), times)
-
-
 def test_entry_iteration():
     # create an in-memory hdf5 file
     fp = get_scratch_file("tmp", driver="core", backing_store=False)
@@ -108,7 +90,7 @@ def compare_entries(name, src, tgt):
     src, tgt = (fp[name] for fp in (src, tgt))
     src_attrs, tgt_attrs = (dict(entry.attrs) for entry in (src, tgt))
     assert_array_equal(src_attrs.pop('timestamp'), tgt_attrs.pop('timestamp'))
-    assert_dict_equal(src_attrs, tgt_attrs)
+    assert_dict_contains_subset(src_attrs, tgt_attrs)
     for dset in src:
         compare_datasets(dset, src, tgt)
 
@@ -159,7 +141,7 @@ def mirror_file(sampled):
 
     for entry in src:
         compare_entries(entry, src, tgt)
-        assert_sequence_equal(src[entry].keys(), tgt[entry].keys())
+        assert_set_equal(set(src[entry].keys()), set(tgt[entry].keys()))
 
     # now copy data to tgt again to test writing to an existing file
     for chunk in reader:
@@ -201,10 +183,13 @@ def test_arf_writer_pproc():
     d2 = tgt['entry_1']['spikes']
 
     assert_equal(d1.size + d2.size, spikes.size)
-    assert_array_equal(d1['start'], sp1['start'])
-    assert_true(all(d1['start'] < ((cut - offset) * srate)))
+    assert_array_equal(d1['start'], sp1['start'] + int(offset * srate))
+    assert_true(all(d1['start'] < (cut * srate)))
 
 
+# no longer supported - this should be a very infrequent use case, and it's not
+# worht the complexity right now
+@SkipTest
 def test_arf_writer_gap():
     """test whether data with gaps and other irregularities are stored correctly
 
