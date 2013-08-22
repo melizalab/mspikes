@@ -341,12 +341,6 @@ def text_element(parent, tag, value, **attribs):
     return el
 
 
-def natsorted(key):
-    """ key function for natural sorting. usage: sorted(seq, key=natsorted) """
-    import re
-    return map(lambda t: int(t) if t.isdigit() else t, re.split(r"([0-9]+)",key))
-
-
 
 # Variables:
 # End:

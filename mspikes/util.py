@@ -10,6 +10,7 @@ def chain_predicates(*ps):
     """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
     return lambda x: all(p(x) for p in ps)
 
+
 def any_regex(*regexes):
     """Return closure that tests for match against any of the arguments"""
     import re
@@ -85,6 +86,12 @@ def to_seconds(samples, sampling_rate=None, offset=None):
 def to_samples(seconds, sampling_rate):
     """Convert seconds to integer number of samples, rounding to nearest sample"""
     return long(round(seconds * float(sampling_rate)))
+
+
+def natsorted(key):
+    """ key function for natural sorting. usage: sorted(seq, key=natsorted) """
+    import re
+    return map(lambda t: int(t) if t.isdigit() else t, re.split(r"([0-9]+)",key))
 
 # Variables:
 # End:
