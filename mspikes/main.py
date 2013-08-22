@@ -86,6 +86,7 @@ def mspikes(argv=None):
     import argparse
     import logging
     from itertools import chain
+    from collections import OrderedDict
     from mspikes import __version__
 
     p = argparse.ArgumentParser(prog="mspikes",
@@ -119,7 +120,7 @@ def mspikes(argv=None):
     log.info("version %s", __version__)
 
     # TODO: parse an rc file with user-defined toolchains?
-    toolchain = {}
+    toolchain = OrderedDict()
     try:
         if opts.tchain_name:
             toolchain = dict(graph.parse_node_descrs(getattr(toolchains, opts.tchain_name)[1]))
@@ -134,7 +135,7 @@ def mspikes(argv=None):
         raise
 
     # add nodes to the parser so user can set their parameters
-    for node_name,node_def in toolchain.iteritems():
+    for node_name, node_def in toolchain.iteritems():
         try:
             graph.add_node_to_parser(node_name, node_def, p)
         except AttributeError,e:
