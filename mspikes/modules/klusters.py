@@ -175,12 +175,23 @@ class klusters_reader(Source):
                     continue
                 unit_name = "{0}_{1:03}".format(self.id, unit_idx)
                 data = asarray(cluster)
+                nviol, nisi = calculate_isi(data, group['sampling_rate'] / 1000)
                 self._log.info("%s.%d.%d -> %s (%d spikes)", self._basename, group['idx'], j, unit_name, data.size)
+                self._log.info("%s.%d.%d -> ISI < 1.0 ms = (%d/%d) (%.3f%%)",
+                               self._basename, group['idx'], j, nviol, nisi, 100. * nviol / nisi)
                 # split up to avoid recurring too deeply in arf_writer._write_data
                 for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
                     Node.send(self, chunk)
                     yield chunk
                 unit_idx += 1
+
+
+def calculate_isi(times, ms_samples):
+    """Calculate interspike interval statistics. Returns (violations, n_isi)"""
+    from numpy import diff
+    isi = diff(times)
+    nviolations = (isi < ms_samples).sum()
+    return (nviolations, isi.size)
 
 
 def get_scaling(data):
