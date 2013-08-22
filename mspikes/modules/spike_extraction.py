@@ -168,6 +168,7 @@ class spike_features(Node):
         times = [chunk.data['start'] + util.to_samples(chunk.offset, chunk.ds) for
                  chunk in self._queue]
         spikes = [chunk.data['spike'] for chunk in self._queue]
+        self._log.info("realigning spikes")
         times, spikes = realign_spikes(nx.concatenate(times),
                                        nx.concatenate(spikes),
                                        self.resample)
@@ -176,11 +177,13 @@ class spike_features(Node):
 
         if self.feats > 0:
             # TODO handle multiple channels
+            self._log.info("calculating PCs")
             eigenvectors = get_eigenvectors(spikes, self.feats)
             features.append(nx.dot(spikes, eigenvectors))
             names.append('PC')
 
         if self.raw:
+            self._log.info("measuring spike features")
             for name, meas in measurements(spikes):
                 features.append(meas)
                 names.append(name)
@@ -218,7 +221,7 @@ def realign_spikes(times, spikes, upsample):
     shifted = nx.zeros((nevents, nshifted))
     for i,spike in enumerate(spikes):
 	shifted[i,:] = spike[start[i]:start[i]+nshifted]
-    return (times * upsample + shift, shifted)
+    return (times * upsample + start, shifted)
 
 
 def find_peaks(spikes, peak, window):
