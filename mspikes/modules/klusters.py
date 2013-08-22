@@ -58,16 +58,16 @@ class klusters_writer(Node):
             return
         group = self._get_group(chunk)
         if group.sampling_rate != chunk.ds:
-            self._log.warn("(id=%s, offset=%.2fs): sampling rate was %s, now %s",
-                           chunk.id, float(chunk.offset), group.sampling_rate, chunk.ds)
+            self._log.warn("%s: sampling rate was %s, now %s",
+                           chunk, group.sampling_rate, chunk.ds)
         feats = int_features(chunk.data, group.float_scaling, group.peak_idx)
         if feats.shape[1] != group.nfeats:
-            raise KlustersError("(id=%s, offset=%.2fs): feature count was %d, now %d" %
-                                (chunk.id, float(chunk.offset), group.nfeats, feats.shape[1]))
+            raise KlustersError("%s: feature count was %d, now %d" %
+                                (chunk, group.nfeats, feats.shape[1]))
         spks = int_spikes(chunk.data, group.float_scaling / 4)
         if spks.shape[1] != group.nsamples:     # TODO handle multiple channels
-            raise KlustersError("(id=%s, offset=%.2fs): spike shape was %s, now %s" %
-                                (chunk.id, float(chunk.offset), (group.nsamples, group.nchannels), spks.shape))
+            raise KlustersError("%s: spike shape was %s, now %s" %
+                                (chunk, (group.nsamples, group.nchannels), spks.shape))
         savetxt(group.fet, feats, "%i")
         spks.tofile(group.spk)
         for j in xrange(feats.shape[0]):
@@ -80,7 +80,7 @@ class klusters_writer(Node):
         srates = [g.sampling_rate for g in self._groups.itervalues()]
         sampling_rate = srates[0]
         if not all(s == sampling_rate for s in srates):
-            self._log.war("sampling rate not the same for all channels: may lead to undefined behavior")
+            self._log.warn("sampling rate not the same for all channels: may lead to undefined behavior")
         xml = make_paramfile(self._groups, sampling_rate)
         self._log.info("writing parameters to %s.xml", self._basename)
         with open(self._basename + ".xml", "wt") as fp:
@@ -285,7 +285,7 @@ def make_paramfile(groups, sampling_rate, sample_bits=16):
 
     sd = et.SubElement(root, 'spikeDetection')
     cg = et.SubElement(sd, 'channelGroups')
-    for i, name in enumerate(sorted(groups, key=natsorted)):
+    for i, name in enumerate(sorted(groups, key=util.natsorted)):
         group = groups[name]
         # TODO multiple channels per group
         g = et.SubElement(cg, "group")

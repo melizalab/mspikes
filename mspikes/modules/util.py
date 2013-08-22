@@ -127,8 +127,7 @@ class splitter(Node):
         elif "samples" in chunk.tags:
             # check for overlap (within channel).
             if chunk.offset < self.last_time:
-                self._log.warn("'%s' (start=%s) overlaps with previous dataset (end=%s)",
-                               chunk.id, chunk.offset, self.last_time)
+                self._log.warn("%s overlaps with previous dataset (end=%s)", chunk, self.last_time)
 
             # restrict by time
             nframes = chunk.data.shape[0]

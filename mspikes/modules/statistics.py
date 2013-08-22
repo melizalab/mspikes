@@ -71,7 +71,7 @@ class stream_writer(Node):
     def send(self, chunk):
         # TODO better formatting
         if self.file:
-            print >> self.file, chunk
+            print >> self.file, repr(chunk)
 
 
 try:

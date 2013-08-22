@@ -69,8 +69,7 @@ class _smoother(Node):
 
         # check for gap > window. If so, the smoother has to be reset.
         if gap > n_window:
-            self._log.debug("%s (offset=%.2fs): gap (%d) > window (%d), resetting",
-                            chunk.id, float(chunk.offset), gap, n_window)
+            self._log.debug("%s: gap (%d) > window (%d), resetting", chunk, gap, n_window)
             nsamples = 0
             self.first_sample_t = chunk.offset
         # if uninitialized, add to queue and update stats

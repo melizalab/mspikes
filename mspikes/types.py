@@ -5,8 +5,13 @@
 """
 from collections import namedtuple
 
+def _db_str(self):
+    return "'%s' (t=%.3f) {%s}" % (self.id, float(self.offset),
+                                   " ".join(':' + t for t in self.tags))
+
 # simple immutable struct for transporting blocks of data
 DataBlock = namedtuple("DataBlock", ("id", "offset", "ds", "data", "tags"))
+DataBlock.__str__ = _db_str
 
 
 def tag_set(*args):

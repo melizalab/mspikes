@@ -149,8 +149,7 @@ class spike_features(Node):
             self._queue.append(chunk._replace(data=chunk.data[:]))
             if chunk.ds != self._queue[0].ds:
                 self._queue.pop()
-                raise DataError("%s (offset=%.2f): sampling rate doesn't match other spikes" %
-                                chunk.id, float(chunk.offset))
+                raise DataError("%s: sampling rate doesn't match other spikes" % chunk)
 
     def close(self):
         if not self._queue:
