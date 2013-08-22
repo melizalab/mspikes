@@ -62,7 +62,8 @@ class spike_extract(Node):
         n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
         # reset the detector if there's a gap or ds changes
         if self.last_chunk is not None:
-            last_sample_t = util.to_seconds(self.last_chunk.data.size, self.last_chunk.ds, self.last_chunk.offset)
+            last_sample_t = util.to_seconds(self.last_chunk.data.shape[0],
+                                            self.last_chunk.ds, self.last_chunk.offset)
             gap = util.to_samples(chunk.offset - last_sample_t, chunk.ds)
             if gap > 1 or self.last_chunk.ds != chunk.ds:
                 self.reset()
@@ -83,7 +84,7 @@ class spike_extract(Node):
             adj = spikes[0]['start']
             if adj < 0:
                 spikes['start'] -= adj
-                offset = chunk.offset + Fraction(adj, chunk.ds)
+                offset = chunk.offset + Fraction(long(adj), chunk.ds)
             else:
                 offset = chunk.offset
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",

@@ -342,6 +342,7 @@ class arf_writer(_base_arf, Node):
         dset_offset = dset.attrs.get('offset', 0)
 
         data = chunk.data
+        # read to memory for subsequent steps
         if isinstance(data, h5py.Dataset):
             data = data[:]
 
@@ -349,7 +350,6 @@ class arf_writer(_base_arf, Node):
         try:
             next_entry_time = self._offsets[idx]
         except IndexError:
-            data = chunk.data
             next = None
         else:
             data, next = _split_point_process(data, data_offset, dset_offset,
