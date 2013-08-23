@@ -145,10 +145,15 @@ class spike_features(Node):
                  default=3,
                  type=int,
                  metavar='INT')
+        addopt_f("--nspikes",
+                 help="maximum number of spikes to use in calculating PCs (default=%(default)d",
+                 default=5000,
+                 type=int,
+                 metavar='INT')
 
     def __init__(self, **options):
         util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
-                                   resample=3)
+                                   resample=3, nspikes=5000)
         self._queue = []
 
     def send(self, chunk):
@@ -179,7 +184,7 @@ class spike_features(Node):
         if self.feats > 0:
             # TODO handle multiple channels
             self._log.info("calculating PCs")
-            eigenvectors = get_eigenvectors(spikes, self.feats)
+            eigenvectors = get_eigenvectors(spikes, self.feats, self.nspikes)
             features.append(nx.dot(spikes, eigenvectors))
             names.append('PC')
 
@@ -239,19 +244,32 @@ def find_peaks(spikes, peak, window):
     return spikes[:,r].argmax(1) - window
 
 
-def get_eigenvectors(spikes, nfeats):
+def get_eigenvectors(spikes, nfeats, nspikes):
     """Calculate eigenvectors of spike waveforms
 
     spikes: resampled and aligned spike waveforms, dimensions (nspikes, nsamples)
     nfeats: the number of the most significant eigenvectors to return
+    nspikes: the number of spikes to use
 
     Returns eigenvectors, dimension (nsamples, nfeats). Does not need to be
     transposed to calculate projections.
 
+    The call to svd may "fail to converge", which just means dgesdd (a faster
+    algorithm) didn't work. In this case, the algorithm tries to decompose the
+    transpose. (see
+    http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html)
+
     """
-    from numpy.linalg import svd
-    u, s, v = svd(spikes - spikes.mean(0), full_matrices=0)
-    return v[:nfeats, :].T.copy()
+    from numpy import dot
+    from numpy.linalg import svd, LinAlgError
+    # center data
+    data = spikes[:nspikes] - spikes[:nspikes].mean(0)
+    try:
+        u, s, v = svd(data, full_matrices=0)
+        return v[:nfeats].T.copy()
+    except LinAlgError:
+        u, s, v = svd(data.T, full_matrices=0)
+        return u[:, :nfeats].copy()
 
 
 def measurements(spikes):
