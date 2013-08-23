@@ -156,8 +156,10 @@ class klusters_reader(Source):
 
     def __iter__(self):
         from numpy import asarray
+        from mspikes import register
         from mspikes.modules.util import pointproc_reader
         from mspikes.modules._klusters import sort_unit
+        from arf import DataTypes
         unit_idx = 0
         for i, group in enumerate(self._groups):
             if self.groups and group not in self.groups:
@@ -175,6 +177,10 @@ class klusters_reader(Source):
                 self._log.info("%s.%d.%d -> %s (%d spikes)", self._basename, group['idx'], j, unit_name, data.size)
                 self._log.info("%s.%d.%d -> ISI < 1.0 ms = (%d/%d) (%.3f%%)",
                                self._basename, group['idx'], j, nviol, nisi, 100. * nviol / nisi)
+                # TODO add information about cluster separation?
+                register.add_id(unit_name, source_datasets=group['channels'], datatype=DataTypes.SPIKET,
+                                spike_sorter='klusters', klusters_base=self._basename,
+                                klusters_group=group['idx'])
                 # split up to avoid recurring too deeply in arf_writer._write_data
                 for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
                     Node.send(self, chunk)

@@ -183,7 +183,6 @@ def mspikes(argv=None):
     else:
         log.info("graph finished executing")
     finally:
-        log.info("cleaning up graph")
         for node in root:
             node.close()
 

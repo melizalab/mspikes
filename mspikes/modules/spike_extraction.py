@@ -49,9 +49,11 @@ class spike_extract(Node):
 
     def send(self, chunk):
         from fractions import Fraction
+        from mspikes import register
         from mspikes.modules.spikes import detect_spikes
         from mspikes.util import repeatedly
         from itertools import chain
+        from arf import DataTypes
 
         if "scalar" in chunk.tags:
             self.last_scalar = chunk
@@ -85,6 +87,9 @@ class spike_extract(Node):
                 offset = chunk.offset + Fraction(long(adj), chunk.ds)
             else:
                 offset = chunk.offset
+            new_id = chunk.id + "_spikes"
+            if not register.has_id(new_id):
+                register.add_id(new_id, source_dataset=chunk.id, datatype=DataTypes.SPIKET)
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
                                            data=spikes,
                                            offset=offset,

@@ -137,6 +137,7 @@ class arf_reader(_base_arf, RandomAccessSource):
         file.
 
         """
+        from mspikes import register
         self._log.info("sorting entries")
         entries = sorted((v for v in self.file.itervalues() if isinstance(v, h5py.Group)),
                          key=arf_entry_time)
@@ -189,6 +190,8 @@ class arf_reader(_base_arf, RandomAccessSource):
                 else:
                     dset_time = entry_time
                 tags = dset_tags(dset)
+                if not register.has_id(id):
+                    register.add_id(id, **dset.attrs)
                 # don't read data until necessary: preserving the dtypes can help downstream
                 chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
@@ -420,6 +423,7 @@ class arf_writer(_base_arf, Node):
             return self._create_entry(new_name, offset, **attrs)
 
     def _require_dataset(self, entry, chunk, data_offset):
+        from mspikes import register
         import posixpath as pp
         dset_name = pp.join(entry.name, chunk.id)
         if chunk.id in entry and dset_name in self._datasets:
@@ -454,8 +458,9 @@ class arf_writer(_base_arf, Node):
         shape = (0,) + chunk.data.shape[1:]
         dset = entry.create_dataset(chunk.id, dtype=chunk.data.dtype, shape=shape, maxshape=maxshape,
                                     chunks=chunks, compression=self.compress)
-        arf.set_attributes(dset, units=units, datatype=arf.DataTypes.UNDEFINED,
-                           sampling_rate=chunk.ds, offset=data_offset)
+        attrs = register.get_properties(chunk.id)
+        attrs.update(sampling_rate=chunk.ds, offset=data_offset, units=units)
+        arf.set_attributes(dset, **attrs)
         return dset
 
 
