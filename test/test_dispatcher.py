@@ -6,9 +6,9 @@ from operator import attrgetter
 from mspikes.modules import dispatcher
 
 def test_parallel_wrapper():
-
+    from mspikes.types import Node
     # base class
-    class base(object):
+    class base(Node):
         @classmethod
         def options(cls, arg):
             return arg
@@ -36,7 +36,8 @@ def test_parallel_dispatch():
     # this class counts the number of chunks it gets
     @dispatcher.parallel(attrgetter('id'), "samples")
     class counter(Node):
-        def __init__(self, count):
+        def __init__(self, name, count):
+            Node.__init__(self, name)
             self.count = count
 
         def send(self, chunk):
@@ -47,7 +48,7 @@ def test_parallel_dispatch():
         def close(self):
             closed[0] += 1
 
-    node = counter(1)
+    node = counter('counter',1)
     node.add_target(visitor(chunks.append))
 
     node.send(DataBlock(id='id_1', offset=0, ds=1, data=(), tags=tag_set("samples")))

@@ -71,7 +71,7 @@ def test_entry_iteration():
         d = arf.create_dataset(e, "dset_%d" % j, (0,), offset=int(t * srate), sampling_rate=srate)
         expected_times.append(t + 1000)
 
-    r = arf_io.arf_reader(fp)
+    r = arf_io.arf_reader('reader', fp)
     dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, expected_times)
 
@@ -80,7 +80,6 @@ def test_entry_iteration():
     fp.attrs['program'] = 'arfxplog'
     fp.attrs['sampling_rate'] = srate
 
-    r = arf_io.arf_reader(fp)
     dset_times = [d.offset for d in r]
     assert_sequence_equal(dset_times, [Fraction(str(t)) for t in expected_times])
 
@@ -124,9 +123,9 @@ def mirror_file(sampled):
     if sampled:
         arf.set_attributes(src, program='arfxplog', sampling_rate=srate)
 
-    reader = arf_io.arf_reader(src)
-    writer = arf_io.arf_writer(tgt)
-    splitter = util.splitter(nsamples=100)
+    reader = arf_io.arf_reader('reader', src)
+    writer = arf_io.arf_writer('writer', tgt)
+    splitter = util.splitter('splitter', nsamples=100)
 
     with util.chain_modules(splitter, writer) as chain:
         # send structure chunks first to make sure writer can slot data in later
@@ -176,7 +175,7 @@ def test_arf_writer_pproc():
     arf.create_entry(tgt, "entry_0", timestamp=0)
     arf.create_entry(tgt, "entry_1", timestamp=cut)
 
-    writer = arf_io.arf_writer(tgt)
+    writer = arf_io.arf_writer('writer', tgt)
     writer.send(DataBlock("spikes", offset, srate, spikes, ("events",)))
 
     d1 = tgt['entry_0']['spikes']
@@ -206,8 +205,8 @@ def test_arf_writer_gap():
     e = arf.create_entry(src, "entry", timestamp=0, sample_count=0)
     arf.create_dataset(e, "pcm", nx.random.randn(N), units="mV", sampling_rate=N)
 
-    reader = arf_io.arf_reader(src)
-    writer = arf_io.arf_writer(tgt)
+    reader = arf_io.arf_reader('reader', src)
+    writer = arf_io.arf_writer('writer', tgt)
 
     blocks = range(0, 1000, 1000/4)
     for chunk in reader:
@@ -242,8 +241,8 @@ def test_writeback():
     arf.create_dataset(e, "spikes", random_spikes(100, 1.0), units=('s','mV'),
                        maxshape=(None,))
 
-    reader = arf_io.arf_reader(src)
-    writer = arf_io.arf_writer(src)
+    reader = arf_io.arf_reader('reader', src)
+    writer = arf_io.arf_writer('writer', src)
 
     for chunk in reader:
         if not "structure" in chunk.tags:

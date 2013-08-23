@@ -5,7 +5,6 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Fri Jul 12 14:05:16 2013
 """
-import logging
 import numpy as nx
 
 from mspikes import util
@@ -23,8 +22,6 @@ class spike_extract(Node):
     passes:  all other tags
 
     """
-    _log = logging.getLogger("%s.spike_extract" % __name__)
-
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("--thresh",
@@ -39,7 +36,8 @@ class spike_extract(Node):
                  nargs=2,
                  metavar='MS')
 
-    def __init__(self, **options):
+    def __init__(self, name, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, thresh=None, interval=(1.5, 2.5))
         self.last_scalar = None # for scaling threshold
         self.reset()
@@ -121,7 +119,6 @@ class spike_features(Node):
     passes:   all other tags
 
     """
-    _log = logging.getLogger("%s.spike_features" % __name__)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -151,7 +148,8 @@ class spike_features(Node):
                  type=int,
                  metavar='INT')
 
-    def __init__(self, **options):
+    def __init__(self, name, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, interval=(1.0, 2.0), feats=3, raw=False,
                                    resample=3, nspikes=5000)
         self._queue = []

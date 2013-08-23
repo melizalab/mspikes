@@ -65,7 +65,7 @@ def test_spike_extractor():
     for t in times:
         a_recording[t:t + a_spike.size] += a_spike
 
-    extractor = spike_extraction.spike_extract(thresh=4000, interval=(1.0, 2.0))
+    extractor = spike_extraction.spike_extract(name='test', thresh=4000, interval=(1.0, 2.0))
 
     with util.chain_modules(extractor, util.visitor(out.append)) as chain:
         for chunk in util.timeseries_reader(a_recording, 20000, chunk_size):
@@ -79,7 +79,7 @@ def test_spike_extractor():
 def test_spike_feats():
     spikes = DataBlock("spikes", 0, 20000, random_spikes(1000, 20, 20000), ("events",))
     out = []
-    measurer = spike_extraction.spike_features(raw=True, spikes=1000)
+    measurer = spike_extraction.spike_features(name='test', raw=True, spikes=1000)
     with util.chain_modules(measurer, util.visitor(out.append)) as chain:
         chain.send(spikes)
         measurer.close()

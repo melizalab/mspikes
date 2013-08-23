@@ -180,7 +180,7 @@ def build_node_graph(node_defs, options=None):
 
     _log.info("building processing graph")
     # instantiate the nodes (pass 2)
-    nodes = dict((name, getattr(modules,node_def.type)(**argparse_extracter(options, name)))
+    nodes = dict((name, getattr(modules,node_def.type)(name=name, **argparse_extracter(options, name)))
                   for name,node_def in node_defs)
 
     def resolve_source(src,*filts):

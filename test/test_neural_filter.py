@@ -44,7 +44,7 @@ def test_rms_exclude():
     t_mindur = 200.
     n_window = int(t_window * ds)
 
-    excluder = neural_filter.zscale(exclude=True, window=t_window, min_duration=t_mindur)
+    excluder = neural_filter.zscale(name='excluder', exclude=True, window=t_window, min_duration=t_mindur)
 
     data = _randg.randn(n_window * 2)
     noise_idx = slice(n_window * 1.5, n_window * 1.5 + int(t_mindur * 3 * ds / 1000))

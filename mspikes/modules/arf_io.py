@@ -5,7 +5,6 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@uchicago.edu>
 Created Wed May 29 14:50:02 2013
 """
-import logging
 import h5py
 import arf
 
@@ -13,9 +12,6 @@ from mspikes import __version__
 from mspikes import util
 from mspikes import filters
 from mspikes.types import DataBlock, Node, RandomAccessSource, tag_set, MspikesError
-
-_log = logging.getLogger(__name__)
-
 
 class ArfError(MspikesError):
     """Raised for errors reading or writing ARF files"""
@@ -25,8 +21,8 @@ class ArfError(MspikesError):
 class _base_arf(object):
     """Base class for arf reader and writer"""
 
-    def __init__(self, filename, mode='r+', dry_run=False):
-        self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
+    def __init__(self, name, filename, mode='r+', dry_run=False):
+        Node.__init__(self, name)
         file_options = {}
         if dry_run:
             file_options = {'driver': 'core', 'backing_store': False}
@@ -39,11 +35,13 @@ class _base_arf(object):
         except Warning, w:
             self._log.warn("%s", w)
 
-    def close(self):
-        if self.file is not None:
+    def __del__(self):
+        try:
             self.file.close()
             self.file = None
-        Node.close(self)
+        except:
+            pass
+        Node.__del__(self)
 
 
 class arf_reader(_base_arf, RandomAccessSource):
@@ -100,14 +98,14 @@ class arf_reader(_base_arf, RandomAccessSource):
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
 
-    def __init__(self, filename, **options):
+    def __init__(self, name, filename, **options):
         import re
         util.set_option_attributes(self, options,
                                    start=0, stop=None,
                                    use_timestamp=False,
                                    ignore_xruns=False,
                                    skip_sort=False)
-        _base_arf.__init__(self, filename, "r")
+        _base_arf.__init__(self, name, filename, "r")
         self._log.info("input file: '%s'", self.file.filename)
         for k in self.file.attrs:
             self._log.info("file attribute: %s=%s", k, self.file.attrs[k])
@@ -226,12 +224,12 @@ class arf_writer(_base_arf, Node):
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
 
-    def __init__(self, filename, **options):
+    def __init__(self, name, filename, **options):
         util.set_option_attributes(self, options, compress=9, auto_entry=None,
                                    split_entry_template='%s_g%02d',
                                    dry_run=False, overwrite=False)
         try:
-            _base_arf.__init__(self, filename, "a", dry_run=self.dry_run)
+            _base_arf.__init__(self, name, filename, "a", dry_run=self.dry_run)
         except IOError:
             raise ArfError("Error writing to '%s' - are you trying to write to the source file?" %
                            filename)

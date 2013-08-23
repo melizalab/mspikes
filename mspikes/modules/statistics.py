@@ -5,7 +5,6 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Tue Jul 23 15:06:17 2013
 """
-import logging
 from mspikes import util
 from mspikes.types import Node
 
@@ -13,8 +12,8 @@ from mspikes.types import Node
 class arf_jitter(Node):
     """ Calculate jitter of source file in offset vs timestamp """
 
-    def __init__(self):
-        self._log = logging.getLogger("%s.%s" % (__name__, type(self).__name__))
+    def __init__(self, name):
+        Node.__init__(self, name)
         self.diffs = []
         self.prev = None
 
@@ -42,7 +41,8 @@ class arf_jitter(Node):
 class print_stats(Node):
     """ Print scalar statistics from upstream modules """
 
-    def __init__(self, **options):
+    def __init__(self, name, **options):
+        Node.__init__(self, name)
         names = ('time','chan','stat','value')
         print "\t".join(names)
 
@@ -65,7 +65,8 @@ class stream_writer(Node):
                  default=defaults.get('file', stdout),
                  metavar='PATH')
 
-    def __init__(self, **options):
+    def __init__(self, name, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, file=None)
 
     def send(self, chunk):
@@ -87,7 +88,8 @@ else:
             # TODO restrict to specific stats?
             pass
 
-        def __init__(self, **options):
+        def __init__(self, name, **options):
+            Node.__init__(self, name)
             plt.ion()
             self.fig = None
             self.plots = {}

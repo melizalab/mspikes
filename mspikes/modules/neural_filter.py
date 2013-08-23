@@ -6,7 +6,6 @@ Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Wed Jul  3 13:22:29 2013
 """
 from __future__ import division
-import logging
 import numpy as nx
 from collections import namedtuple
 
@@ -23,9 +22,8 @@ class _smoother(Node):
     datafun()
 
     """
-    _log = logging.getLogger("%s.smoother" % __name__)
-
-    def __init__(self, **options):
+    def __init__(self, name, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, window=2.0)
         self._log.info("window size: %.2f s", self.window)
         self.first_sample_t = None   # time of first sample in window
@@ -120,7 +118,6 @@ class zscale(_smoother):
     """
     window = 60.
     stat_type = namedtuple('chunk_stats', ('mean','rms','rms_ratio',))
-    _log = logging.getLogger("%s.zscale" % __name__)
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -144,8 +141,8 @@ class zscale(_smoother):
                  default=defaults.get('exclude_duration', 200),
                  metavar='MS')
 
-    def __init__(self, **options):
-        _smoother.__init__(self, **options)
+    def __init__(self, name, **options):
+        _smoother.__init__(self, name, **options)
         util.set_option_attributes(self, options, exclude=True, max_rms=1.15, min_duration=200.)
         if self.exclude:
             self._log.info("excluding intervals with RMS %.3f times baseline", self.max_rms)

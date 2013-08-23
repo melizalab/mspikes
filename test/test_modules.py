@@ -55,7 +55,7 @@ def test_splitter():
 
     N = 100
     data = types.DataBlock(id='random', offset=0, ds=1, data=random.randn(N * 10), tags=types.tag_set("samples"))
-    splitter = util.splitter(nsamples=100)
+    splitter = util.splitter(name='splitter', nsamples=100)
 
     x = []
     def fun(chunk):

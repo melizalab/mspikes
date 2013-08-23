@@ -6,7 +6,6 @@ Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Tue Jul  9 17:00:11 2013
 """
 
-import logging
 import contextlib
 from mspikes.types import Node, tag_set
 from mspikes.modules import dispatcher
@@ -82,7 +81,6 @@ class splitter(Node):
 
     """
     nsamples = 65536            # likely to be 2-3 seconds at most sampling rates
-    _log = logging.getLogger(__name__ + ".arf_reader")
 
     @classmethod
     def options(cls, addopt_f, **defaults):
@@ -102,8 +100,9 @@ class splitter(Node):
                  type=float,
                  metavar='SEC')
 
-    def __init__(self, **options):
+    def __init__(self, name, **options):
         from mspikes import util
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, nsamples=4096, start=0., stop=None)
         self.last_time = 0
 
@@ -161,8 +160,11 @@ def pointproc_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("events")
     from mspikes.util import to_seconds
 
     assert array.ndim == 1
-    for arr in array_split(array, array.size / chunk_size):
-        yield DataBlock(id, to_seconds(arr[0], ds), ds, arr - arr[0], tags)
+    if array.shape[0] < chunk_size:
+        yield DataBlock(id, 0, ds, array, tags)
+    else:
+        for arr in array_split(array, array.shape[0] / chunk_size):
+            yield DataBlock(id, to_seconds(arr[0], ds), ds, arr - arr[0], tags)
 
 
 def time_series_offsets(dset_time, dset_ds, start_time, stop_time, nframes):

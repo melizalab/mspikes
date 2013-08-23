@@ -5,6 +5,8 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jun 20 17:18:40 2013
 """
+from collections import defaultdict
+
 
 def chain_predicates(*ps):
     """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
@@ -92,6 +94,19 @@ def natsorted(key):
     """ key function for natural sorting. usage: sorted(seq, key=natsorted) """
     import re
     return map(lambda t: int(t) if t.isdigit() else t, re.split(r"([0-9]+)",key))
+
+
+class defaultdict(defaultdict):
+
+    def __missing__(self, key):
+        """override for defaultdict.__missing__ that calls default_factory with a key """
+        try:
+            f = self.default_factory
+        except AttributeError:
+            raise KeyError(key)
+        self[key] = f(key)
+        return self[key]
+
 
 # Variables:
 # End:

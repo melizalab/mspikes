@@ -5,12 +5,10 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jul 18 17:08:57 2013
 """
-
-import logging
 from collections import namedtuple
 
 from mspikes import util
-from mspikes.types import DataBlock, Node, Source, tag_set, MspikesError
+from mspikes.types import DataBlock, Node, Source, MspikesError
 
 # defines a klusters group
 _group = namedtuple('_group', ('idx', 'spk', 'clu', 'fet', 'nfeats', 'nchannels', 'nsamples', 'peak_idx',
@@ -35,8 +33,6 @@ class klusters_writer(Node):
      <basename>.xml - the control file used by Klusters
 
     """
-    _log = logging.getLogger("%s.klusters_writer" % __name__)
-
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("basename",
@@ -45,7 +41,8 @@ class klusters_writer(Node):
                  help="run KlustaKwik after writing files",
                  action='store_true')
 
-    def __init__(self, basename, **options):
+    def __init__(self, name, basename, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, kkwik=False)
         self._basename = basename
         self._groups = {}
@@ -73,8 +70,8 @@ class klusters_writer(Node):
         for j in xrange(feats.shape[0]):
             group.clu.write("1\n")
 
-    def close(self):
-        """ write xml file """
+    def __del__(self):
+        """ write xml file on destruction """
         if not self._groups:
             return
         srates = [g.sampling_rate for g in self._groups.itervalues()]
@@ -93,7 +90,7 @@ class klusters_writer(Node):
         if self.kkwik:
             run_klustakwik(self._basename, self._groups, self._log)
         self._groups = {}
-
+        Node.__del__(self)
 
     def throw(self, exception):
         """Turn off klustakwik option"""
@@ -130,8 +127,6 @@ class klusters_writer(Node):
 class klusters_reader(Source):
     """Import spike clusters from klusters format"""
 
-    _log = logging.getLogger("%s.klusters_reader" % __name__)
-
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("basename",
@@ -152,7 +147,8 @@ class klusters_reader(Source):
                  help="base for id of data (default=%(default)s)",
                  default="unit")
 
-    def __init__(self, basename, **options):
+    def __init__(self, name, basename, **options):
+        Node.__init__(self, name)
         util.set_option_attributes(self, options, kkwik=False, id="unit", groups=(), units=())
         self._basename = basename
         self._groups = read_paramfile(basename + ".xml")

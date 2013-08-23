@@ -3,6 +3,7 @@
 """Basic types and concepts for mspikes.
 
 """
+import logging
 from collections import namedtuple
 
 def _db_str(self):
@@ -50,6 +51,19 @@ class Node(object):
         """
         pass
 
+    def __init__(self, name):
+        """Initialize the node with a name. Creates a logging object"""
+        self._log = logging.getLogger("mspikes.module.%s" % name)
+        self._log.debug("initializing")
+
+    def __del__(self):
+        # make sure to release targets
+        try:
+            delattr(self, "_targets")
+            self._log.debug("cleanup complete")
+        except AttributeError:
+            pass
+
     def add_target(self, target, filter=None):
         """Tell the Node to send data to target
 
@@ -69,15 +83,16 @@ class Node(object):
         (after filtering).
 
         """
-        # from mspikes import DEBUG
-        # if not DEBUG and "debug" in data.tags:
-        #     return
-
         for tgt, filt in getattr(self, "_targets", ()):
             if filt is None or filt(data): tgt.send(data)
 
     def close(self):
         """Indicate to the Node that the data stream is exhausted.
+
+        The purpose of this function is to allow nodes to send any data they may
+        have been queuing. If the node has multiple parents, this function may
+        be called multiple times, so final cleanup should reserved for the
+        destructor.
 
         Implementing classes should block on this call if they're not finished.
         They may raise an exception (e.g., RequiresAdditionalPass) to indicate
@@ -146,7 +161,6 @@ class RandomAccessSource(Source):
     for chunk in rsource[1000.0]: do_something
 
     """
-
     def __getitem__(self, key):
         """Returns an iterator yielding chunks referenced by key"""
         pass

@@ -5,6 +5,9 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jul 11 17:13:34 2013
 """
+import logging
+_log = logging.getLogger("mspikes.dispatcher")
+
 
 def parallel(keyfun, *tags):
     """Decorate a Node to operate in parallel over chunks with different
@@ -28,31 +31,43 @@ def parallel(keyfun, *tags):
            processing
 
     """
-    from collections import defaultdict
+    from mspikes.util import defaultdict
     from mspikes.filters import any_tag
     import operator
+    import weakref
 
     if isinstance(keyfun, basestring):
         keyfun = operator.attrgetter(keyfun)
     tagfun = any_tag(*tags)
 
-
     def decorate(cls):
         from mspikes.types import Node
 
         # replacement methods
-        def __init__(self, *args, **kwargs):
+        def __init__(self, name, *args, **kwargs):
             # bind the intialization arguments to the derived class and use them
             # to instantiate workers. note that we're using the class as a
             # function to call the constructor.
+            Node.__init__(self, name)
+            self._log.debug("running in parallel")
 
             self._targets = []  # this will be shared with all workers
-            def init():
-                obj = cls(*args, **kwargs)
-                obj._targets = self._targets
+            # weakref prevents the closure from creating a reference to the
+            # wrapper object; otherwise the destructor will never be called
+            this = weakref.ref(self)
+            def init(key):
+                obj = cls("%s:%s" % (name, key), *args, **kwargs)
+                obj._targets = this()._targets
                 return obj
 
             self.__workers__ = defaultdict(init)
+
+        def __del__(self):
+            try:
+                self.__workers__.clear()
+            except:
+                pass
+            Node.__del__(self)
 
         def send(self, chunk):
             if tagfun(chunk):
@@ -72,6 +87,7 @@ def parallel(keyfun, *tags):
 
         name = cls.__name__ + "_p"
         return type(name, (cls,), dict(__init__=__init__,
+                                       __del__=__del__,
                                        __doc__=cls.__doc__,
                                        __keyfun__=keyfun,
                                        send=send,
