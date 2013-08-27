@@ -69,7 +69,7 @@ def entry_stats(arfp, log=_dummy_writer, **options):
         for cname,dset in entry.iteritems():
             if channels is None and dset.attrs['datatype'] != arf.DataTypes.EXTRAC_HP: continue
             if channels is None or cname in channels:
-                data = entry.get_data(cname)
+                data = entry[cname][:]
                 mean,rms = signal_stats(data)
                 stats[cname][i] = rms
         log.write(".")
@@ -166,7 +166,7 @@ class plotter(object):
         ename,entry = self.cache.value
         osc_chans = [name for name,dset in entry.iteritems() if \
                          (self.channels is None or name in self.channels) and \
-                         arf.arf.dataset_properties(dset)[0] == 'sampled']
+                         arf.dataset_properties(dset)[0] == 'sampled']
         osc_chans.sort(key=natsorted)
         nchan = len(osc_chans)
         grid = self.fig.axes

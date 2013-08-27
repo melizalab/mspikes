@@ -14,15 +14,17 @@ pcm_seq2 file.
 ** Requirements:
 
 Python version 2.5 or higher; numpy version >=1.3 (for numerics);
-scipy version >=0.5 (for FFT and linear algebra); and arf >=1.0.0, for 
+scipy version >=0.5 (for FFT and linear algebra); and arf >=1.0.0, for
 data IO.
 
-Optional: matplotlib >= 0.90 is used by spike_view to plot spike
+Optional: matplotlib >= 0.90 is used by mspike_view to plot spike
 statistics and waveforms.  If this isn't installed, that script won't run.
 
 ** Installation:
 
-In the mspikes directory, run python setup.py install
+In the mspikes directory, run 'python setup.py install'. It's strongly
+recommended to do this in a virtualenv to avoid conflicts with newer versions of
+mspikes dependencies.
 
 ** Copyright/Licence
 
@@ -67,7 +69,7 @@ set fairly low (around 4.5x RMS) because any single unit worth the
 name will cluster out from the noise. Use the following command to
 examine waveforms (restricting to channels of interest with the chan
 argument):
-   
+
 $ mspike_view [--chan=<chan1>,<chan2>,...] <site.arf>
 
 IMPORTANT NOTE: Channels are numbered starting from 0. Multiple
