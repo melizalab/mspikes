@@ -168,27 +168,41 @@ class klusters_reader(Source):
             clusters = sort_unit("{0}.fet.{1}".format(self._basename, group['idx']),
                                  "{0}.clu.{1}".format(self._basename, group['idx']))
             for j, cluster in enumerate(clusters):
-                if self.units and unit_idx not in self.units:
-                    self._log.info("%s.%d.%d (unit %d)-> skipped", self._basename, group['idx'], j, unit_idx)
-                    continue
                 unit_name = "{0}_{1:03}".format(self.id, unit_idx)
-                data = asarray(cluster)
-                nviol, nisi = calculate_isi(data, group['sampling_rate'] / 1000)
-                self._log.info("%s.%d.%d -> %s (%d spikes)", self._basename, group['idx'], j, unit_name, data.size)
-                self._log.info("%s.%d.%d -> ISI < 1.0 ms = (%d/%d) (%.3f%%)",
-                               self._basename, group['idx'], j, nviol, nisi, 100. * nviol / nisi)
-                # TODO add information about cluster separation?
-                register.add_id(unit_name,
-                                source_datasets=group['channels'],
-                                datatype=DataTypes.SPIKET,
-                                spike_sorter='klusters',
-                                klusters_base=self._basename,
-                                klusters_group=group['idx'],
-                                klusters_cluster=j)
-                # split up to avoid recurring too deeply in arf_writer._write_data
-                for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
-                    Node.send(self, chunk)
-                    yield chunk
+                if self.units and unit_idx not in self.units:
+                    self._log.info("%s.%d.%d (%s)-> skipped",
+                                   self._basename,
+                                   group['idx'],
+                                   j,
+                                   unit_name)
+                else:
+                    data = asarray(cluster)
+                    nviol, nisi = calculate_isi(data, group['sampling_rate'] / 1000)
+                    self._log.info("%s.%d.%d -> %s (%d spikes)",
+                                   self._basename,
+                                   group['idx'],
+                                   j,
+                                   unit_name,
+                                   data.size)
+                    self._log.info("%s.%d.%d -> ISI < 1.0 ms = (%d/%d) (%.3f%%)",
+                                   self._basename,
+                                   group['idx'],
+                                   j,
+                                   nviol,
+                                   nisi,
+                                   100. * nviol / nisi)
+                    # TODO add information about cluster separation?
+                    register.add_id(unit_name,
+                                    source_datasets=group['channels'],
+                                    datatype=DataTypes.SPIKET,
+                                    spike_sorter='klusters',
+                                    klusters_base=self._basename,
+                                    klusters_group=group['idx'],
+                                    klusters_cluster=j)
+                    # split up to avoid recurring too deeply in arf_writer._write_data
+                    for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
+                        Node.send(self, chunk)
+                        yield chunk
                 unit_idx += 1
 
 
