@@ -99,22 +99,25 @@ def natsorted(key):
 def cutarray(x, cuts):
     """Cut array x into subarrays defined by the upper exclusive boundaries in cuts.
 
-    Returns a generator that yields (upper_bound, sub_array) tuples for each
-    element in cuts that corresponds to a non-empty array, followed by (None,
-    subarray) for all elements in x greater than the final element in cuts.
+    Returns a generator that yields (cut_index, sub_array) tuples for each
+    element in cuts that corresponds to a non-empty subarray. Values to the left
+    of the first cut have an index of -1. If the cuts array is empty, generates
+    (-1, x).
 
     Preconditions: both arguments must be sorted
 
     """
     from bisect import bisect_left
+    cix = -1
     pos = 0
-    for i, cut in enumerate(cuts):
+    for cut in cuts:
         idx = bisect_left(x, cut, pos)
         if idx > pos:
-            yield (cut, x[pos:idx])
+            yield (cix, x[pos:idx])
             pos = idx
+        cix += 1
     if pos < len(x):
-        yield (None, x[pos:])
+        yield (cix, x[pos:])
 
 
 class defaultdict(defaultdict):

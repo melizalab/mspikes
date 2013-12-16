@@ -13,22 +13,18 @@ def test_cutarray():
     cuts = [22, 50, 70, 100]
 
     assert_sequence_equal([y for y in util.cutarray(x, cuts)],
-                          [(22, x[:2]), (50, x[2:4]), (70, x[4:6]), (100, x[6:])])
-
-    assert_sequence_equal([y for y in util.cutarray(x, cuts[:-1])],
-                          [(22, x[:2]), (50, x[2:4]), (70, x[4:6]), (None, x[6:])],
-                          "values larger than final cut point not placed in final bin")
+                          [(-1, x[:2]), (0, x[2:4]), (1, x[4:6]), (2, x[6:])])
 
     assert_sequence_equal([y for y in util.cutarray(x, [])],
-                          [(None, x)],
+                          [(-1, x)],
                           "values for empty cut array not placed in single bin")
 
     assert_sequence_equal([y for y in util.cutarray(x, [0, 50])],
-                          [(50, x[:4]), (None, x[4:])],
-                          "values generated for empty bin")
+                          [(0, x[:4]), (1, x[4:])],
+                          "values generated for leftmost bin")
 
     assert_sequence_equal([y for y in util.cutarray(x, [52, 54, 100])],
-                          [(52, x[:5]), (100, x[5:])],
+                          [(-1, x[:5]), (1, x[5:])],
                           "values generated for empty bin in middle of sequence")
 
 
