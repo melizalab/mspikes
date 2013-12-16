@@ -50,5 +50,14 @@ def test_to_samp_or_sec():
     assert_equal(util.to_samp_or_sec(Fraction(10005, 10000), 1000), 1001)
     assert_equal(util.to_samp_or_sec(Fraction(10005, 10000), None), 1.0005)
 
+
+def test_event_offset():
+    from numpy import asarray, rec, all
+    data = [1, 2, 3]
+    assert_true(all(util.event_offset(data, 1) == [2, 3, 4]))
+    assert_true(all(util.event_offset(asarray(data), 2) == [3, 4, 5]))
+    marked = rec.fromarrays((data, ['a', 'b', 'c']), names=('start', 'names'))
+    assert_true(all(util.event_offset(marked, 1)['start'] == [2, 3, 4]))
+
 # Variables:
 # End:

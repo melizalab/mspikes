@@ -67,13 +67,13 @@ def repeatedly(func, *args, **kwargs):
 
 
 def set_option_attributes(obj, opts, **attrs):
-    """For each key, value in **attrs, set obj.key = opts.get(key, value)"""
+    """For each key, value in **attrs, sets obj.key = opts.get(key, value)"""
     for key, value in attrs.iteritems():
         setattr(obj, key, opts.get(key, value))
 
 
 def to_seconds(samples, sampling_rate=None, offset=None):
-    """Convert samples / sampling_rate to canonical form, optionally adding offset"""
+    """Converts samples / sampling_rate to canonical form, optionally adding offset"""
     from fractions import Fraction
     if sampling_rate is None:
         val = float(samples)
@@ -86,7 +86,7 @@ def to_seconds(samples, sampling_rate=None, offset=None):
 
 
 def to_samp_or_sec(seconds, sampling_rate):
-    """Convert seconds to integer number of samples, rounding to nearest sample
+    """Converts seconds to integer number of samples, rounding to nearest sample
 
     If sampling_rate is None, returns seconds as a floating point.
 
@@ -97,6 +97,27 @@ def to_samp_or_sec(seconds, sampling_rate):
         return float(seconds)
 
 
+def event_offset(events, offset):
+    """Adds an offset to a marked or unmarked point process time series.
+
+    If events is an unmarked point process (a simple sequence of time values),
+    returns a copy of the data as an array with offset added. If events is a
+    marked point process (an array of records, with the times stored in the
+    'start' field), returns a copy of the array with the 'start' field
+    incremented by offset.
+
+    """
+    from numpy import asarray
+
+    if hasattr(events, 'dtype') and events.dtype.fields is not None:
+        evts = events[:]
+        assert evts is not events, "failed to copy input argument"
+        evts['start'] += offset
+    else:
+        evts = asarray(events) + offset
+    return evts
+
+
 def natsorted(key):
     """ key function for natural sorting. usage: sorted(seq, key=natsorted) """
     import re
@@ -104,7 +125,7 @@ def natsorted(key):
 
 
 def cutarray(x, cuts):
-    """Cut array x into subarrays defined by the lower inclusive boundaries in cuts.
+    """Cuts array x into subarrays defined by the lower inclusive boundaries in cuts.
 
     Returns a generator that yields (cut_index, sub_array) tuples for each
     element in cuts that corresponds to a non-empty subarray. Values to the left

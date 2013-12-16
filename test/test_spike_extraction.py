@@ -51,7 +51,7 @@ def test_detect_spikes():
 
 
 def test_spike_extractor():
-    from mspikes.util import to_samples
+    from mspikes.util import to_samp_or_sec
     # test splitting across chunks
 
     chunk_size = 1000
@@ -70,7 +70,7 @@ def test_spike_extractor():
     with util.chain_modules(extractor, util.visitor(out.append)) as chain:
         for chunk in util.timeseries_reader(a_recording, 20000, chunk_size):
             chain.send(chunk)
-    starts = [to_samples(chunk.offset, chunk.ds) + chunk.data['start'] for chunk in out]
+    starts = [to_samp_or_sec(chunk.offset, chunk.ds) + chunk.data['start'] for chunk in out]
     assert_array_equal(nx.concatenate(starts), times)
     assert_true(all(nx.array_equal(chunk.data['spike'][0], a_spike) for chunk in out))
 
