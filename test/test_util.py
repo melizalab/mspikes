@@ -40,5 +40,15 @@ def test_pairiter():
     assert_sequence_equal([x for x in util.pair_iter(seq)],
                           [(1, 2), (2, 3), (3, 4), (4, 5)])
 
+
+def test_to_samp_or_sec():
+    from fractions import Fraction
+
+    assert_equal(util.to_samp_or_sec(1.0, 1000), 1000)
+    assert_equal(util.to_samp_or_sec(1.0005, 1000), 1001)
+    assert_equal(util.to_samp_or_sec(1.0005, None), 1.0005)
+    assert_equal(util.to_samp_or_sec(Fraction(10005, 10000), 1000), 1001)
+    assert_equal(util.to_samp_or_sec(Fraction(10005, 10000), None), 1.0005)
+
 # Variables:
 # End:

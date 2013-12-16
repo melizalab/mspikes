@@ -62,8 +62,8 @@ class _smoother(Node):
             self.last_sample_t = chunk.offset
         # convert time windows to sample counts
         n_window = int(self.window * chunk.ds)
-        nsamples = util.to_samples(chunk.offset - self.first_sample_t, chunk.ds)
-        gap = util.to_samples(chunk.offset - self.last_sample_t, chunk.ds)
+        nsamples = util.to_samp_or_sec(chunk.offset - self.first_sample_t, chunk.ds)
+        gap = util.to_samp_or_sec(chunk.offset - self.last_sample_t, chunk.ds)
 
         # check for gap > window. If so, the smoother has to be reset.
         if gap > n_window:
@@ -155,7 +155,7 @@ class zscale(_smoother):
 
     def datafun(self, chunk):
         """Drop chunks that exceed the threshold"""
-        from mspikes.util import to_samples
+        from mspikes.util import to_samp_or_sec
 
         N = chunk.data.size
         stats = self.statfun(chunk)
@@ -167,7 +167,8 @@ class zscale(_smoother):
         mean = smoothed[0]
         rms = nx.sqrt(smoothed[1] - smoothed[0] ** 2)
 
-        stat_chunk = chunk._replace(data=self.stat_type(mean, rms, rms_ratio), tags=tag_set("scalar"))
+        stat_chunk = chunk._replace(data=self.stat_type(mean, rms, rms_ratio),
+                                    tags=tag_set("scalar"))
 
         # rescale data first, then decide if to queue it
         # should really rescale the threshold downstream, not the data
@@ -181,9 +182,14 @@ class zscale(_smoother):
             duration = chunk.offset - first.offset
             if (duration > self.min_duration / 1000):
                 # too much bad data - drop
-                rec = ((to_samples(0, first.ds), to_samples(duration, first.ds), bytes(chunk.id), 'rms'),)
+                rec = ((to_samp_or_sec(0, first.ds),
+                        to_samp_or_sec(duration, first.ds),
+                        bytes(chunk.id), 'rms'),)
                 excl = DataBlock('exclusions', first.offset, first.ds,
-                                 nx.rec.fromrecords(rec, names=('start', 'stop', 'dataset', 'reason')),
+                                 nx.rec.fromrecords(rec, names=('start',
+                                                                'stop',
+                                                                'dataset',
+                                                                'reason')),
                                  tag_set("events", "exclusions"))
                 Node.send(self, excl)
                 self._log.info("excluded data in '%s' from %.2f to %.2f s",

@@ -308,11 +308,7 @@ class arf_writer(_base_arf, Node):
         entry, entry_time, idx = self._find_entry(chunk.offset)
         self._log.debug("%s matches '%s' (offset=%.2fs)", chunk, entry.name, entry_time)
         # offset of data in entry
-        data_offset = chunk.offset - entry_time
-        if chunk.ds is not None:
-            data_offset = util.to_samples(data_offset, chunk.ds)
-        else:
-            data_offset = float(data_offset)
+        data_offset = util.to_samp_or_sec(chunk.offset - entry_time, chunk.ds)
         dset = self._require_dataset(entry, chunk, data_offset)
         dset_offset = dset.attrs.get('offset', 0)
 
@@ -325,43 +321,28 @@ class arf_writer(_base_arf, Node):
 
     def _write_events(self, chunk):
         """Write event data to the file """
-        # writing events is complicated because of a use case where we're trying
-        # to slot an unstructured list of events (like from a spike sorter) into
-        # existing structure. We assume that the data stream is ordered, so the
-        # question is which events go into the entry associated with the start
-        # of the chunk, and which should go in a later one.
-        entry, entry_time, idx = self._find_entry(chunk.offset)
-        self._log.debug("%s matches '%s' (offset=%.2fs)", chunk, entry.name, entry_time)
-        # offset of data in entry
-        data_offset = chunk.offset - entry_time
-        if chunk.ds is not None:
-            data_offset = util.to_samples(data_offset, chunk.ds)
-        else:
-            data_offset = float(data_offset)
-        # prefer event datasets to have offset of 0
-        dset = self._require_dataset(entry, chunk, 0)
-        dset_offset = dset.attrs.get('offset', 0)
+        # Event data may or may not be divided into chunks that correspond to
+        # entries in the target file. Therefore the event times have to be
+        # compared against the offsets of the entries and split accordingly. A
+        # recursive algorithm (store data for current entry and then recurse
+        # with remainder) fails if there are many entries and the call stack
+        # gets too deep, so the chunk has to be subdivided and dealt with
+        # iteratively. The data stream must be ordered.
+        from itertools import imap, repeat
 
-        data = chunk.data
-        # read to memory for subsequent steps
-        if isinstance(data, h5py.Dataset):
-            data = data[:]
+        # split data by entries
+        data = chunk.data[:] + util.to_samp_or_sec(chunk.offset, chunk.ds)
+        cuts = imap(util.to_samp_or_sec, self._offsets, repeat(chunk.ds))
 
-        # see if any events belong in the subsequent entry
-        try:
-            next_entry_time = self._offsets[idx]
-        except IndexError:
-            next = None
-        else:
-            data, next = _split_point_process(data, data_offset, dset_offset,
-                                              next_entry_time - entry_time, chunk.ds)
-        if data.size:
-            arf.append_data(dset, data)
-        else:
-            # somewhat hacky to delete empty dataset, but simplifies logic
-            del entry[dset.name]
-        if next is not None and next.size > 0:
-            self.send(chunk._replace(offset=next_entry_time, data=next))
+        for cut_idx, events in util.cutarray(data, cuts):
+            cut_idx = max(cut_idx, 0)
+            entry = self._entries[cut_idx]
+            entry_offset = util.to_samp_or_sec(self._offsets[cut_idx], chunk.ds)
+            dset = self._require_dataset(entry, chunk, 0)
+            dset_offset = dset.attrs.get('offset', 0)
+            self._log.debug("%d events match '%s' (offset=%.2fs)",
+                            events.size, entry.name, entry_offset)
+            arf.append_data(dset, events - entry_offset - dset_offset)
 
 
     def _make_entry_table(self):
@@ -423,6 +404,12 @@ class arf_writer(_base_arf, Node):
             return self._create_entry(new_name, offset, **attrs)
 
     def _require_dataset(self, entry, chunk, data_offset):
+        """Returns the dataset corresponding to chunk.id in entry.
+
+        If the entry does not exist, it's created, using attributes and data
+        type from chunk. The data contents of the chunk aren't used.
+
+        """
         from mspikes import register
         import posixpath as pp
         dset_name = pp.join(entry.name, chunk.id)
@@ -456,7 +443,8 @@ class arf_writer(_base_arf, Node):
             raise RuntimeError("no logic for storing data with tags %s" % tuple(chunk.tags))
         maxshape = (None,) + chunk.data.shape[1:]
         shape = (0,) + chunk.data.shape[1:]
-        dset = entry.create_dataset(chunk.id, dtype=chunk.data.dtype, shape=shape, maxshape=maxshape,
+        dset = entry.create_dataset(chunk.id, dtype=chunk.data.dtype,
+                                    shape=shape, maxshape=maxshape,
                                     chunks=chunks, compression=self.compress)
         attrs = register.get_properties(chunk.id)
         attrs.update(sampling_rate=chunk.ds, offset=data_offset, units=units)

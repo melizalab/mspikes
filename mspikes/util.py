@@ -85,9 +85,16 @@ def to_seconds(samples, sampling_rate=None, offset=None):
         return val
 
 
-def to_samples(seconds, sampling_rate):
-    """Convert seconds to integer number of samples, rounding to nearest sample"""
-    return long(round(seconds * float(sampling_rate)))
+def to_samp_or_sec(seconds, sampling_rate):
+    """Convert seconds to integer number of samples, rounding to nearest sample
+
+    If sampling_rate is None, returns seconds as a floating point.
+
+    """
+    if sampling_rate is not None:
+        return long(round(seconds * float(sampling_rate)))
+    else:
+        return float(seconds)
 
 
 def natsorted(key):
@@ -97,7 +104,7 @@ def natsorted(key):
 
 
 def cutarray(x, cuts):
-    """Cut array x into subarrays defined by the upper exclusive boundaries in cuts.
+    """Cut array x into subarrays defined by the lower inclusive boundaries in cuts.
 
     Returns a generator that yields (cut_index, sub_array) tuples for each
     element in cuts that corresponds to a non-empty subarray. Values to the left

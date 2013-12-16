@@ -59,12 +59,12 @@ class spike_extract(Node):
             self.last_scalar = chunk
             return
 
-        n_before, n_after = (util.to_samples(x / 1000., chunk.ds) for x in self.interval)
+        n_before, n_after = (util.to_samp_or_sec(x / 1000., chunk.ds) for x in self.interval)
         # reset the detector if there's a gap or ds changes
         if self.last_chunk is not None:
             last_sample_t = util.to_seconds(self.last_chunk.data.shape[0],
                                             self.last_chunk.ds, self.last_chunk.offset)
-            gap = util.to_samples(chunk.offset - last_sample_t, chunk.ds)
+            gap = util.to_samp_or_sec(chunk.offset - last_sample_t, chunk.ds)
             if gap > 1 or self.last_chunk.ds != chunk.ds:
                 self.reset()
         if self.detector is None:
@@ -174,7 +174,7 @@ class spike_features(Node):
     def close(self):
         if not self._queue:
             return
-        times = [chunk.data['start'] + util.to_samples(chunk.offset, chunk.ds) for
+        times = [chunk.data['start'] + util.to_samp_or_sec(chunk.offset, chunk.ds) for
                  chunk in self._queue]
         spikes = [chunk.data['spike'] for chunk in self._queue]
         self._log.info("realigning spikes")
