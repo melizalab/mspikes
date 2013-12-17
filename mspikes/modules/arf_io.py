@@ -320,7 +320,7 @@ class arf_writer(_base_arf, Node):
         arf.append_data(dset, chunk.data)
 
     def _write_events(self, chunk):
-        """Write event data to the file """
+        """Writes event data in chunk to the file """
         # Event data may or may not be divided into chunks that correspond to
         # entries in the target file. Therefore the event times have to be
         # compared against the offsets of the entries and split accordingly. A
@@ -331,18 +331,19 @@ class arf_writer(_base_arf, Node):
         from itertools import imap, repeat
 
         # split data by entries
-        data = chunk.data[:] + util.to_samp_or_sec(chunk.offset, chunk.ds)
+        data = util.event_offset(chunk.data, util.to_samp_or_sec(chunk.offset, chunk.ds))
         cuts = imap(util.to_samp_or_sec, self._offsets, repeat(chunk.ds))
 
-        for cut_idx, events in util.cutarray(data, cuts):
+        for cut_idx, subset in util.cutarray(util.event_times(data), cuts):
             cut_idx = max(cut_idx, 0)
             entry = self._entries[cut_idx]
             entry_offset = util.to_samp_or_sec(self._offsets[cut_idx], chunk.ds)
             dset = self._require_dataset(entry, chunk, 0)
             dset_offset = dset.attrs.get('offset', 0)
+            events = util.event_offset(data[subset], -entry_offset - dset_offset)
             self._log.debug("%d events match '%s' (offset=%.2fs)",
                             events.size, entry.name, entry_offset)
-            arf.append_data(dset, events - entry_offset - dset_offset)
+            arf.append_data(dset, events)
 
 
     def _make_entry_table(self):
@@ -414,6 +415,7 @@ class arf_writer(_base_arf, Node):
         import posixpath as pp
         dset_name = pp.join(entry.name, chunk.id)
         if chunk.id in entry and dset_name in self._datasets:
+            # if dataset existed when the file was opened, overwrite or error
             if self.overwrite:
                 del entry[chunk.id]
                 self._datasets.remove(dset_name)

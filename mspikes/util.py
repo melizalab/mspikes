@@ -108,7 +108,6 @@ def event_offset(events, offset):
 
     """
     from numpy import asarray
-
     if hasattr(events, 'dtype') and events.dtype.fields is not None:
         evts = events[:]
         assert evts is not events, "failed to copy input argument"
@@ -116,6 +115,15 @@ def event_offset(events, offset):
     else:
         evts = asarray(events) + offset
     return evts
+
+
+def event_times(events):
+    """Returns event times from a marked or unmarked point process time series"""
+    from numpy import asarray
+    if hasattr(events, 'dtype') and events.dtype.fields is not None:
+        return events['start']
+    else:
+        return asarray(events)
 
 
 def natsorted(key):
@@ -127,7 +135,7 @@ def natsorted(key):
 def cutarray(x, cuts):
     """Cuts array x into subarrays defined by the lower inclusive boundaries in cuts.
 
-    Returns a generator that yields (cut_index, sub_array) tuples for each
+    Returns a generator that yields (cut_index, slice) tuples for each
     element in cuts that corresponds to a non-empty subarray. Values to the left
     of the first cut have an index of -1. If the cuts array is empty, generates
     (-1, x).
@@ -141,11 +149,11 @@ def cutarray(x, cuts):
     for cut in cuts:
         idx = bisect_left(x, cut, pos)
         if idx > pos:
-            yield (cix, x[pos:idx])
+            yield (cix, slice(pos, idx))
             pos = idx
         cix += 1
     if pos < len(x):
-        yield (cix, x[pos:])
+        yield (cix, slice(pos, None))
 
 
 class defaultdict(defaultdict):

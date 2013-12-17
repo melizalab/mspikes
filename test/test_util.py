@@ -12,18 +12,18 @@ def test_cutarray():
     x = range(10, 100, 10)
     cuts = [22, 50, 70, 100]
 
-    assert_sequence_equal([y for y in util.cutarray(x, cuts)],
+    assert_sequence_equal([(i, x[s]) for i, s in util.cutarray(x, cuts)],
                           [(-1, x[:2]), (0, x[2:4]), (1, x[4:6]), (2, x[6:])])
 
-    assert_sequence_equal([y for y in util.cutarray(x, [])],
+    assert_sequence_equal([(i, x[s]) for i, s in util.cutarray(x, [])],
                           [(-1, x)],
                           "values for empty cut array not placed in single bin")
 
-    assert_sequence_equal([y for y in util.cutarray(x, [0, 50])],
+    assert_sequence_equal([(i, x[s]) for i, s in util.cutarray(x, [0, 50])],
                           [(0, x[:4]), (1, x[4:])],
                           "values generated for leftmost bin")
 
-    assert_sequence_equal([y for y in util.cutarray(x, [52, 54, 100])],
+    assert_sequence_equal([(i, x[s]) for i, s in util.cutarray(x, [52, 54, 100])],
                           [(-1, x[:5]), (1, x[5:])],
                           "values generated for empty bin in middle of sequence")
 
@@ -52,12 +52,12 @@ def test_to_samp_or_sec():
 
 
 def test_event_offset():
-    from numpy import asarray, rec, all
+    from numpy import asarray, rec
     data = [1, 2, 3]
-    assert_true(all(util.event_offset(data, 1) == [2, 3, 4]))
-    assert_true(all(util.event_offset(asarray(data), 2) == [3, 4, 5]))
+    assert_array_equal(util.event_offset(data, 1), [2, 3, 4])
+    assert_array_equal(util.event_offset(asarray(data), 2), [3, 4, 5])
     marked = rec.fromarrays((data, ['a', 'b', 'c']), names=('start', 'names'))
-    assert_true(all(util.event_offset(marked, 1)['start'] == [2, 3, 4]))
+    assert_array_equal(util.event_offset(marked, 1)['start'], [2, 3, 4])
 
 # Variables:
 # End:

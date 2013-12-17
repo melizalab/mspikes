@@ -7,7 +7,6 @@ Created Thu Jun 27 10:47:24 2013
 """
 from test.common import *
 
-import itertools
 import numpy as nx
 import arf
 from fractions import Fraction
@@ -46,7 +45,7 @@ def random_spikes(n, maxt, ds=None):
         t = nx.random.uniform(0, maxt, n)
     else:
         t = nx.random.randint(0, maxt * ds, n)
-    return nx.rec.fromarrays([t, nx.tile(a_spike, (n,1))], dtype=dt)
+    return nx.rec.fromarrays([sorted(t), nx.tile(a_spike, (n,1))], dtype=dt)
 
 
 def test_entry_iteration():

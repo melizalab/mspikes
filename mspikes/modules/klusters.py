@@ -8,7 +8,7 @@ Created Thu Jul 18 17:08:57 2013
 from collections import namedtuple
 
 from mspikes import util
-from mspikes.types import DataBlock, Node, Source, MspikesError
+from mspikes.types import DataBlock, Node, Source, MspikesError, tag_set
 
 # defines a klusters group
 _group = namedtuple('_group', ('idx', 'spk', 'clu', 'fet', 'nfeats', 'nchannels', 'nsamples', 'peak_idx',
@@ -193,16 +193,16 @@ class klusters_reader(Source):
                                    100. * nviol / nisi)
                     # TODO add information about cluster separation?
                     register.add_id(unit_name,
-                                    source_datasets=group['channels'],
+                                    source_datasets=group['channels'] or None,
                                     datatype=DataTypes.SPIKET,
                                     spike_sorter='klusters',
                                     klusters_base=self._basename,
                                     klusters_group=group['idx'],
                                     klusters_cluster=j)
-                    # split up to avoid recurring too deeply in arf_writer._write_data
-                    for chunk in pointproc_reader(data, group['sampling_rate'], 1024, id=unit_name):
-                        Node.send(self, chunk)
-                        yield chunk
+                    chunk = DataBlock(id=unit_name, offset=0, ds=group['sampling_rate'],
+                                      data=data, tags=tag_set("events"))
+                    Node.send(self, chunk)
+                    yield chunk
                 unit_idx += 1
 
 
