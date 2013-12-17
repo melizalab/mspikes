@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
-"""Top-level register for data chunk ids
+"""Module-level register for data chunk ids
 
 Data sources should register chunk ids as follows:
 
@@ -17,20 +17,28 @@ _log = logging.getLogger('mspikes.register')
 
 
 def add_id(id, **properties):
-    """Add an identity to the register. Raises a NameError if the id has already been registered"""
+    """Adds an identity to the register.
+
+    Raises a NameError if the id has already been registered. If 'uuid' is a
+    keyword argument and the value is None, a random uuid is generated.
+
+    """
+    from uuid import uuid4
     if has_id(id):
         raise NameError("'%s' has already been registered" % id)
+    if 'uuid' in properties and properties['uuid'] is None:
+        properties['uuid'] = str(uuid4())
     _register[id] = properties
     _log.debug("'%s' properties: %s", id, properties)
 
 
 def has_id(id):
-    """Return true if id has been registered"""
+    """Returns True if id has been registered"""
     return id in _register
 
 
 def get_properties(id):
-    """Return properties for id. If id has not been registered, returns an empty dict"""
+    """Returns properties for id. If id has not been registered, returns an empty dict"""
     try:
         return _register[id]
     except KeyError:

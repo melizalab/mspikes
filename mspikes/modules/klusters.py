@@ -5,14 +5,8 @@
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Thu Jul 18 17:08:57 2013
 """
-from collections import namedtuple
-
 from mspikes import util
 from mspikes.types import DataBlock, Node, Source, MspikesError, tag_set
-
-# defines a klusters group
-_group = namedtuple('_group', ('idx', 'spk', 'clu', 'fet', 'nfeats', 'nchannels', 'nsamples', 'peak_idx',
-                               'float_scaling', 'sampling_rate', 'pcfeats'))
 
 
 class KlustersError(MspikesError):
@@ -54,39 +48,40 @@ class klusters_writer(Node):
         if "events" not in chunk.tags or data.dtype.names is None or "spike" not in data.dtype.names:
             return
         group = self._get_group(chunk)
-        if group.sampling_rate != chunk.ds:
+        if group['sampling_rate'] != chunk.ds:
             self._log.warn("%s: sampling rate was %s, now %s",
-                           chunk, group.sampling_rate, chunk.ds)
-        feats = int_features(chunk.data, group.float_scaling, group.peak_idx)
-        if feats.shape[1] != group.nfeats:
+                           chunk, group['sampling_rate'], chunk.ds)
+        feats = int_features(chunk.data, group['float_scaling'], group['peak_idx'])
+        if feats.shape[1] != group['nfeats']:
             raise KlustersError("%s: feature count was %d, now %d" %
-                                (chunk, group.nfeats, feats.shape[1]))
-        spks = int_spikes(chunk.data, group.float_scaling / 4)
-        if spks.shape[1] != group.nsamples:     # TODO handle multiple channels
+                                (chunk, group['nfeats'], feats.shape[1]))
+        spks = int_spikes(chunk.data, group['float_scaling'] / 4)
+        if spks.shape[1] != group['nsamples']:     # TODO handle multiple channels
             raise KlustersError("%s: spike shape was %s, now %s" %
-                                (chunk, (group.nsamples, group.nchannels), spks.shape))
-        savetxt(group.fet, feats, "%i")
-        spks.tofile(group.spk)
+                                (chunk, (group['nsamples'], group['nchannels']), spks.shape))
+        savetxt(group['fet'], feats, "%i")
+        spks.tofile(group['spk'])
         for j in xrange(feats.shape[0]):
-            group.clu.write("1\n")
+            group['clu'].write("1\n")
 
     def __del__(self):
         """ write xml file on destruction """
         if not self._groups:
             return
-        srates = [g.sampling_rate for g in self._groups.itervalues()]
+        srates = [g['sampling_rate'] for g in self._groups.itervalues()]
         sampling_rate = srates[0]
         if not all(s == sampling_rate for s in srates):
-            self._log.warn("sampling rate not the same for all channels: may lead to undefined behavior")
+            self._log.warn("sampling rate not the same for all channels: "
+                           "may lead to undefined behavior")
         xml = make_paramfile(self._groups, sampling_rate)
         self._log.info("writing parameters to %s.xml", self._basename)
         with open(self._basename + ".xml", "wt") as fp:
             fp.write(xml)
         # close open files
         for group in self._groups.itervalues():
-            group.fet.close()
-            group.spk.close()
-            group.clu.close()
+            group['fet'].close()
+            group['spk'].close()
+            group['clu'].close()
         if self.kkwik:
             run_klustakwik(self._basename, self._groups, self._log)
         self._groups = {}
@@ -97,7 +92,12 @@ class klusters_writer(Node):
         self.kkwik = False
 
     def _get_group(self, chunk):
-        """ get handles for output files for a given id, creating as needed """
+        """Returns output file handles and other information for chunk.id.
+
+        Files are created as needed
+
+        """
+        from mspikes import register
         try:
             return self._groups[chunk.id]
         except KeyError:
@@ -110,16 +110,18 @@ class klusters_writer(Node):
             nfeats = len(feat_names)
             pcfeats = sum(1 for x in feat_names if x.startswith('PC'))
             fet.write("%d\n" % nfeats)
-            group = _group(idx, spk, clu, fet, nfeats,
-                           nsamples=chunk.data.dtype['spike'].shape[0],
-                           nchannels=1,              # TODO handle multiple channels
-                           peak_idx=chunk.data['spike'].mean(0).argmax(),
-                           float_scaling=get_scaling(chunk.data),
-                           sampling_rate=chunk.ds,
-                           pcfeats=pcfeats)
+            # TODO handle multiple channels
+            group = dict(idx=idx, spk=spk, clu=clu, fet=fet, nfeats=nfeats,
+                         nsamples=chunk.data.dtype['spike'].shape[0],
+                         nchannels=1,
+                         peak_idx=chunk.data['spike'].mean(0).argmax(),
+                         float_scaling=get_scaling(chunk.data),
+                         sampling_rate=chunk.ds,
+                         pcfeats=pcfeats,
+                         properties=register.get_properties(chunk.id))
             self._log.info("'%s' -> '%s.fet.%d' %s", chunk.id, self._basename, idx, feat_names)
             self._log.info("'%s' -> '%s.spk.%d' (shape=(%d,%d))", chunk.id, self._basename, idx,
-                           group.nsamples, group.nchannels)
+                           group['nsamples'], group['nchannels'])
             self._groups[chunk.id] = group
             return group
 
@@ -157,7 +159,6 @@ class klusters_reader(Source):
     def __iter__(self):
         from numpy import asarray
         from mspikes import register
-        from mspikes.modules.util import pointproc_reader
         from mspikes.modules._klusters import sort_unit
         from arf import DataTypes
         unit_idx = 0
@@ -193,7 +194,8 @@ class klusters_reader(Source):
                                    100. * nviol / nisi)
                     # TODO add information about cluster separation?
                     register.add_id(unit_name,
-                                    source_datasets=group['channels'] or None,
+                                    uuid=None,
+                                    source_uuid=group.get('source_uuid', None),
                                     datatype=DataTypes.SPIKET,
                                     spike_sorter='klusters',
                                     klusters_base=self._basename,
@@ -299,7 +301,7 @@ def int_spikes(data, scaling):
 
 
 def make_paramfile(groups, sampling_rate, sample_bits=16):
-    """Generate the klusters parameter file. Returns an xml string"""
+    """Returns the klusters parameter file as an xml string"""
     from xml.etree import ElementTree as et
     from mspikes import __version__
 
@@ -323,9 +325,12 @@ def make_paramfile(groups, sampling_rate, sample_bits=16):
         c = et.SubElement(g, "channels")
         text_element(c, "channel", i)
         text_element(c, "name", name)
-        text_element(g, "nSamples", group.nsamples)
-        text_element(g, "peakSampleIndex", group.peak_idx)
-        text_element(g, "nFeatures", group.nfeats)
+        text_element(g, "nSamples", group['nsamples'])
+        text_element(g, "peakSampleIndex", group['peak_idx'])
+        text_element(g, "nFeatures", group['nfeats'])
+        group_props = group['properties']
+        if 'uuid' in group_props:
+            text_element(g, "uuid", group_props['uuid'])
 
     return et.tostring(root)
 
@@ -338,12 +343,17 @@ def read_paramfile(xmlfile):
     sampling_rate = int(tree.find('acquisitionSystem/samplingRate').text)
     groups = []
     for i, group in enumerate(tree.findall('spikeDetection/channelGroups/group')):
-        groups.append(dict(idx=i+1,
-                           nfeats=int(group.find('nFeatures').text),
-                           channels=[c.text for c in group.findall('channels/name')],
-                           nsamples=int(group.find('nSamples').text),
-                           peak_idx=int(group.find('peakSampleIndex').text),
-                           sampling_rate=sampling_rate))
+        props = dict(idx=i+1,
+                     nfeats=int(group.find('nFeatures').text),
+                     channels=[c.text for c in group.findall('channels/name')],
+                     nsamples=int(group.find('nSamples').text),
+                     peak_idx=int(group.find('peakSampleIndex').text),
+                     sampling_rate=sampling_rate)
+        try:
+            props['source_uuid'] = group.find('uuid').text
+        except AttributeError:
+            pass
+        groups.append(props)
     return groups
 
 

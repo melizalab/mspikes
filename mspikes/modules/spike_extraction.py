@@ -89,7 +89,11 @@ class spike_extract(Node):
                 offset = chunk.offset
             new_id = chunk.id + "_spikes"
             if not register.has_id(new_id):
-                register.add_id(new_id, source_dataset=chunk.id, datatype=DataTypes.SPIKET)
+                register.add_id(new_id, uuid=None,
+                                datatype=DataTypes.SPIKET,
+                                source_dataset=chunk.id,
+                                source_uuid=register.get_properties(chunk.id).get('uuid', None))
+
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
                                            data=spikes,
                                            offset=offset,
@@ -199,7 +203,8 @@ class spike_features(Node):
 
         chunk = self._queue[0]
         self._log.debug("'%s': %d spikes", chunk.id, times.size)
-        dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1) for n, a in zip(names, features)])
+        dt = nx.dtype([(n, a.dtype, a.shape[1] if a.ndim > 1 else 1)
+                       for n, a in zip(names, features)])
         Node.send(self, DataBlock(id=chunk.id, offset=0, ds=chunk.ds * self.resample,
                                   data=nx.rec.fromarrays(features, dt), tags=chunk.tags))
         self._queue = []
