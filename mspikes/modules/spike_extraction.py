@@ -166,7 +166,7 @@ class spike_features(Node):
     def send(self, chunk):
         """ align spikes, compute features """
         # pass data we can't use
-        if chunk.data.dtype.names is None or "spike" not in chunk.data.dtype.names:
+        if not arf.is_marked_pointproc(chunk.data) or "spike" not in chunk.data.dtype.names:
             Node.send(self, chunk)
         else:
             # need to read data now because it won't be available in close

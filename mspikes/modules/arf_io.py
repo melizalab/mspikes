@@ -90,7 +90,8 @@ class arf_reader(_base_arf, RandomAccessSource):
                  metavar='P',
                  action='append')
         # TODO select based on datatype attribute
-        addopt_f("--use-timestamp", help=""" use entry timestamp for timebase and ignore other fields. May lead to
+        addopt_f("--use-timestamp", help="""use entry timestamp for timebase and
+        ignore other fields. May lead to
         warnings about data overlap because of jitter in the system clock. Using
         sample-based times from files recorded at multiple sampling rates or
         different clock start times may lead to undefined behavior""",
@@ -117,15 +118,15 @@ class arf_reader(_base_arf, RandomAccessSource):
         except re.error, e:
             raise ValueError("bad channel regex: %s" % e.message)
         except (KeyError, TypeError):
-            self.chanp = true_p
+            self.chanp = util.true_p
 
         try:
             self.entryp = util.any_regex(*options['entries'])
-            self._log.info("only using entries that match %s", self.entryp.__doc__)
+            self._log.info("only using entries that match '%s'", self.entryp.__doc__)
         except re.error, e:
             raise ValueError("bad entries regex: %s" % e.message)
         except (KeyError, TypeError):
-            self.entryp = true_p
+            self.entryp = util.true_p
 
 
     def __iter__(self):
@@ -153,8 +154,9 @@ class arf_reader(_base_arf, RandomAccessSource):
                 continue
 
             if "jill_error" in entry.attrs:
-                self._log.warn("'%s' was marked with an error: '%s'%s", entry.name, entry.attrs['jill_error'],
-                          " (skipping)" if not self.ignore_xruns else "")
+                self._log.warn("'%s' was marked with an error: '%s'%s",
+                               entry.name, entry.attrs['jill_error'],
+                               " (skipping)" if not self.ignore_xruns else "")
                 if not self.ignore_xruns:
                     continue
 
@@ -191,8 +193,10 @@ class arf_reader(_base_arf, RandomAccessSource):
                 else:
                     dset_time = entry_time
                 tags = dset_tags(dset)
-                if not register.has_id(id):
+                try:
                     register.add_id(id, **dset.attrs)
+                except NameError:
+                    pass
                 # don't read data until necessary: preserving the dtypes can help downstream
                 chunk = DataBlock(id=id, offset=dset_time, ds=dset_ds, data=dset, tags=tags)
                 Node.send(self, chunk)
@@ -406,7 +410,7 @@ class arf_writer(_base_arf, Node):
             # auto-chunk size for point process
             chunks = True
             units = 's' if chunk.ds is None else 'samples'
-            if chunk.data.dtype.names is not None:
+            if arf.is_marked_pointproc(chunk.data):
                 # compound dtype requires units for each field
                 units = tuple((units if x == 'start' else '') for x in chunk.data.dtype.names)
         else:
@@ -510,7 +514,7 @@ def matches_entry(chunk, entry):
 def dset_tags(dset):
     """Infer chunk tags based on dataset properties"""
     units = dset.attrs.get("units", None)
-    if dset.dtype.names is not None:
+    if arf.is_marked_pointproc(dset):
         idx = dset.dtype.names.index("start")
         if idx < 0:
             raise ArfError("ARF compound dataset '%s' is missing a 'start' field" % dset.name)
@@ -538,11 +542,6 @@ def arf_entry_time(entry):
         return arf.timestamp_to_float(entry.attrs['timestamp'])
     except KeyError:
         return None
-
-
-def true_p(*args):
-    """Returns True for any arguments"""
-    return True
 
 
 # Variables:

@@ -4,8 +4,8 @@
 
 Copyright (C) 2013 Dan Meliza <dmeliza@gmail.com>
 Created Tue Jul  9 17:00:11 2013
-"""
 
+"""
 import contextlib
 from mspikes.types import Node, tag_set
 from mspikes.modules import dispatcher
@@ -107,13 +107,15 @@ class splitter(Node):
         self.last_time = 0
 
     def send(self, chunk):
+        from arf import is_marked_pointproc
         from mspikes.util import to_seconds
 
         if "events" in chunk.tags:
             # point process data is sent in one chunk
             if self.start or self.stop:
                 # filter out events outside requested times
-                data_seconds = ((chunk.data['start'] if chunk.data.dtype.names else chunk.data[:])
+                data_seconds = ((chunk.data['start'] if is_marked_pointproc(chunk.data)
+                                 else chunk.data[:])
                                 * (chunk.ds or 1.0) + chunk.offset)
                 idx = data_seconds >= self.start
                 if self.stop:
@@ -130,7 +132,8 @@ class splitter(Node):
 
             # restrict by time
             nframes = chunk.data.shape[0]
-            start, stop = time_series_offsets(chunk.offset, chunk.ds, self.start, self.stop, nframes)
+            start, stop = time_series_offsets(chunk.offset, chunk.ds,
+                                              self.start, self.stop, nframes)
 
             for i in xrange(start, stop, self.nsamples):
                 t = to_seconds(i, chunk.ds, chunk.offset)

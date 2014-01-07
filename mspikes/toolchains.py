@@ -26,6 +26,9 @@ klust_import = ("Import sorted spikes from klusters",
                 "input = klusters_reader()\n"
                 "output = arf_writer(input)")
 
+json_export = ("Export event times to json files",
+               "input = arf_reader()\n"
+               "output = json_writer(input)")
 
 # Variables:
 # End:

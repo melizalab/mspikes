@@ -8,6 +8,7 @@ from util import splitter, print_progress
 from spike_extraction import spike_extract, spike_features
 from klusters import klusters_writer, klusters_reader
 from statistics import plot_stats, print_stats, arf_jitter, stream_writer
+from json_io import json_writer
 #from file_io import file_reader, file_writer
 
 

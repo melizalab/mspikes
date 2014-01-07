@@ -180,7 +180,8 @@ def build_node_graph(node_defs, options=None):
 
     _log.info("building processing graph")
     # instantiate the nodes (pass 2)
-    nodes = dict((name, getattr(modules,node_def.type)(name=name, **argparse_extracter(options, name)))
+    nodes = dict((name, getattr(modules,node_def.type)(name=name,
+                                                       **argparse_extracter(options, name)))
                   for name,node_def in node_defs)
 
     def resolve_source(src,*filts):
@@ -192,7 +193,7 @@ def build_node_graph(node_defs, options=None):
     for name,node_def in node_defs:
         node = nodes[name]
         _log.debug("'%s': %s", name, node)
-        for source,filts in starmap(resolve_source, node_def.sources):
+        for source, filts in starmap(resolve_source, node_def.sources):
             _log.debug("%s <- %s %s", ' ' * (len(name) + 3), source, filts)
             # compose filters into a single function
             source.add_target(node, util.chain_predicates(*filts))

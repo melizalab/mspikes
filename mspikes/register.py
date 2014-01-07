@@ -26,8 +26,11 @@ def add_id(id, **properties):
     from uuid import uuid4
     if has_id(id):
         raise NameError("'%s' has already been registered" % id)
-    if 'uuid' in properties and properties['uuid'] is None:
-        properties['uuid'] = str(uuid4())
+    if 'uuid' in properties:
+        if properties['uuid'] is None:
+            properties['uuid'] = str(uuid4())
+    else:
+        _log.warn("warning: '%s' does not have a uuid", id)
     _register[id] = properties
     _log.debug("'%s' properties: %s", id, properties)
 

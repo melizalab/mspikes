@@ -8,6 +8,11 @@ Created Thu Jun 20 17:18:40 2013
 from collections import defaultdict
 
 
+def true_p(*args):
+    """Returns True for any arguments"""
+    return True
+
+
 def chain_predicates(*ps):
     """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
     return lambda x: all(p(x) for p in ps)

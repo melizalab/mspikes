@@ -32,6 +32,7 @@ Operating System :: POSIX :: Linux
 Operating System :: MacOS :: MacOS X
 Natural Language :: English
 """
+
 short_desc = "Processing framework for time series and point process data"
 long_desc = """mspikes is a general-purpose tool for processing time-varying data. It can
 read and write various formats and perform a range of filtering and detection
@@ -52,7 +53,7 @@ compiler_settings = {
 _spikes = Extension('mspikes.modules.spikes', sources=['mspikes/modules/spikes' + SUFFIX],
                     **compiler_settings)
 
-requirements = ["arf==2.1"]
+requirements = ["arf>=2.2"]
 if sys.hexversion < 0x02070000:
     requirements.append("argparse==1.2.1")
 
