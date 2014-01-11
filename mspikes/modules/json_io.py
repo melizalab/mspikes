@@ -43,9 +43,9 @@ def get_stimulus_info(dset):
             out['stim'] = id
         if out['stim'] == id:
             if status == 0x00:
-                out['stim_on'] = float(time) / ds
+                out['stim_on'] = time / ds
             elif status == 0x10:
-                out['stim_off'] = float(time) /ds
+                out['stim_off'] = time /ds
     return out
 
 
@@ -99,8 +99,11 @@ class json_writer(Node):
             self.chanp = util.true_p
 
         self._trials = []
+        # stores time of first entry
         self._base_offset = None
+        # stores metadata for the entry extracted from structure chunks
         self._current_entry = None
+        # stores data and metadata for current trial, indexed by channel
         self._current_trial = {}
 
     def send(self, chunk):
@@ -119,8 +122,9 @@ class json_writer(Node):
                 except KeyError:
                     unit = chunk.id
                 self._current_trial[chunk.id] = {
-                    'offset': float(chunk.offset),
+                    'time': float(chunk.offset),
                     'unit': unit,
+                    'trial_on': 0.0,
                     'events': data / (chunk.ds or 1.0)
                 }
 
@@ -129,6 +133,12 @@ class json_writer(Node):
             stimdata = self._current_trial.pop('stim', {})
             for t in self._current_trial.values():
                 t['trial'] = self._current_entry.data['uuid']
+                if 'trial_off' in self._current_entry.data:
+                    # more recent arfxplog-generated data, jrecord > 2.1.1
+                    t['trial_off'] = self._current_entry.data['trial_off'] / chunk.ds
+                elif "max_length" in self._current_entry.data:
+                    # older arfxplog files
+                    t['trial_off'] = self._current_entry.data['max_length']
                 t.update(stimdata)
                 try:
                     self._log.debug("trial '%s' stimulus is '%s'", t['trial'], t['stim'])
@@ -143,7 +153,7 @@ class json_writer(Node):
     def __del__(self):
         """Writes json file on destruction"""
         with open(self._fname, 'wt') as fp:
-            json.dump({'offset': self._base_offset, 'trials': self._trials},
+            json.dump({'time': self._base_offset, 'trials': self._trials},
                       fp, indent=2, separators=(',', ': '), cls=ArrayEncoder)
         self._log.info("wrote trial data to '%s'", self._fname)
 
