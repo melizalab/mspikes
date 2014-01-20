@@ -29,6 +29,9 @@ def add_id(id, **properties):
     if 'uuid' in properties:
         if properties['uuid'] is None:
             properties['uuid'] = str(uuid4())
+            _log.info("'%s' assigned uuid: %s", id, properties['uuid'])
+        else:
+            _log.info("'%s' has uuid: %s", id, properties['uuid'])
     else:
         _log.warn("warning: '%s' does not have a uuid", id)
     _register[id] = properties
