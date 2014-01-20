@@ -130,25 +130,35 @@ class json_writer(Node):
 
         elif "structure" in chunk.tags:
             # store current trial, updating with current stim info if it exists
-            stimdata = self._current_trial.pop('stim', {})
-            for t in self._current_trial.values():
-                t['trial'] = self._current_entry.data['uuid']
-                if 'trial_off' in self._current_entry.data:
-                    # more recent arfxplog-generated data, jrecord > 2.1.1
-                    t['trial_off'] = self._current_entry.data['trial_off'] / chunk.ds
-                elif "max_length" in self._current_entry.data:
-                    # older arfxplog files
-                    t['trial_off'] = self._current_entry.data['max_length']
-                t.update(stimdata)
-                try:
-                    self._log.debug("trial '%s' stimulus is '%s'", t['trial'], t['stim'])
-                except KeyError:
-                    self._log.debug("trial '%s' has no stimulus", t['trial'])
-                self._trials.append(t)
-            self._current_trial.clear()
+            self._process_trial()
             self._current_entry = chunk
             if self._base_offset is None:
                 self._base_offset = timestamp_to_float(chunk.data['timestamp'])
+
+    def _process_trial(self):
+        stimdata = self._current_trial.pop('stim', {})
+        for t in self._current_trial.values():
+            t['trial'] = self._current_entry.data['uuid']
+            if 'trial_off' in self._current_entry.data:
+                # more recent arfxplog-generated data, jrecord > 2.1.1
+                t['trial_off'] = (self._current_entry.data['trial_off'] /
+                                  self._current_entry.ds )
+            elif "max_length" in self._current_entry.data:
+                # older arfxplog files
+                t['trial_off'] = self._current_entry.data['max_length']
+            t.update(stimdata)
+            try:
+                self._log.debug("'%s' (trial '%s') stimulus is '%s'",
+                                self._current_entry.id, t['trial'], t['stim'])
+            except KeyError:
+                self._log.debug("'%s' (trial '%s') has no stimulus",
+                                self._current_entry.id, t['trial'])
+            self._trials.append(t)
+        self._current_trial.clear()
+
+    def close(self):
+        """Flushes data from the last trial"""
+        self._process_trial()
 
     def __del__(self):
         """Writes json file on destruction"""
@@ -156,6 +166,7 @@ class json_writer(Node):
             json.dump({'time': self._base_offset, 'trials': self._trials},
                       fp, indent=2, separators=(',', ': '), cls=ArrayEncoder)
         self._log.info("wrote trial data to '%s'", self._fname)
+
 
 # Variables:
 # End:
