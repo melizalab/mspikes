@@ -30,9 +30,13 @@ def get_stimulus_info(dset):
     the dset doesn't have 'id' (or 'message'), 'start', and 'status' fields.
 
     """
+    import operator
+
     out = {}
     ds = dset.attrs.get('sampling_rate', 1.0)
-    for r in dset:
+    # sort by start time to to ensure we get the first stimulus and that the
+    # stop is after the start
+    for r in sorted(dset, key=operator.itemgetter('start')):
         try:
             id = r['id']
         except IndexError:
@@ -148,8 +152,9 @@ class json_writer(Node):
                 t['trial_off'] = self._current_entry.data['max_length']
             t.update(stimdata)
             try:
-                self._log.debug("'%s' (trial '%s') stimulus is '%s'",
-                                self._current_entry.id, t['trial'], t['stim'])
+                self._log.debug("'%s': trial='%s', stim='%s', t=%f--%f",
+                                self._current_entry.id, t['trial'], t['stim'],
+                                t['stim_on'], t['stim_off'])
             except KeyError:
                 self._log.debug("'%s' (trial '%s') has no stimulus",
                                 self._current_entry.id, t['trial'])
