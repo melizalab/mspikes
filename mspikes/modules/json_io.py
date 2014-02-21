@@ -13,7 +13,7 @@ from __future__ import unicode_literals
 import json
 
 from mspikes import util
-from mspikes.types import Node, MspikesError
+from mspikes.types import Node
 
 
 class ArrayEncoder(json.JSONEncoder):
@@ -30,13 +30,13 @@ def get_stimulus_info(dset):
     the dset doesn't have 'id' (or 'message'), 'start', and 'status' fields.
 
     """
-    import operator
+    from operator import itemgetter
 
     out = {}
     ds = dset.attrs.get('sampling_rate', 1.0)
     # sort by start time to to ensure we get the first stimulus and that the
     # stop is after the start
-    for r in sorted(dset, key=operator.itemgetter('start')):
+    for r in sorted(dset, key=itemgetter('start')):
         try:
             id = r['id']
         except IndexError:
@@ -53,12 +53,23 @@ def get_stimulus_info(dset):
     return out
 
 
+def write_datasets(trials, base_time, logger):
+    """Writes trials to disk in evt-json format, splitting into separate files by key
+
+    If the target file already exists (e.g., when data for a unit are split
+    across multiple files), the trials are merged into the existing file. Trials
+    already in the target file are skipped.
+
+    """
+    pass
+
 class json_writer(Node):
     """Writes event data to json format.
 
-    This module is used to export time of event (point process) data to json-evt
-    format (see http://meliza.org/specs/json-evt), which allows data to be
-    easily aligned and grouped using trial metadata.
+    This module exports time of event (point process) data to evt-json format
+    (see http://meliza.org/specs/evt-json), which allows data to be easily
+    aligned and grouped using trial metadata. Each channel is written to a
+    separate file.
 
     accepts: _events (marked or unmarked point process),
              _structure (trial info)
@@ -67,8 +78,6 @@ class json_writer(Node):
     """
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("file",
-                 help="path of output file (warning: overwrites existing file)",)
         addopt_f("-c", "--channels",
                  help="""regular expression restricting which channels to write (default all event
         type channels). For example, 'pcm_000' will only match channels that
@@ -83,16 +92,13 @@ class json_writer(Node):
                  help="name of channel to use for stimulus markup (default '%(default)s')."
                  " This channel is not included in the list of output channels.",
                  default="stimuli")
-        addopt_f("--unit-file",
-                 help="If set, writes attributes for each unit to a file named after "
-                 "the unit uuid")
+        addopt_f("--overwrite",
+                 help="overwrite existing files (default is to merge by uuid)")
 
-    def __init__(self, name, file, **options):
+    def __init__(self, name, **options):
         import re
         Node.__init__(self, name)
         util.set_option_attributes(self, options, stim_chan="stimuli")
-        self._fname = file
-        self._log.info("output file: '%s'", self._fname)
 
         try:
             self.chanp = util.any_regex(*options['channels'])
@@ -122,7 +128,7 @@ class json_writer(Node):
                 else:
                     data = chunk.data[:]
                 try:
-                    unit = register.get_properties(chunk.id)['uuid']
+                    unit = register.get_by_id(chunk.id)['uuid']
                 except KeyError:
                     unit = chunk.id
                 self._current_trial[chunk.id] = {
@@ -167,28 +173,36 @@ class json_writer(Node):
 
     def __del__(self):
         """Writes json file on destruction"""
-        with open(self._fname, 'wt') as fp:
-            json.dump({'time': self._base_offset, 'trials': self._trials},
-                      fp, indent=2, separators=(',', ': '), cls=ArrayEncoder)
-        self._log.info("wrote trial data to '%s'", self._fname)
+        import os.path
+        from itertools import groupby
+        from operator import itemgetter
+
+        key = itemgetter('unit')
+        for unitname, unit in groupby(sorted(self._trials, key=key), key=key):
+            fname = unitname + '.json'
+            if os.path.exists(fname):
+                # merge with existing data
+                data = json.load(open(fname, 'rU'))
+                time_diff = self._base_offset - data['time']
+                tgt_trials = data['trials']
+                tgt_trial_count = len(tgt_trials)
+                tgt_trial_ids = set(t['trial'] for t in tgt_trials)
+                for trial in unit:
+                    if trial['trial'] not in tgt_trial_ids:
+                        trial['time'] += time_diff
+                        tgt_trials.append(trial)
+                    else:
+                        self._log.debug("%s: trial '%s' already in file", unitname, trial['trial'])
+                self._log.info("%s: merged trials into existing file (old: %d, new: %d)",
+                            unitname, tgt_trial_count, len(tgt_trials))
+            else:
+                data = {'time': self._base_offset, 'trials': tuple(unit)}
+
+            with open(fname, 'wt') as fp:
+                json.dump(data, fp, indent=2, separators=(',', ': '), cls=ArrayEncoder)
+            self._log.info("%s: wrote trial data", unitname)
 
 
 # Variables:
 # End:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
