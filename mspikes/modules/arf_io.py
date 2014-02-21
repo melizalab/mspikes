@@ -347,7 +347,11 @@ class arf_writer(_base_arf, Node):
 
         for cut_idx, subset in util.cutarray(util.event_times(data), cuts):
             cut_idx = max(cut_idx, 0)
-            entry = self._entries[cut_idx]
+            try:
+                entry = self._entries[cut_idx]
+            except IndexError:
+                # usually raised when file is empty; currently we just error out
+                raise MspikesError("Trying to write unstructured to data to an unstructured file")
             entry_offset = util.to_samp_or_sec(self._offsets[cut_idx], chunk.ds)
             dset = self._require_dataset(entry, chunk, 0)
             dset_offset = dset.attrs.get('offset', 0)
