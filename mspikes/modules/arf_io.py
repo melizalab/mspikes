@@ -220,7 +220,7 @@ class arf_writer(_base_arf, Node):
                  help="do everything but actually write to the file",
                  action="store_true")
         addopt_f("--overwrite",
-                 help="overwrite existing datasets (DANGER)",
+                 help="overwrite existing datasets (default is to raise error)",
                  action='store_true')
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
@@ -420,7 +420,7 @@ class arf_writer(_base_arf, Node):
         dset = entry.create_dataset(chunk.id, dtype=chunk.data.dtype,
                                     shape=shape, maxshape=maxshape,
                                     chunks=chunks, compression=self.compress)
-        attrs = register.get_properties(chunk.id)
+        attrs = register.get_by_id(chunk.id)
         attrs.update(sampling_rate=chunk.ds, offset=data_offset, units=units)
         arf.set_attributes(dset, **attrs)
         return dset

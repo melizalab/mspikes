@@ -23,5 +23,3 @@ git clone https://github.com/mspikes/mspikes.git
 cd mspikes
 python setup.py install
 ````
-
-

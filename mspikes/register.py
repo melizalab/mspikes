@@ -43,9 +43,14 @@ def has_id(id):
     return id in _register
 
 
-def get_properties(id):
+def get_by_id(id):
     """Returns properties for id. If id has not been registered, returns an empty dict"""
     try:
         return _register[id]
     except KeyError:
         return {}
+
+
+def id_by_key(key, value):
+    """Returns id for the first entry that matches key=value, or None if no match exists"""
+    return next((id for id, props in _register.items() if props.get(key, None) == value), None)

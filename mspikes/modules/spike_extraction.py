@@ -92,7 +92,7 @@ class spike_extract(Node):
                 register.add_id(new_id, uuid=None,
                                 datatype=DataTypes.SPIKET,
                                 source_dataset=chunk.id,
-                                source_uuid=register.get_properties(chunk.id).get('uuid', None))
+                                source_uuid=register.get_by_id(chunk.id).get('uuid', None))
 
             Node.send(self, chunk._replace(id=chunk.id + "_spikes",
                                            data=spikes,
@@ -166,7 +166,8 @@ class spike_features(Node):
     def send(self, chunk):
         """ align spikes, compute features """
         # pass data we can't use
-        if not arf.is_marked_pointproc(chunk.data) or "spike" not in chunk.data.dtype.names:
+        from arf import is_marked_pointproc
+        if not is_marked_pointproc(chunk.data) or "spike" not in chunk.data.dtype.names:
             Node.send(self, chunk)
         else:
             # need to read data now because it won't be available in close

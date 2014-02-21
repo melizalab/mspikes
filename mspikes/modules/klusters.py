@@ -118,7 +118,7 @@ class klusters_writer(Node):
                          float_scaling=get_scaling(chunk.data),
                          sampling_rate=chunk.ds,
                          pcfeats=pcfeats,
-                         properties=register.get_properties(chunk.id))
+                         properties=register.get_by_id(chunk.id))
             self._log.info("'%s' -> '%s.fet.%d' %s", chunk.id, self._basename, idx, feat_names)
             self._log.info("'%s' -> '%s.spk.%d' (shape=(%d,%d))", chunk.id, self._basename, idx,
                            group['nsamples'], group['nchannels'])
@@ -134,15 +134,17 @@ class klusters_reader(Source):
         addopt_f("basename",
                  help="base name for input files")
         addopt_f("--groups",
-                 help="restrict to one or more groups (default all)",
+                 help="restrict to one or more groups (default all). "
+                 "Use this option for each group you want to include.",
                  action='append',
                  type=int)
         addopt_f("--units",
                  help="""restrict to one or more units (default all). Units are numbered sequentially,
-                 starting with the first cluster in the first group. Clusters
+                 with 0 as the first cluster in the first group. Clusters
                  numbered 0 and 1 are excluded as artifacts and noise,
                  respectively, unless there are no clusters > 1, in which case
-                 the highest numbered cluster is used""",
+                 the highest numbered cluster is used. Use this options for each
+                 group you want to include.""",
                  action='append',
                  type=int)
         addopt_f("--id",
@@ -371,7 +373,6 @@ def run_klustakwik(basename, groups, log):
     for i, job in enumerate(jobs):
         log.info("waiting for KlustaKwik job %d to finish...", i + 1)
         job.wait()
-
 
 
 def text_element(parent, tag, value, **attribs):
