@@ -20,7 +20,7 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     SUFFIX = '.c'
 
-VERSION = '3.0.0-SNAPSHOT'
+VERSION = '3.0.0b1'
 cls_txt = """
 Development Status :: 5 - Production/Stable
 Intended Audience :: Science/Research
