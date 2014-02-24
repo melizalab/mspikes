@@ -88,10 +88,11 @@ class json_writer(Node):
         channels that match any pattern will be included.""",
                  metavar='CH',
                  action='append')
-        addopt_f("--stim-chan",
-                 help="name of channel to use for stimulus markup (default '%(default)s')."
-                 " This channel is not included in the list of output channels.",
-                 default="stimuli")
+        addopt_f("--stim-chan", help="""name of channel to use for stimulus
+        markup (default '%(default)s'). This channel is not included in
+        the list of output channels. Note: if this channel is filtered
+        from the input side, the output json file won't have any
+        stimulus information""", default="stimuli")
         addopt_f("--overwrite",
                  help="overwrite existing files (default is to merge by uuid)")
 

@@ -88,6 +88,7 @@ def mspikes(argv=None):
     from itertools import chain
     from collections import OrderedDict
     from mspikes import __version__
+    from mspikes.types import MspikesError
 
     p = argparse.ArgumentParser(prog="mspikes",
                                 add_help=False,
@@ -176,13 +177,13 @@ def mspikes(argv=None):
         log.info("user interrupted processing")
         for node in root:
             node.throw(e)
-    # except Exception as e:
-    #     for node in root:
-    #         node.throw(e)
-    #     raise e
+    except MspikesError as e:
+        log.error("error: %s", e)
+        for node in root:
+            node.throw(e)
     else:
-        log.info("graph finished executing")
-    finally:
+        log.info("graph finished executing successfully")
+
         for node in root:
             node.close()
 
