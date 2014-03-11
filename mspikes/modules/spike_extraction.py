@@ -269,7 +269,6 @@ def get_eigenvectors(spikes, nfeats, nspikes):
     http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html)
 
     """
-    from numpy import dot
     from numpy.linalg import svd, LinAlgError
     # center data
     data = spikes[:nspikes] - spikes[:nspikes].mean(0)

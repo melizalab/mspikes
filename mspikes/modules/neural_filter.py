@@ -145,7 +145,13 @@ class zscale(_smoother):
         _smoother.__init__(self, name, **options)
         util.set_option_attributes(self, options, exclude=True, max_rms=1.15, min_duration=200.)
         if self.exclude:
+            from mspikes import register
+            from arf import DataTypes
             self._log.info("excluding intervals with RMS %.3f times baseline", self.max_rms)
+            # register the channel so it will get a uuid
+            if not register.has_id("exclusions"):
+                register.add_id("exclusions", uuid=None, datatype=DataTypes.EVENT)
+
         self.excl_queue = []     # need a separate queue to determine if the rms
                                  # stayed above threshold for > min_duration
 

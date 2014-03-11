@@ -168,6 +168,9 @@ class klusters_reader(Source):
             if self.groups and group['idx'] not in self.groups:
                 self._log.info("%s.%d -> skipped", self._basename, group['idx'])
                 continue
+            if len(group['skipped']) > 0:
+                self._log.warn("WARNING: %s.%d has skipped epochs that need to "
+                               "be marked in the target file", self._basename, group['idx'])
             clusters = sort_unit("{0}.fet.{1}".format(self._basename, group['idx']),
                                  "{0}.clu.{1}".format(self._basename, group['idx']))
             for j, cluster in enumerate(clusters):
@@ -350,6 +353,7 @@ def read_paramfile(xmlfile):
                      channels=[c.text for c in group.findall('channels/name')],
                      nsamples=int(group.find('nSamples').text),
                      peak_idx=int(group.find('peakSampleIndex').text),
+                     skipped=tuple(int(skt.text) for skt in group.findall("skipped/time")),
                      sampling_rate=sampling_rate)
         try:
             props['source_uuid'] = group.find('uuid').text
