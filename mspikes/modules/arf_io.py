@@ -64,6 +64,7 @@ class arf_reader(_base_arf, RandomAccessSource):
     """
     @classmethod
     def options(cls, addopt_f, **defaults):
+        from argparse import SUPPRESS
         addopt_f("filename",
                  help="the file to read")
         addopt_f("--channels",
@@ -99,6 +100,9 @@ class arf_reader(_base_arf, RandomAccessSource):
         addopt_f("--ignore-xruns",
                  help="use entries with xruns or other errors (default is to skip)",
                  action='store_true')
+        # a hidden option that can be set in the toolchain def
+        addopt_f("--writable", help=SUPPRESS,
+                 action='store_false' if defaults.get('writable', False) else 'store_true')
 
     def __init__(self, name, filename, **options):
         import re
@@ -107,7 +111,7 @@ class arf_reader(_base_arf, RandomAccessSource):
                                    use_timestamp=False,
                                    ignore_xruns=False,
                                    skip_sort=False)
-        _base_arf.__init__(self, name, filename, "r")
+        _base_arf.__init__(self, name, filename, "r" if not options['writable'] else "r+")
         self._log.info("input file: '%s'", self.file.filename)
         for k in self.file.attrs:
             self._log.info("file attribute: %s=%s", k, self.file.attrs[k])
@@ -208,6 +212,7 @@ class arf_writer(_base_arf, Node):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
+        from argparse import SUPPRESS
         addopt_f("filename",
                  help="the file to write (created if it doesn't exist)")
         addopt_f("--compress",
@@ -222,13 +227,16 @@ class arf_writer(_base_arf, Node):
         addopt_f("--overwrite",
                  help="overwrite existing datasets (default is to raise error)",
                  action='store_true')
+        addopt_f("--append-events", help=SUPPRESS,
+                 action='store_false' if defaults.get('append_events', False) else 'store_true')
 
     can_store = staticmethod(filters.any_tag("samples", "events"))
 
     def __init__(self, name, filename, **options):
         util.set_option_attributes(self, options, compress=9, auto_entry=None,
                                    split_entry_template='%s_g%02d',
-                                   dry_run=False, overwrite=False)
+                                   dry_run=False, overwrite=False,
+                                   append_events=False)
         try:
             _base_arf.__init__(self, name, filename, "a", dry_run=self.dry_run)
         except IOError:
@@ -395,7 +403,7 @@ class arf_writer(_base_arf, Node):
             if self.overwrite:
                 del entry[chunk.id]
                 self._datasets.remove(dset_name)
-            else:
+            elif not self.append_events and "events" in chunk.tags:
                 raise ArfError("%s not written: dataset '%s' already exists" %
                                (chunk, dset_name))
         if chunk.id in entry:

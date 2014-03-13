@@ -143,8 +143,8 @@ class klusters_reader(Source):
                  with 0 as the first cluster in the first group. Clusters
                  numbered 0 and 1 are excluded as artifacts and noise,
                  respectively, unless there are no clusters > 1, in which case
-                 the highest numbered cluster is used. Use this options for each
-                 group you want to include.""",
+                 the highest numbered cluster is used. You may use this option
+                 multiple times, once for each group you want to include.""",
                  action='append',
                  type=int)
         addopt_f("--id",

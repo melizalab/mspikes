@@ -7,7 +7,7 @@ Created Tue Jul  9 17:00:11 2013
 
 """
 import contextlib
-from mspikes.types import Node, tag_set
+from mspikes.types import Node, DataBlock, tag_set
 from mspikes.modules import dispatcher
 
 
@@ -143,7 +143,91 @@ class splitter(Node):
             self.last_time = to_seconds(nframes, chunk.ds, chunk.offset)
 
 
+class entry_excluder(Node):
+    """Generate exclusion events for specific entries in a stream.
+
+    accepts: _structure
+    emits: _exclusions
+
+    This module is useful when channels in some entries (delineated by structure
+    chunks) need to be marked as unusable based on external criteria (for
+    example, if isolation of a single unit is gained or lost partway through an
+    experiment). Used to modify a file in place.
+
+    """
+
+    @classmethod
+    def options(cls, addopt_f, **defaults):
+        addopt_f("--start",
+                 help="exclude entries before this time (in seconds). ",
+                 type=float,
+                 metavar='FLOAT')
+        addopt_f("--stop",
+                 help="exclude entries after this time (in seconds). ",
+                 type=float,
+                 metavar='FLOAT')
+        addopt_f("--channels",
+                 help="""list of channels to mark as excluded (default none).""",
+                 metavar='CH',
+                 action='append')
+        addopt_f("--reason",
+                 help="the reason for the exclusion (stored in the exclusion data)")
+
+    def __init__(self, name, **options):
+        from mspikes.util import set_option_attributes
+        Node.__init__(self, name)
+        set_option_attributes(self, options, channels=None, reason='')
+        if 'start' in options:
+            self.start = options['start']
+            self._log.info("excluding entries with t < %f", self.start)
+        else:
+            self.start = None
+        if 'stop' in options:
+            self.stop = options['stop']
+            self._log.info("excluding entries with t >= %f", self.stop)
+        else:
+            self.stop = None
+
+        self._log.info("excluding channels: %s", self.channels)
+
+    def send(self, chunk):
+        from mspikes.util import to_samp_or_sec, to_seconds
+        from mspikes import register
+        from arf import DataTypes
+        from numpy import rec
+        if "structure" in chunk.tags:
+            # structure tag is always passed on first, which can be used downstream
+            Node.send(self, chunk)
+            if ((self.start is not None and chunk.offset < self.start) or
+                (self.stop is not None and chunk.offset >= self.stop)):
+                self._log.debug("%s matches exclusion criteria", chunk)
+                if 'trial_off' not in chunk.data:
+                    self._log.warn("no information about end of entry in data stream; "
+                                   "exclusion not supported")
+                elif self.channels is not None:
+                    trial_on = to_samp_or_sec(0, chunk.ds)
+                    trial_off = chunk.data['trial_off'] # will be in units of chunk.ds
+                    trial_end = to_seconds(chunk.data['trial_off'], chunk.ds, chunk.offset)
+                    for chan in self.channels:
+                        self._log.info("marked '%s' from %.2f to %.2f s for exclusion",
+                                       chan, chunk.offset, trial_end)
+                    # register the channel so it will get a uuid
+                    if not register.has_id("exclusions"):
+                        register.add_id("exclusions", uuid=None, datatype=DataTypes.EVENT)
+
+                    exclusions = [(trial_on, trial_off, bytes(chan), bytes(self.reason))
+                                  for chan in self.channels]
+                    chunk = DataBlock('exclusions', chunk.offset, chunk.ds,
+                                      rec.fromrecords(exclusions, names=('start',
+                                                                         'stop',
+                                                                         'dataset',
+                                                                         'reason')),
+                                      tag_set("events", "exclusions"))
+                    Node.send(self, chunk)
+
+
 def timeseries_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
+
     """Read chunks from a 1d time series array"""
     from numpy import array_split
     from mspikes.types import DataBlock
