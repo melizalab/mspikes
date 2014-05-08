@@ -9,17 +9,11 @@ property. Graphs may be invoked in a blocking mode through iteration on the root
 Source(s). Each iteration will only complete once all the dependent nodes have
 received and processed the data chunk.
 
-For example:
+Processing chains are constructed using a pythonesque DSL. For example:
 
-input = generic_file_reader(filename, ...)
-trans = generic_transform(...)
-output = generic_file_writer(filename, ...)
-
-input.add_target(trans)
-trans.add_target(writer)
-
-for t in reader:
-    update_status_display(t)
+input = generic_file_reader(...)
+trans = generic_transform(input, ...)
+output = generic_file_writer(trans, ...)
 
 Graphs can be constructed programmatically or by parsing a set of definitions.
 The definitions have a python-based syntax (see parse_node). Building a graph is
@@ -184,7 +178,7 @@ def build_node_graph(node_defs, options=None):
                                                        **argparse_extracter(options, name)))
                   for name,node_def in node_defs)
 
-    def resolve_source(src,*filts):
+    def resolve_source(src, *filts):
         """Resolves a source definition: ('node','filt1','filt2',...)"""
         return nodes[src], tuple(imap(filters._get, filts))
 

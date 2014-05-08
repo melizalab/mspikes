@@ -167,6 +167,13 @@ class entry_excluder(Node):
                  help="exclude entries after this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
+        addopt_f("--between",
+                 help="exclude entries between these times (in seconds, inclusive)",
+                 type=float,
+                 nargs=2,
+                 action='append',
+                 default=[],
+                 metavar='FLOAT')
         addopt_f("--before-idx",
                  help="exclude data before this entry index (0 = first entry)",
                  type=int,
@@ -174,6 +181,13 @@ class entry_excluder(Node):
         addopt_f("--after-idx",
                  help="exclude data after this entry index",
                  type=int,
+                 metavar='NUM')
+        addopt_f("--between-idx",
+                 help="exclude entries between these entry indices (inclusive)",
+                 type=int,
+                 nargs=2,
+                 action='append',
+                 default=[],
                  metavar='NUM')
         addopt_f("--channels",
                  help="""list of channels to mark as excluded (default none).""",
@@ -186,15 +200,19 @@ class entry_excluder(Node):
         from mspikes.util import set_option_attributes
         Node.__init__(self, name)
         set_option_attributes(self, options, channels=None, reason='', before=None, after=None,
-                              before_idx=None, after_idx=None)
+                              before_idx=None, after_idx=None, between=[], between_idx=[])
         if self.before is not None:
-            self._log.info("excluding entries with t < %f", self.before)
+            self._log.info("excluding entries with t < %.2f s", self.before)
         if self.after is not None:
-            self._log.info("excluding entries with t >= %f", self.after)
+            self._log.info("excluding entries with t >= %.2f s", self.after)
+        for trange in self.between:
+            self._log.info("excluding entries between %.2f and %.2f s", *trange)
         if self.before_idx is not None:
             self._log.info("excluding entries with index < %d", self.before_idx)
         if self.after_idx is not None:
             self._log.info("excluding entries with index > %d", self.after_idx)
+        for irange in self.between_idx:
+            self._log.info("excluding entries between %d and %d", *irange)
 
         self._log.info("excluding channels: %s", self.channels)
         self.entry_count = 0
@@ -210,7 +228,9 @@ class entry_excluder(Node):
             if ((self.before is not None and chunk.offset < self.before) or
                 (self.after is not None and chunk.offset >= self.after) or
                 (self.before_idx is not None and self.entry_count < self.before_idx) or
-                (self.after_idx is not None and self.entry_count > self.after_idx)):
+                (self.after_idx is not None and self.entry_count > self.after_idx) or
+                any((chunk.offset >= t[0] and chunk.offset <= t[1]) for t in self.between) or
+                any((self.entry_count >= i[0] and chunk.entry_count <= i[0]) for i in self.between_idx)):
                 self._log.debug("%s (idx=%d) matches exclusion criteria", chunk, self.entry_count)
                 if 'trial_off' not in chunk.data:
                     self._log.warn("no information about end of entry in data stream; "

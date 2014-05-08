@@ -33,7 +33,7 @@ json_export = ("Export event times to json files",
 exclude_entries = ("Mark entries as unusable in an arf file",
                    "input = arf_reader(writable=True)\n"
                    "excl = entry_excluder(input)\n"
-                   "output = arf_writer(excl, append_entries=True)")
+                   "output = arf_writer(excl, append_events=True)")
 
 # Variables:
 # End:
