@@ -59,5 +59,14 @@ def test_event_offset():
     marked = rec.fromarrays((data, ['a', 'b', 'c']), names=('start', 'names'))
     assert_array_equal(util.event_offset(marked, 1)['start'], [2, 3, 4])
 
+
+def test_any_predicate():
+
+    x = 1
+    assert_true(util.any_predicate()(x))
+    assert_true(util.any_predicate(lambda y: y == 1)(x))
+    assert_true(util.any_predicate(lambda y: y == 1, lambda y: y == 2)(x))
+    assert_false(util.any_predicate(lambda y: y == 2)(x))
+
 # Variables:
 # End:

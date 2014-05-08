@@ -62,9 +62,14 @@ def print_doc(arg):
         print "* To process data in mspikes, pick a predefined toolchain:\n"
         print_toolchains()
 
-        print "\n* Define or extended toolchains with modules and filters:"
+        print """\n* Define or extended toolchains with modules and filters:
+
+For example, "input = arf_reader(); output=arf_writer((input, _structure))" will
+read data from an ARF file, filter out any data that's not tagged as
+'structure', and write the data to a new file. Filters are applied with 'OR'
+logic. """
         print_modules()
-        print_filters()
+        # print_filters()
         print "\n* For more on a toolchain, module, or filter: 'mspikes --doc <entity>'\n"
 
     elif hasattr(toolchains, arg):

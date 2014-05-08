@@ -196,7 +196,7 @@ def build_node_graph(node_defs, options=None):
         for source, filts in starmap(resolve_source, node_def.sources):
             _log.debug("%s <- %s %s", ' ' * (len(name) + 3), source, filts)
             # compose filters into a single function
-            source.add_target(node, util.chain_predicates(*filts))
+            source.add_target(node, util.any_predicate(*filts))
         if len(node_def.sources) == 0:
             head.append(node)
 

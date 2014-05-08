@@ -111,7 +111,7 @@ class arf_reader(_base_arf, RandomAccessSource):
                                    use_timestamp=False,
                                    ignore_xruns=False,
                                    skip_sort=False)
-        _base_arf.__init__(self, name, filename, "r" if not options['writable'] else "r+")
+        _base_arf.__init__(self, name, filename, "r" if not options.get('writable', False) else "r+")
         self._log.info("input file: '%s'", self.file.filename)
         for k in self.file.attrs:
             self._log.info("file attribute: %s=%s", k, self.file.attrs[k])

@@ -13,9 +13,14 @@ def true_p(*args):
     return True
 
 
-def chain_predicates(*ps):
+def all_predicates(*ps):
     """Return closure that tests for true returns from all ps. If ps is empty, returns True."""
     return lambda x: all(p(x) for p in ps)
+
+
+def any_predicate(*ps):
+    """Returns closure that tests for true return from any ps. If ps is empty, returns True."""
+    return lambda x: len(ps)==0 or any(p(x) for p in ps)
 
 
 def any_regex(*regexes):
