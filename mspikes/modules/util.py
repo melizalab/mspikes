@@ -103,7 +103,8 @@ class splitter(Node):
     def __init__(self, name, **options):
         from mspikes import util
         Node.__init__(self, name)
-        util.set_option_attributes(self, options, nsamples=4096, start=0., stop=None)
+        util.set_option_attributes(self, options, nsamples=4096,
+                                   start=0., stop=None)
         self.last_time = 0
 
     def send(self, chunk):
@@ -166,6 +167,14 @@ class entry_excluder(Node):
                  help="exclude entries after this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
+        addopt_f("--start-idx",
+                 help="exclude data before this entry index (0 = first entry)",
+                 type=int,
+                 metavar='NUM')
+        addopt_f("--stop-idx",
+                 help="exclude data after this entry index",
+                 type=int,
+                 metavar='NUM')
         addopt_f("--channels",
                  help="""list of channels to mark as excluded (default none).""",
                  metavar='CH',
@@ -176,19 +185,19 @@ class entry_excluder(Node):
     def __init__(self, name, **options):
         from mspikes.util import set_option_attributes
         Node.__init__(self, name)
-        set_option_attributes(self, options, channels=None, reason='')
-        if 'start' in options:
-            self.start = options['start']
+        set_option_attributes(self, options, channels=None, reason='', start=None, stop=None,
+                              start_idx=None, stop_idx=None)
+        if self.start is not None:
             self._log.info("excluding entries with t < %f", self.start)
-        else:
-            self.start = None
-        if 'stop' in options:
-            self.stop = options['stop']
+        if self.stop is not None:
             self._log.info("excluding entries with t >= %f", self.stop)
-        else:
-            self.stop = None
+        if self.start_idx is not None:
+            self._log.info("excluding entries with index < %d", self.start_idx)
+        if self.stop_idx is not None:
+            self._log.info("excluding entries with index > %d", self.stop_idx)
 
         self._log.info("excluding channels: %s", self.channels)
+        self.entry_count = 0
 
     def send(self, chunk):
         from mspikes.util import to_samp_or_sec, to_seconds
@@ -199,8 +208,10 @@ class entry_excluder(Node):
             # structure tag is always passed on first, which can be used downstream
             Node.send(self, chunk)
             if ((self.start is not None and chunk.offset < self.start) or
-                (self.stop is not None and chunk.offset >= self.stop)):
-                self._log.debug("%s matches exclusion criteria", chunk)
+                (self.stop is not None and chunk.offset >= self.stop) or
+                (self.start_idx is not None and self.entry_count < self.start_idx) or
+                (self.stop_idx is not None and self.entry_count > self.stop_idx)):
+                self._log.debug("%s (idx=%d) matches exclusion criteria", chunk, self.entry_count)
                 if 'trial_off' not in chunk.data:
                     self._log.warn("no information about end of entry in data stream; "
                                    "exclusion not supported")
@@ -224,6 +235,7 @@ class entry_excluder(Node):
                                                                          'reason')),
                                       tag_set("events", "exclusions"))
                     Node.send(self, chunk)
+            self.entry_count += 1
 
 
 def timeseries_reader(array, ds, chunk_size, gap=0, id='', tags=tag_set("samples")):
