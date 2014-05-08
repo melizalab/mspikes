@@ -159,19 +159,19 @@ class entry_excluder(Node):
 
     @classmethod
     def options(cls, addopt_f, **defaults):
-        addopt_f("--start",
+        addopt_f("--before",
                  help="exclude entries before this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
-        addopt_f("--stop",
+        addopt_f("--after",
                  help="exclude entries after this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
-        addopt_f("--start-idx",
+        addopt_f("--before-idx",
                  help="exclude data before this entry index (0 = first entry)",
                  type=int,
                  metavar='NUM')
-        addopt_f("--stop-idx",
+        addopt_f("--after-idx",
                  help="exclude data after this entry index",
                  type=int,
                  metavar='NUM')
@@ -185,16 +185,16 @@ class entry_excluder(Node):
     def __init__(self, name, **options):
         from mspikes.util import set_option_attributes
         Node.__init__(self, name)
-        set_option_attributes(self, options, channels=None, reason='', start=None, stop=None,
-                              start_idx=None, stop_idx=None)
-        if self.start is not None:
-            self._log.info("excluding entries with t < %f", self.start)
-        if self.stop is not None:
-            self._log.info("excluding entries with t >= %f", self.stop)
-        if self.start_idx is not None:
-            self._log.info("excluding entries with index < %d", self.start_idx)
-        if self.stop_idx is not None:
-            self._log.info("excluding entries with index > %d", self.stop_idx)
+        set_option_attributes(self, options, channels=None, reason='', before=None, after=None,
+                              before_idx=None, after_idx=None)
+        if self.before is not None:
+            self._log.info("excluding entries with t < %f", self.before)
+        if self.after is not None:
+            self._log.info("excluding entries with t >= %f", self.after)
+        if self.before_idx is not None:
+            self._log.info("excluding entries with index < %d", self.before_idx)
+        if self.after_idx is not None:
+            self._log.info("excluding entries with index > %d", self.after_idx)
 
         self._log.info("excluding channels: %s", self.channels)
         self.entry_count = 0
@@ -207,10 +207,10 @@ class entry_excluder(Node):
         if "structure" in chunk.tags:
             # structure tag is always passed on first, which can be used downstream
             Node.send(self, chunk)
-            if ((self.start is not None and chunk.offset < self.start) or
-                (self.stop is not None and chunk.offset >= self.stop) or
-                (self.start_idx is not None and self.entry_count < self.start_idx) or
-                (self.stop_idx is not None and self.entry_count > self.stop_idx)):
+            if ((self.before is not None and chunk.offset < self.before) or
+                (self.after is not None and chunk.offset >= self.after) or
+                (self.before_idx is not None and self.entry_count < self.before_idx) or
+                (self.after_idx is not None and self.entry_count > self.after_idx)):
                 self._log.debug("%s (idx=%d) matches exclusion criteria", chunk, self.entry_count)
                 if 'trial_off' not in chunk.data:
                     self._log.warn("no information about end of entry in data stream; "
