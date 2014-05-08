@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python -*-
 
-__version__ = "3.0.0b1"
+__version__ = "3.0.0b2"
 
 __doc__ = """A program for processing time-varying data.
 
