@@ -160,15 +160,15 @@ class entry_excluder(Node):
     @classmethod
     def options(cls, addopt_f, **defaults):
         addopt_f("--before",
-                 help="exclude entries before this time (in seconds). ",
+                 help="exclude entries that start before this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
         addopt_f("--after",
-                 help="exclude entries after this time (in seconds). ",
+                 help="exclude entries that start after this time (in seconds). ",
                  type=float,
                  metavar='FLOAT')
         addopt_f("--between",
-                 help="exclude entries between these times (in seconds, inclusive)",
+                 help="exclude entries that start between these times (in seconds, inclusive)",
                  type=float,
                  nargs=2,
                  action='append',
